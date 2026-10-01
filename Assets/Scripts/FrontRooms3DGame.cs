@@ -90,6 +90,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     const float TitleDoorOpenDuration = .9f;
     const float TitleHandoffDepth = 2f;
     const float LogoScale = .75f;
+    // The trailing S forms are deliberately sequenced instead of sharing the
+    // same reveal clock: the near afterimage settles first, then the far one
+    // pushes out to create the depth trail in the wordmark.
+    const float LogoS1SettleAt = .60f;
+    const float LogoS2StartAt = .54f;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
     string flash = "", actionIdentity = "";
     bool released, shiftWarning, journal;
@@ -639,12 +644,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             // as the first physical door opens. The full title stays visible
             // after the movement completes while the corridor keeps looping.
             var doorProgress = roomStream == null ? 0f : roomStream.FirstDoorProgress;
-            var vectorSlideT = doorProgress;
-            vectorSlideT = vectorSlideT * vectorSlideT * (3f - 2f * vectorSlideT);
-            var s2Start = logoMotionVariation == LogoMotionVariation.FullLockup ? .08f : .12f;
+            var s1End = logoMotionVariation == LogoMotionVariation.FullLockup ? .66f : LogoS1SettleAt;
+            var s2Start = logoMotionVariation == LogoMotionVariation.FullLockup ? .48f : LogoS2StartAt;
+            var vectorS1T = Mathf.Clamp01(doorProgress / s1End);
+            vectorS1T = vectorS1T * vectorS1T * (3f - 2f * vectorS1T);
             var vectorS2T = Mathf.Clamp01((doorProgress - s2Start) / (1f - s2Start));
             vectorS2T = vectorS2T * vectorS2T * (3f - 2f * vectorS2T);
-            vectorLogoS1Image.style.left = new UiLength(Mathf.Lerp(798f, 842f, vectorSlideT), UiLengthUnit.Pixel);
+            vectorLogoS1Image.style.left = new UiLength(Mathf.Lerp(798f, 842f, vectorS1T), UiLengthUnit.Pixel);
             vectorLogoS2Image.style.left = new UiLength(Mathf.Lerp(798f, 880f, vectorS2T), UiLengthUnit.Pixel);
             // Keep the vector mark on the same fade-in clock as the title
             // corridor. It remains at full opacity after the reveal; only the
