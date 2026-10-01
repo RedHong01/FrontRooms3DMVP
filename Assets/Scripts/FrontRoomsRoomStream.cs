@@ -29,8 +29,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     const float LogoFadeSeconds = 4f;
     const float LogoExitSeconds = .55f;
     const float LightRevealDelaySeconds = 1f;
-    const float LightFlickerSeconds = .34f;
-    const float LightRevealSeconds = 1.8f;
+    // Room-stream lights use a deterministic variation per sequence rather
+    // than one global flash cue. The sequence is hashed, so recycling a pool
+    // slot never repeats the same behaviour simply because it is the same
+    // GameObject.
+    const int LightRandomSeed = 24017;
 
     [Tooltip("Optional room authoring template. A copy is placed inside each streamed room root.")]
     public GameObject roomTemplate;
@@ -43,6 +46,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         public Transform rightDoor;
         public GameObject rearSeal;
         public int sequence;
+        public RoomRule rule;
         public float startZ;
         public float endZ;
         public float doorProgress;
@@ -59,6 +63,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         public bool lightTriggerScheduled;
         public float lightDelayRemaining;
         public float lightFlickerElapsed;
+        public int lightFlickerCount;
+        public float lightFlickerPeriod;
+        public float lightFlickerOnFraction;
+        public float lightRevealSeconds;
+        public bool lightNeverSettles;
+        public float lightUnstableElapsed;
+        public float lightNoisePhase;
+        public GameObject[] profileVariants;
     }
 
     Camera streamCamera;
@@ -68,7 +80,12 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     Material trimMaterial;
     Material fixtureMaterial;
     Material doorMaterial;
+    Material[] profileWallMaterials;
+    Material[] profileFloorMaterials;
+    Material[] profileCeilingMaterials;
     AudioClip doorCreakClip;
+    AudioClip doorLatchClip;
+    AudioClip doorTravelClip;
     readonly RoomSlot[] pool = new RoomSlot[MaxRooms];
     readonly Vector3[] movementScratch = new Vector3[1];
     int currentPoolIndex;
@@ -102,6 +119,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     public int RecycledCount => recycledCount;
     public int RebaseCount => rebaseCount;
     public int CurrentRoomNumber => currentSequence;
+    public RoomRule CurrentRule
+    {
+        get
+        {
+            var current = FindSequence(currentSequence);
+            return current == null ? RoomRule.Lobby : current.rule;
+        }
+    }
     public float CameraZ => streamCamera == null ? 0f : streamCamera.transform.position.z;
     public Vector3 PendingAnchorPosition { get; private set; }
     public float MaxExposure => maxExposure;
@@ -110,7 +135,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
     /// <summary>Build the fixed room pool around the camera's current position.</summary>
     public void Initialize(Camera camera, Material wall, Material floor, Material ceiling,
-        Material trim, Material fixture, Material door, AudioClip doorCreak = null)
+        Material trim, Material fixture, Material door, AudioClip doorCreak = null,
+        AudioClip doorLatch = null, AudioClip doorTravel = null,
+        Material[] profileWalls = null, Material[] profileFloors = null, Material[] profileCeilings = null)
     {
         streamCamera = camera;
         wallMaterial = wall;
@@ -119,7 +146,12 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         trimMaterial = trim;
         fixtureMaterial = fixture;
         doorMaterial = door;
+        profileWallMaterials = profileWalls;
+        profileFloorMaterials = profileFloors;
+        profileCeilingMaterials = profileCeilings;
         doorCreakClip = doorCreak;
+        doorLatchClip = doorLatch;
+        doorTravelClip = doorTravel;
         initialized = false;
         startRequested = false;
         hasControl = false;
@@ -140,6 +172,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         {
             var room = new RoomSlot();
             room.sequence = i;
+            room.rule = RuleForSequence(i);
             room.startZ = firstStart + i * RoomLength;
             room.endZ = room.startZ + RoomLength;
             room.root = new GameObject("Stream room / " + i.ToString("000"));
@@ -157,6 +190,26 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         currentSequence = 0;
         maxExposure = MaxRooms;
         initialized = true;
+    }
+
+    /// <summary>
+    /// The first cycle is authored so the prototype teaches the player in a
+    /// readable order. Later cycles repeat the same semantic beats while the
+    /// light profile, wallpaper phase and door timing continue to vary by
+    /// sequence number. This keeps the stream infinite without hiding the
+    /// three level identities behind a random first encounter.
+    /// </summary>
+    public static RoomRule RuleForSequence(int sequence)
+    {
+        if (sequence <= 0) return RoomRule.Lobby;
+        switch (sequence % 5)
+        {
+            case 1: return RoomRule.Shift;
+            case 2: return RoomRule.Office;
+            case 3: return RoomRule.Run;
+            case 4: return RoomRule.Exit;
+            default: return RoomRule.Lobby;
+        }
     }
 
     /// <summary>
@@ -337,9 +390,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     }
 
     /// <summary>
-    /// A door opening cues the room beyond it: wait one second, flash the
-    /// ballast once, then bring its fixtures up over a smooth fade. The room
-    /// pool is fixed, so this remains allocation-free while rooms recycle.
+    /// A door opening cues the room beyond it. Every streamed sequence owns a
+    /// deterministic light profile: some rooms rise cleanly, some ballast
+    /// once or several times, and a few never settle into a constant output.
+    /// The pool is fixed, so this remains allocation-free while rooms recycle.
     /// </summary>
     void TickRoomLights(float dt)
     {
@@ -347,20 +401,28 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         {
             var room = pool[i];
             if (room == null || room.roomLights == null || room.roomLights.Length == 0) continue;
-            if (room.lightRevealStarted && room.lightRevealProgress >= 1f) continue;
+            if (room.lightRevealStarted && room.lightRevealProgress >= 1f)
+            {
+                if (room.lightNeverSettles) TickUnstableRoomLight(room, dt);
+                continue;
+            }
             if (!room.lightTriggerScheduled && !room.lightRevealStarted) continue;
 
             if (room.lightTriggerScheduled)
             {
                 room.lightDelayRemaining -= dt;
                 if (room.lightDelayRemaining > 0f) continue;
-                room.lightFlickerElapsed += dt;
-                if (room.lightFlickerElapsed < LightFlickerSeconds)
+                if (room.lightFlickerCount > 0)
                 {
-                    var flickerT = room.lightFlickerElapsed / LightFlickerSeconds;
-                    var flickerLevel = flickerT < .24f ? .85f : flickerT < .48f ? .08f : .52f;
-                    SetRoomLightIntensity(room, flickerLevel, true);
-                    continue;
+                    room.lightFlickerElapsed += dt;
+                    var totalFlickerSeconds = room.lightFlickerCount * room.lightFlickerPeriod;
+                    if (room.lightFlickerElapsed < totalFlickerSeconds)
+                    {
+                        var pulseTime = room.lightFlickerElapsed % room.lightFlickerPeriod;
+                        var flickerLevel = pulseTime < room.lightFlickerPeriod * room.lightFlickerOnFraction ? .92f : .035f;
+                        SetRoomLightIntensity(room, flickerLevel, true);
+                        continue;
+                    }
                 }
                 room.lightTriggerScheduled = false;
                 room.lightRevealStarted = true;
@@ -368,8 +430,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             }
             if (!room.lightRevealStarted || room.lightRevealProgress >= 1f) continue;
 
-            room.lightRevealProgress = Mathf.MoveTowards(room.lightRevealProgress, 1f, dt / LightRevealSeconds);
+            room.lightRevealProgress = Mathf.MoveTowards(room.lightRevealProgress, 1f, dt / room.lightRevealSeconds);
             var eased = room.lightRevealProgress * room.lightRevealProgress * (3f - 2f * room.lightRevealProgress);
+            if (room.lightNeverSettles)
+            {
+                // Keep this room in a readable low-output state after the
+                // startup flashes. It must never become a steady lamp.
+                eased *= Mathf.Lerp(.72f, .18f, room.lightRevealProgress);
+            }
             SetRoomLightIntensity(room, eased, true);
         }
     }
@@ -381,6 +449,19 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         room.lightTriggerScheduled = true;
         room.lightDelayRemaining = LightRevealDelaySeconds;
         room.lightFlickerElapsed = 0f;
+        room.lightUnstableElapsed = 0f;
+    }
+
+    void TickUnstableRoomLight(RoomSlot room, float dt)
+    {
+        room.lightUnstableElapsed += dt;
+        var t = room.lightUnstableElapsed + room.lightNoisePhase;
+        // Two incommensurate waves create a slow ballast sway with occasional
+        // dropouts. The ceiling never reaches the normal steady-state level.
+        var wave = .5f + .5f * Mathf.Sin(t * 3.7f) * (.68f + .32f * Mathf.Sin(t * 1.13f));
+        var dropout = Mathf.PerlinNoise(t * .92f, room.lightNoisePhase) > .77f ? .06f : 1f;
+        var level = (.12f + .28f * Mathf.Clamp01(wave)) * dropout;
+        SetRoomLightIntensity(room, level, true);
     }
 
     void MaintainPool()
@@ -403,6 +484,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         if (newest == null) return;
         var nextSequence = newest.sequence + 1;
         oldest.sequence = nextSequence;
+        oldest.rule = RuleForSequence(nextSequence);
         oldest.startZ = newest.endZ;
         oldest.endZ = oldest.startZ + RoomLength;
         oldest.root.transform.position = new Vector3(centerX, 0f, oldest.startZ);
@@ -414,6 +496,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         if (oldest.doorAudio != null) oldest.doorAudio.Stop();
         if (oldest.rearSeal != null) oldest.rearSeal.SetActive(true);
         ResetRoomLights(oldest);
+        RefreshRoomMaterials(oldest);
         ApplyDoorPose(oldest);
         recycledCount++;
     }
@@ -509,20 +592,25 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         }
         else
         {
-            Box(room.root.transform, "carpet floor", new Vector3(0f, -.12f, RoomLength * .5f), new Vector3(RoomWidth, .24f, RoomLength + .04f), floorMaterial);
-            Box(room.root.transform, "ceiling", new Vector3(0f, RoomHeight + .1f, RoomLength * .5f), new Vector3(RoomWidth, .2f, RoomLength + .04f), ceilingMaterial);
-            Box(room.root.transform, "left wallpaper wall", new Vector3(-RoomWidth * .5f, RoomHeight * .5f, RoomLength * .5f), new Vector3(WallThickness, RoomHeight, RoomLength), wallMaterial);
-            Box(room.root.transform, "right wallpaper wall", new Vector3(RoomWidth * .5f, RoomHeight * .5f, RoomLength * .5f), new Vector3(WallThickness, RoomHeight, RoomLength), wallMaterial);
-            Box(room.root.transform, "left baseboard", new Vector3(-RoomWidth * .5f + .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? wallMaterial);
-            Box(room.root.transform, "right baseboard", new Vector3(RoomWidth * .5f - .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? wallMaterial);
-            Box(room.root.transform, "fluorescent fixture", new Vector3(0f, RoomHeight - .08f, RoomLength * .5f), new Vector3(2.05f, .1f, .38f), fixtureMaterial ?? ceilingMaterial);
+            var roomWall = ProfileMaterial(profileWallMaterials, room.rule, wallMaterial);
+            var roomFloor = ProfileMaterial(profileFloorMaterials, room.rule, floorMaterial);
+            var roomCeiling = ProfileMaterial(profileCeilingMaterials, room.rule, ceilingMaterial);
+            Box(room.root.transform, "carpet floor", new Vector3(0f, -.12f, RoomLength * .5f), new Vector3(RoomWidth, .24f, RoomLength + .04f), roomFloor);
+            Box(room.root.transform, "ceiling", new Vector3(0f, RoomHeight + .1f, RoomLength * .5f), new Vector3(RoomWidth, .2f, RoomLength + .04f), roomCeiling);
+            Box(room.root.transform, "left wallpaper wall", new Vector3(-RoomWidth * .5f, RoomHeight * .5f, RoomLength * .5f), new Vector3(WallThickness, RoomHeight, RoomLength), roomWall);
+            Box(room.root.transform, "right wallpaper wall", new Vector3(RoomWidth * .5f, RoomHeight * .5f, RoomLength * .5f), new Vector3(WallThickness, RoomHeight, RoomLength), roomWall);
+            Box(room.root.transform, "left baseboard", new Vector3(-RoomWidth * .5f + .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? roomWall);
+            Box(room.root.transform, "right baseboard", new Vector3(RoomWidth * .5f - .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? roomWall);
+            Box(room.root.transform, "fluorescent fixture", new Vector3(0f, RoomHeight - .08f, RoomLength * .5f), new Vector3(2.05f, .1f, .38f), fixtureMaterial ?? roomCeiling);
             var lightObject = new GameObject("fluorescent light");
             lightObject.transform.SetParent(room.root.transform, false);
             lightObject.transform.localPosition = new Vector3(0f, RoomHeight - .38f, RoomLength * .5f);
             var light = lightObject.AddComponent<Light>();
             // Reach the side walls and the next threshold so the wallpaper and
             // embedded doorway remain readable in the title and WebGL player.
-            light.type = LightType.Point; light.range = 9.2f; light.intensity = 1.35f; light.color = new Color(1f, .93f, .74f);
+            light.type = LightType.Point; light.range = room.rule == RoomRule.Run ? 8.3f : room.rule == RoomRule.Office ? 9.5f : 9.2f;
+            light.intensity = room.rule == RoomRule.Run ? 1.5f : room.rule == RoomRule.Office ? 1.55f : 1.35f;
+            light.color = ProfileLightColor(room.rule);
             light.shadows = LightShadows.Soft;
             light.shadowStrength = .4f;
             light.bounceIntensity = .35f;
@@ -531,9 +619,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
         CacheRoomLights(room);
 
-        room.rearSeal = Box(room.root.transform, "opaque rear boundary seal", new Vector3(0f, RoomHeight * .5f, RearSealOffset), new Vector3(RoomWidth, RoomHeight, .18f), wallMaterial);
+        room.rearSeal = Box(room.root.transform, "opaque rear boundary seal", new Vector3(0f, RoomHeight * .5f, RearSealOffset), new Vector3(RoomWidth, RoomHeight, .18f), ProfileMaterial(profileWallMaterials, room.rule, wallMaterial));
         room.rearSeal.SetActive(index == 0);
         BuildDoor(room);
+        BuildProfileProps(room);
+        RefreshRoomMaterials(room);
     }
 
     Transform CreateEntry(Transform parent)
@@ -552,9 +642,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         // standing prop in the distance.
         var sideWallWidth = (RoomWidth - DoorWidth) * .5f;
         var sideWallOffset = DoorWidth * .5f + sideWallWidth * .5f;
-        Box(room.root.transform, "door wall return left", new Vector3(-sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), wallMaterial);
-        Box(room.root.transform, "door wall return right", new Vector3(sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), wallMaterial);
-        Box(room.root.transform, "door wall above", new Vector3(0f, RoomHeight - .12f, RoomLength), new Vector3(DoorWidth, .24f, WallThickness), wallMaterial);
+        var roomWall = ProfileMaterial(profileWallMaterials, room.rule, wallMaterial);
+        Box(room.root.transform, "door wall return left", new Vector3(-sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), roomWall);
+        Box(room.root.transform, "door wall return right", new Vector3(sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), roomWall);
+        Box(room.root.transform, "door wall above", new Vector3(0f, RoomHeight - .12f, RoomLength), new Vector3(DoorWidth, .24f, WallThickness), roomWall);
         Box(room.root.transform, "door frame left", new Vector3(-1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
         Box(room.root.transform, "door frame right", new Vector3(1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
         Box(room.root.transform, "door frame header", new Vector3(0f, RoomHeight - .12f, RoomLength), new Vector3(3.12f, .24f, .22f), frameMaterial);
@@ -583,6 +674,82 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         ApplyDoorPose(room);
     }
 
+    static Material ProfileMaterial(Material[] materials, RoomRule rule, Material fallback)
+    {
+        var index = (int)rule;
+        return materials != null && index >= 0 && index < materials.Length && materials[index] != null ? materials[index] : fallback;
+    }
+
+    static Color ProfileLightColor(RoomRule rule)
+    {
+        switch (rule)
+        {
+            case RoomRule.Shift: return new Color(.73f, .74f, .65f);
+            case RoomRule.Office: return new Color(1f, .83f, .58f);
+            case RoomRule.Run: return new Color(1f, .17f, .11f);
+            case RoomRule.Exit: return new Color(.45f, .88f, .82f);
+            default: return new Color(1f, .93f, .74f);
+        }
+    }
+
+    void BuildProfileProps(RoomSlot room)
+    {
+        room.profileVariants = new GameObject[5];
+        for (var ruleIndex = 0; ruleIndex < room.profileVariants.Length; ruleIndex++)
+        {
+            var rule = (RoomRule)ruleIndex;
+            var props = new GameObject("Profile props / " + rule);
+            props.transform.SetParent(room.root.transform, false);
+            room.profileVariants[ruleIndex] = props;
+            props.SetActive(rule == room.rule);
+            var roomWall = ProfileMaterial(profileWallMaterials, rule, wallMaterial);
+            if (rule == RoomRule.Office)
+            {
+                for (var i = -1; i <= 1; i++)
+                {
+                    Box(props.transform, "office desk", new Vector3(i * 2.2f, .68f, 6.8f), new Vector3(1.55f, .12f, .72f), trimMaterial ?? roomWall);
+                    Box(props.transform, "office partition", new Vector3(i * 2.2f, 1.2f, 6.45f), new Vector3(1.35f, 1.0f, .08f), roomWall);
+                }
+            }
+            else if (rule == RoomRule.Run)
+            {
+                Box(props.transform, "run warning stripe left", new Vector3(-RoomWidth * .5f + .3f, .9f, 5.2f), new Vector3(.12f, 1.5f, 2.6f), roomWall);
+                Box(props.transform, "run warning stripe right", new Vector3(RoomWidth * .5f - .3f, .9f, 5.2f), new Vector3(.12f, 1.5f, 2.6f), roomWall);
+                Box(props.transform, "run overhead bar", new Vector3(0f, 2.35f, 7.2f), new Vector3(2.9f, .08f, .12f), roomWall);
+            }
+            else if (rule == RoomRule.Exit)
+            {
+                Box(props.transform, "exit threshold marker", new Vector3(0f, .04f, 5.9f), new Vector3(2.8f, .03f, .12f), roomWall);
+            }
+        }
+    }
+
+    void RefreshRoomMaterials(RoomSlot room)
+    {
+        if (room == null || room.root == null) return;
+        var wall = ProfileMaterial(profileWallMaterials, room.rule, wallMaterial);
+        var floor = ProfileMaterial(profileFloorMaterials, room.rule, floorMaterial);
+        var ceiling = ProfileMaterial(profileCeilingMaterials, room.rule, ceilingMaterial);
+        var renderers = room.root.GetComponentsInChildren<Renderer>(true);
+        for (var i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null) continue;
+            var name = renderer.gameObject.name.ToLowerInvariant();
+            if (name.Contains("floor") || name.Contains("carpet")) renderer.sharedMaterial = floor;
+            else if (name.Contains("ceiling")) renderer.sharedMaterial = ceiling;
+            else if (name.Contains("wall") || name.Contains("seal") || name.Contains("partition") || name.Contains("warning stripe") || name.Contains("threshold marker") || name.Contains("overhead bar")) renderer.sharedMaterial = wall;
+        }
+        if (room.roomLights != null)
+        {
+            for (var i = 0; i < room.roomLights.Length; i++)
+                if (room.roomLights[i] != null) room.roomLights[i].color = ProfileLightColor(room.rule);
+        }
+        if (room.profileVariants != null)
+            for (var i = 0; i < room.profileVariants.Length; i++)
+                if (room.profileVariants[i] != null) room.profileVariants[i].SetActive(i == (int)room.rule);
+    }
+
     void CacheRoomLights(RoomSlot room)
     {
         room.roomLights = room.root.GetComponentsInChildren<Light>(true);
@@ -599,11 +766,13 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
     void ResetRoomLights(RoomSlot room)
     {
+        ConfigureLightProfile(room);
         room.lightRevealProgress = 0f;
         room.lightRevealStarted = false;
         room.lightTriggerScheduled = false;
         room.lightDelayRemaining = 0f;
         room.lightFlickerElapsed = 0f;
+        room.lightUnstableElapsed = 0f;
         if (room.roomLights == null) return;
         for (var i = 0; i < room.roomLights.Length; i++)
         {
@@ -611,6 +780,55 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             if (light == null) continue;
             light.intensity = 0f;
             light.enabled = false;
+        }
+    }
+
+    void ConfigureLightProfile(RoomSlot room)
+    {
+        if (room == null) return;
+        var sequence = Mathf.Max(0, room.sequence);
+        var profile = Hash01(sequence, 11);
+        // The weighted bands intentionally leave a useful minority of rooms
+        // completely clean while reserving a smaller tail for lights that
+        // continue misbehaving after their initial cue.
+        if (profile < .27f)
+        {
+            room.lightFlickerCount = 0;
+            room.lightNeverSettles = false;
+        }
+        else if (profile < .58f)
+        {
+            room.lightFlickerCount = 1;
+            room.lightNeverSettles = false;
+        }
+        else if (profile < .87f)
+        {
+            room.lightFlickerCount = 2 + Mathf.FloorToInt(Hash01(sequence, 23) * 3f);
+            room.lightNeverSettles = false;
+        }
+        else
+        {
+            room.lightFlickerCount = 2 + Mathf.FloorToInt(Hash01(sequence, 29) * 4f);
+            room.lightNeverSettles = true;
+        }
+
+        room.lightFlickerPeriod = Mathf.Lerp(.17f, .31f, Hash01(sequence, 37));
+        room.lightFlickerOnFraction = Mathf.Lerp(.23f, .48f, Hash01(sequence, 41));
+        room.lightRevealSeconds = Mathf.Lerp(1.35f, 2.35f, Hash01(sequence, 47));
+        room.lightNoisePhase = Hash01(sequence, 53) * 19f;
+    }
+
+    static float Hash01(int sequence, int salt)
+    {
+        unchecked
+        {
+            uint x = (uint)(sequence * 92821 + salt * 68917 + LightRandomSeed);
+            x ^= x >> 16;
+            x *= 2246822519u;
+            x ^= x >> 13;
+            x *= 3266489917u;
+            x ^= x >> 16;
+            return (x & 0x00ffffffu) / 16777215f;
         }
     }
 
@@ -642,11 +860,13 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         room.doorOpening = true;
         if (room.doorSoundPlayed) return;
         room.doorSoundPlayed = true;
-        if (room.doorAudio == null || doorCreakClip == null) return;
+        if (room.doorAudio == null || (doorCreakClip == null && doorLatchClip == null && doorTravelClip == null)) return;
         // A very small deterministic pitch variation keeps repeated streamed
         // doors from sounding phase-locked while preserving the same source.
         room.doorAudio.pitch = .97f + Mathf.Abs(room.sequence % 7) * .01f;
-        room.doorAudio.Play();
+        if (doorLatchClip != null) room.doorAudio.PlayOneShot(doorLatchClip, .42f);
+        if (doorCreakClip != null) room.doorAudio.PlayOneShot(doorCreakClip, .78f);
+        if (doorTravelClip != null) room.doorAudio.PlayOneShot(doorTravelClip, .42f);
     }
 
     void ApplyDoorPose(RoomSlot room)

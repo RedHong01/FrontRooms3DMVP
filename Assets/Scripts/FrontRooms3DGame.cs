@@ -47,6 +47,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Material trimMat, seamMat, fixtureMat;
     AudioSource hum;
     AudioClip playerStepClip, playerRunStepClip, hunterStepClip, glassClip, keyClip, doorClip, slamClip, bangClip, caughtClip, escapeClip;
+    FrontRoomsFoley foley;
     Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, crosshair, notebook, displaySettingsText;
     Image logoImage;
     Image logoLeftImage, logoSlideImage;
@@ -95,7 +96,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     // same reveal clock: the near afterimage settles first, then the far one
     // pushes out to create the depth trail in the wordmark.
     const float LogoS1SettleAt = .58f;
-    const float LogoS2StartAt = .62f;
+    // Start the far afterimage while the near S is in its final approach.
+    // The relay is intentionally earlier than the near S settle point so the
+    // two forms overlap in motion instead of waiting for a hard hand-off.
+    const float LogoS2StartAt = .50f;
     const float GameplayHudFadeSeconds = .9f;
     float gameplayHudAlpha;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
@@ -613,7 +617,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
         roomStream = titleWorld.gameObject.AddComponent<FrontRoomsRoomStream>();
         roomStream.roomTemplate = streamedRoomTemplate;
-        roomStream.Initialize(cam, WallMaterial(RoomRule.Lobby), FloorMaterial(RoomRule.Lobby), CeilingMaterial(RoomRule.Lobby), trimMat, fixtureMat, darkMat, doorClip);
+        roomStream.Initialize(cam, WallMaterial(RoomRule.Lobby), FloorMaterial(RoomRule.Lobby), CeilingMaterial(RoomRule.Lobby), trimMat, fixtureMat, darkMat,
+            foley == null ? doorClip : foley.Doors.hinge,
+            foley == null ? null : foley.Doors.latch,
+            foley == null ? null : foley.Doors.travel,
+            new[] { WallMaterial(RoomRule.Lobby), WallMaterial(RoomRule.Shift), WallMaterial(RoomRule.Office), WallMaterial(RoomRule.Run), WallMaterial(RoomRule.Exit) },
+            new[] { FloorMaterial(RoomRule.Lobby), FloorMaterial(RoomRule.Shift), FloorMaterial(RoomRule.Office), FloorMaterial(RoomRule.Run), FloorMaterial(RoomRule.Exit) },
+            new[] { CeilingMaterial(RoomRule.Lobby), CeilingMaterial(RoomRule.Shift), CeilingMaterial(RoomRule.Office), CeilingMaterial(RoomRule.Run), CeilingMaterial(RoomRule.Exit) });
         titleCameraZ = cam == null ? 0f : cam.transform.position.z;
         titleLogoAlpha = 0f;
         logoMotionElapsed = 0f;
@@ -654,12 +664,16 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             var vectorS2T = Mathf.Clamp01((doorProgress - s2Start) / (1f - s2Start));
             vectorS2T = vectorS2T * vectorS2T * (3f - 2f * vectorS2T);
             var vectorS1X = Mathf.Lerp(798f, 842f, vectorS1T);
-            // The far S follows the first afterimage until that S has settled,
-            // then continues from its settled position instead of restarting
-            // from the solid wordmark S.
+            // The far S follows the first afterimage until the relay point,
+            // then continues from the first S's actual position at that point.
+            // This keeps the earlier hand-off continuous and preserves the
+            // intended left-to-right depth relationship.
+            var s2StartS1T = Mathf.Clamp01(s2Start / s1End);
+            s2StartS1T = s2StartS1T * s2StartS1T * (3f - 2f * s2StartS1T);
+            var vectorS2StartX = Mathf.Lerp(798f, 842f, s2StartS1T);
             var vectorS2X = doorProgress < s2Start
                 ? vectorS1X
-                : Mathf.Lerp(842f, 880f, vectorS2T);
+                : Mathf.Lerp(vectorS2StartX, 880f, vectorS2T);
             vectorLogoS1Image.style.left = new UiLength(vectorS1X, UiLengthUnit.Pixel);
             vectorLogoS2Image.style.left = new UiLength(vectorS2X, UiLengthUnit.Pixel);
             // Keep the vector mark on the same fade-in clock as the title
@@ -745,7 +759,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             if (stepTime > (sprint ? .3f : .5f))
             {
                 stepTime = 0f;
-                Sound(sprint ? playerRunStepClip : playerStepClip, after, sprint ? .48f : .15f);
+                FoleyFootstep(after, FrontRoomsFoleyActor.Player, FrontRoomsFoleySurface.Carpet, sprint, sprint ? .48f : .15f);
             }
         }
     }
@@ -862,14 +876,14 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     }
     void BuildSound()
     {
+        var recordedDoorCreak = Resources.Load<AudioClip>("Audio/door-creak");
+        foley = new FrontRoomsFoley(recordedDoorCreak);
         playerStepClip = FrontRoomsAudio.PlayerStep(); playerRunStepClip = FrontRoomsAudio.PlayerRunStep(); hunterStepClip = FrontRoomsAudio.HunterStep();
         glassClip = FrontRoomsAudio.Glass(); keyClip = FrontRoomsAudio.Key();
-        // Use the short, realistic CC0 field recording for every ordinary door
-        // opening. Keep the synthesized clip as a fallback so the project still
-        // runs when a Resources import is temporarily unavailable in the editor.
-        var recordedDoorCreak = Resources.Load<AudioClip>("Audio/door-creak");
-        doorClip = recordedDoorCreak != null ? recordedDoorCreak : FrontRoomsAudio.DoorOpen();
-        slamClip = FrontRoomsAudio.DoorSlam(); bangClip = FrontRoomsAudio.DoorBang();
+        // The Foley door set layers a latch, hinge recording, movement bed and
+        // settle/impact. Keep the old clips as fallbacks for verification tools.
+        doorClip = foley.Doors.hinge;
+        slamClip = foley.Doors.slam; bangClip = foley.Doors.breakImpact;
         caughtClip = FrontRoomsAudio.Caught(); escapeClip = FrontRoomsAudio.Escape();
         hum = cam.gameObject.AddComponent<AudioSource>(); hum.clip = FrontRoomsAudio.Hum(); hum.loop = true; hum.volume = .18f; hum.Play();
     }
@@ -880,24 +894,93 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         Destroy(g, clip.length + .1f);
     }
 
+    FrontRoomsFoleySurface SurfaceFor(FrontRoom sourceRoom)
+    {
+        if (sourceRoom == null) return FrontRoomsFoleySurface.Carpet;
+        switch (sourceRoom.Rule)
+        {
+            case RoomRule.Office: return FrontRoomsFoleySurface.Tile;
+            case RoomRule.Run: return FrontRoomsFoleySurface.Concrete;
+            case RoomRule.Exit: return FrontRoomsFoleySurface.Metal;
+            default: return FrontRoomsFoleySurface.Carpet;
+        }
+    }
+
+    FrontRoomsFoleySurface SurfaceAt(Vector2 p)
+    {
+        return level == null ? FrontRoomsFoleySurface.Carpet : SurfaceFor(level.RoomOf(FrontRoomsLevel.TileOf(p)));
+    }
+
+    void FoleyFootstep(Vector2 p, FrontRoomsFoleyActor actor, FrontRoomsFoleySurface surface, bool running, float volume)
+    {
+        if (foley == null)
+        {
+            var fallback = actor == FrontRoomsFoleyActor.Hunter ? hunterStepClip : (running ? playerRunStepClip : playerStepClip);
+            Sound(fallback, p, volume);
+            return;
+        }
+        var selection = foley.PickStep(actor, surface, running);
+        var g = new GameObject("Foley / " + actor + " / " + surface);
+        g.transform.position = V(p, actor == FrontRoomsFoleyActor.Hunter ? .45f : .08f);
+        var source = g.AddComponent<AudioSource>();
+        source.spatialBlend = 1f;
+        source.minDistance = actor == FrontRoomsFoleyActor.Hunter ? 1.25f : 1.1f;
+        source.maxDistance = actor == FrontRoomsFoleyActor.Hunter ? 32f : 18f;
+        source.rolloffMode = AudioRolloffMode.Logarithmic;
+        source.dopplerLevel = actor == FrontRoomsFoleyActor.Hunter ? .15f : .04f;
+        source.spread = actor == FrontRoomsFoleyActor.Hunter ? 28f : 12f;
+        source.priority = actor == FrontRoomsFoleyActor.Hunter ? 64 : 90;
+        source.pitch = selection.pitch;
+        source.PlayOneShot(selection.impact, volume);
+        source.PlayOneShot(selection.texture, volume * (actor == FrontRoomsFoleyActor.Hunter ? .72f : .62f));
+        source.PlayOneShot(selection.cloth, volume * .34f);
+        if (actor == FrontRoomsFoleyActor.Hunter)
+        {
+            var low = g.AddComponent<AudioLowPassFilter>();
+            low.cutoffFrequency = 1450f;
+            low.lowpassResonanceQ = 1.1f;
+        }
+        Destroy(g, .52f);
+    }
+
+    void FoleyDoor(Vector2 p, bool closing = false, bool breaking = false)
+    {
+        if (foley == null)
+        {
+            Sound(breaking ? bangClip : closing ? slamClip : doorClip, p, breaking || closing ? 1f : .7f);
+            return;
+        }
+        var g = new GameObject("Foley / door / " + (breaking ? "break" : closing ? "slam" : "open"));
+        g.transform.position = V(p, 1f);
+        var source = g.AddComponent<AudioSource>();
+        source.spatialBlend = 1f;
+        source.minDistance = 2f;
+        source.maxDistance = 26f;
+        source.rolloffMode = AudioRolloffMode.Logarithmic;
+        source.dopplerLevel = .06f;
+        source.priority = breaking ? 48 : 72;
+        source.pitch = .97f + UnityEngine.Random.Range(-.025f, .025f);
+        if (breaking)
+        {
+            source.PlayOneShot(foley.Doors.breakImpact, 1f);
+            Destroy(g, foley.Doors.breakImpact.length + .1f);
+            return;
+        }
+        if (closing)
+        {
+            source.PlayOneShot(foley.Doors.slam, .9f);
+            Destroy(g, foley.Doors.slam.length + .1f);
+            return;
+        }
+        source.PlayOneShot(foley.Doors.latch, .42f);
+        source.PlayOneShot(foley.Doors.hinge, .78f);
+        source.PlayOneShot(foley.Doors.travel, .42f);
+        Destroy(g, Mathf.Max(foley.Doors.hinge.length, foley.Doors.travel.length) + .12f);
+    }
+
     void HunterSound(Vector2 p, float volume)
     {
-        var g = new GameObject("Hunter footstep / spatial"); g.transform.position = V(p, .45f);
-        var source = g.AddComponent<AudioSource>();
-        source.clip = hunterStepClip;
-        source.spatialBlend = 1f;
-        source.minDistance = 1.25f;
-        source.maxDistance = 32f;
-        source.rolloffMode = AudioRolloffMode.Logarithmic;
-        source.dopplerLevel = .15f;
-        source.spread = 28f;
-        source.priority = 64;
-        source.volume = volume;
-        var low = g.AddComponent<AudioLowPassFilter>();
-        low.cutoffFrequency = 1450f;
-        low.lowpassResonanceQ = 1.1f;
-        source.Play();
-        Destroy(g, hunterStepClip.length + .1f);
+        FoleyFootstep(p, FrontRoomsFoleyActor.Hunter, SurfaceAt(p), state == HunterState.Chase, volume);
     }
     Font UiFont(string name, int fontSize)
     {
@@ -1298,7 +1381,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                 if (stepTime > (sprint ? .3f : .5f))
                 {
                     stepTime = 0;
-                    Sound(sprint ? playerRunStepClip : playerStepClip, playerPos, sprint ? .48f : .15f);
+                    FoleyFootstep(playerPos, FrontRoomsFoleyActor.Player, SurfaceAt(playerPos), sprint, sprint ? .48f : .15f);
                     if (sprint) Noise(playerPos, 7f, "running");
                 }
             }
@@ -1368,7 +1451,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         {
             if (o.Kind == OpeningKind.Door)
             {
-                if (holding && keys.Contains(o.Owner.Id)) { o.Open = true; openingObjects[o.Id].SetActive(false); Noise(o.Center, 5f, "door"); Sound(doorClip, o.Center); Event("door_open", o.Id.ToString()); }
+                if (holding && keys.Contains(o.Owner.Id)) { o.Open = true; openingObjects[o.Id].SetActive(false); Noise(o.Center, 5f, "door"); FoleyDoor(o.Center); Event("door_open", o.Id.ToString()); }
             }
             else { id = "window" + o.Id; duration = 1f; }
         }
@@ -1395,7 +1478,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         {
             if (o.Kind != OpeningKind.Door || !o.Open || o.Broken) continue;
             if (Distance(o, playerPos) > 1.7f && Distance(o, hunterPos) > 1.3f) o.CloseTimer += dt; else o.CloseTimer = 0;
-            if (o.CloseTimer > .6f) { o.Open = false; o.CloseTimer = 0; openingObjects[o.Id].SetActive(true); Sound(slamClip, o.Center); }
+            if (o.CloseTimer > .6f) { o.Open = false; o.CloseTimer = 0; openingObjects[o.Id].SetActive(true); FoleyDoor(o.Center, true); }
         }
     }
     void UpdateShift(float dt)
@@ -1461,7 +1544,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                 break;
             case HunterState.BreakDoor:
                 hunterStepTime += dt;
-                if (hunterStepTime > .5f) { Sound(bangClip, breakingDoor.Center, 1f); hunterStepTime = 0; }
+                if (hunterStepTime > .5f) { FoleyDoor(breakingDoor.Center, false, true); hunterStepTime = 0; }
                 if (stateTime >= 2.5f)
                 {
                     breakingDoor.Open = breakingDoor.Broken = true; openingObjects[breakingDoor.Id].SetActive(false); doorsBroken++;
