@@ -588,13 +588,16 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         var halls = candidates("Hall");
         var doors = candidates("Door");
         var windows = candidates("Window");
+        var lintels = candidates("Lintel");
         var hallIndex = 0;
         var doorIndex = 0;
         var windowIndex = 0;
+        var lintelIndex = 0;
         foreach (var opening in level.Openings)
         {
             var source = opening.Kind == OpeningKind.Hall ? halls : opening.Kind == OpeningKind.Door ? doors : windows;
             var index = opening.Kind == OpeningKind.Hall ? hallIndex++ : opening.Kind == OpeningKind.Door ? doorIndex++ : windowIndex++;
+            if (lintelIndex < lintels.Length) openingLintels[opening.Id] = lintels[lintelIndex++];
             if (index >= source.Length) continue;
             openingObjects[opening.Id] = source[index];
             source[index].SetActive(opening.Kind == OpeningKind.Hall ? opening.Sealed : true);
@@ -1025,7 +1028,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
     void AddWallSlab(FrontRoom room, int x0, int x1, int y0, int y1)
     {
-        var h = room.Rule == RoomRule.Run ? 4.8f : room.Rule == RoomRule.Office ? 3.5f : 2.9f;
+        var h = HeightFor(room);
         var center = new Vector3((x0 + x1 + 1f) * .5f, h * .5f, (y0 + y1 + 1f) * .5f);
         var scale = new Vector3(x1 - x0 + 1f, h, y1 - y0 + 1f);
         var slab = Box(room.Name + " / continuous wallpaper", center, scale, WallMaterial(room.Rule));
