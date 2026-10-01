@@ -40,6 +40,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Font monoFont, bayonFont, serifFont;
     GameObject overlay, roomPanel, threatPanel, contextPanel, journalPanel;
     Image overlayImage;
+    Outline logoOutline;
     Transform titleWorld;
     readonly List<TitleSegment> titleSegments = new List<TitleSegment>();
     float titleCameraZ, titleNextZ, titleElapsed, titleLogoAlpha;
@@ -598,6 +599,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             // Hold a beat in the empty room, then reveal the mark gently.
             titleLogoAlpha = Mathf.Clamp01(Mathf.Max(0f, titleElapsed - .7f) / 2.2f);
             logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
+            if (logoOutline != null) logoOutline.effectColor = new Color(1f, .86f, .34f, titleLogoAlpha * .42f);
         }
     }
 
@@ -855,6 +857,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         overlayText.rectTransform.anchoredPosition = new Vector2(0f, -170f);
         logoImage = Panel(overlay.transform, "FrontRooms brand logo", new Vector2(.5f, .5f), Vector2.zero, new Vector2(965f, 192f), Color.white).GetComponent<Image>();
         logoImage.raycastTarget = false;
+        logoOutline = logoImage.gameObject.AddComponent<Outline>();
+        logoOutline.effectDistance = new Vector2(2f, -2f);
+        logoOutline.effectColor = new Color(1f, .86f, .34f, 0f);
         LoadBrandLogo();
     }
     void SetPhase(Phase p)
