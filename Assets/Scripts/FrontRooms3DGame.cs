@@ -31,6 +31,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     HunterState state;
     Camera cam;
     Transform world, hunter;
+    FrontRoomsRelayRig hunterRig, streamThreatRig;
     Vector2 playerPos, hunterPos, hunterTarget, lastSeen;
     FrontRoom room;
     FrontOpening breakingDoor;
@@ -118,12 +119,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     // The relay is intentionally earlier than the near S settle point so the
     // two forms overlap in motion instead of waiting for a hard hand-off.
     const float LogoS2StartAt = .50f;
-    const float LogoGlyphWipeStartDelay = .12f;
-    const float LogoGlyphWipeStagger = .055f;
-    const float LogoGlyphWipeLetterSeconds = .72f;
-    const float LogoGlyphCount = 10f;
-    const float LogoGlyphWipeCompleteSeconds = LogoGlyphWipeStartDelay + (LogoGlyphCount - 1f) * LogoGlyphWipeStagger + LogoGlyphWipeLetterSeconds;
-    const float LogoRelaySeconds = 1.35f;
     const float GameplayHudFadeSeconds = .9f;
     float gameplayHudAlpha;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
@@ -214,6 +209,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             openingLintels.Clear();
             RebindSerializedWorld();
             RepairSerializedOpeningHeights();
+            EnsureSerializedHunterRig();
             return;
         }
 
@@ -222,6 +218,25 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         world.name = "EDITOR_PREVIEW / FrontRooms3D";
         world.SetParent(transform, true);
         if (cam != null) cam.transform.SetParent(world, true);
+    }
+
+    void EnsureSerializedHunterRig()
+    {
+        if (hunter == null) return;
+        if (darkMat == null) darkMat = Mat("Relay / body", C("2B2928"));
+        if (whiteMat == null) whiteMat = Mat("Relay / blank head", C("D8D4C8"));
+        if (yellowMat == null) yellowMat = Mat("Relay / detail", C("A99E78"));
+        if (!Application.isPlaying)
+        {
+            for (var i = hunter.childCount - 1; i >= 0; i--)
+            {
+                var child = hunter.GetChild(i);
+                if (child.name == "Capsule" || child.name == "Sphere") DestroyImmediate(child.gameObject);
+            }
+        }
+        hunterRig = hunter.GetComponent<FrontRoomsRelayRig>();
+        if (hunterRig == null) hunterRig = hunter.gameObject.AddComponent<FrontRoomsRelayRig>();
+        hunterRig.Configure(darkMat, whiteMat, yellowMat);
     }
 
     void Awake()
@@ -436,6 +451,135 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Rebuilds the non-colliding door face details on serialized editor doors.
+    /// This is intentionally separate from the height repair menu item so an
+    /// authored scene can be repaired without regenerating the whole preview.
+    /// </summary>
+    public void RepairSerializedDoorDetails()
+    {
+        InitializeLevel();
+        if (world == null) return;
+        EnsureDoorMaterials();
+        if (openingObjects.Count == 0) RebindSerializedWorld();
+        foreach (var opening in level.Openings)
+        {
+            if (opening == null || opening.Kind != OpeningKind.Door) continue;
+            if (!openingObjects.TryGetValue(opening.Id, out var slab) || slab == null) continue;
+            var height = OpeningHeight(opening);
+            SetOpeningHeight(slab, height);
+            BuildAuthoredDoorDetails(opening, slab, height);
+            var renderer = slab.GetComponent<Renderer>();
+            if (renderer != null) renderer.sharedMaterial = doorMat;
+        }
+    }
+
+    void EnsureDoorMaterials()
+    {
+        if (doorMat == null) doorMat = darkMat;
+        if (doorMat == null) doorMat = Mat("Door / painted laminate", C("625A4B"));
+        if (doorTrimMat == null) doorTrimMat = Mat("Door / shadow gasket", C("292722"));
+        if (doorHardwareMat == null)
+        {
+            doorHardwareMat = Mat("Door / brushed hardware", C("A6A093"));
+            doorHardwareMat.SetFloat("_Glossiness", .38f);
+            doorHardwareMat.SetFloat("_Metallic", .12f);
+        }
+        if (doorHandleHighlightMat == null)
+        {
+            doorHandleHighlightMat = Mat("Door / handle highlight", C("F4DF3B"), true);
+            doorHandleHighlightMat.SetFloat("_Glossiness", .52f);
+            doorHandleHighlightMat.SetFloat("_Metallic", .08f);
+            doorHandleHighlightMat.SetColor("_EmissionColor", C("F4DF3B") * 1.35f);
+        }
+    }
+
+    GameObject DoorDetailBox(Transform parent, string name, Vector3 localPosition, Vector3 size, Material material)
+    {
+        var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        box.name = name;
+        box.transform.SetParent(parent, false);
+        box.transform.localPosition = localPosition;
+        box.transform.localScale = size;
+        var renderer = box.GetComponent<Renderer>();
+        if (renderer != null) renderer.sharedMaterial = material;
+        var collider = box.GetComponent<Collider>();
+        if (collider != null)
+        {
+            if (Application.isPlaying) Destroy(collider);
+            else DestroyImmediate(collider);
+        }
+        return box;
+    }
+
+    void BuildAuthoredDoorDetails(FrontOpening opening, GameObject slab, float height)
+    {
+        if (opening == null || slab == null) return;
+        EnsureDoorMaterials();
+        var old = slab.transform.Find("Door detail assembly");
+        if (old != null)
+        {
+            if (Application.isPlaying) Destroy(old.gameObject);
+            else DestroyImmediate(old.gameObject);
+        }
+        doorHandleVisuals.Remove(opening.Id);
+        var assembly = new GameObject("Door detail assembly").transform;
+        assembly.SetParent(slab.transform, false);
+        var slabScale = slab.transform.localScale;
+        assembly.localScale = new Vector3(
+            Mathf.Abs(slabScale.x) < .0001f ? 1f : 1f / slabScale.x,
+            Mathf.Abs(slabScale.y) < .0001f ? 1f : 1f / slabScale.y,
+            Mathf.Abs(slabScale.z) < .0001f ? 1f : 1f / slabScale.z);
+        var width = Mathf.Max(.8f, opening.Tiles == null ? 1f : opening.Tiles.Count);
+        var panelWidth = Mathf.Max(.48f, width - .34f);
+        var panelHeight = Mathf.Max(.8f, height - .34f);
+        foreach (var face in new[] { -1f, 1f })
+        {
+            DoorDetailBox(assembly, "door panel border", new Vector3(face * .155f, 0f, 0f), new Vector3(.035f, panelHeight, panelWidth), doorTrimMat);
+            DoorDetailBox(assembly, "door recessed panel", new Vector3(face * .178f, -.02f, 0f), new Vector3(.018f, panelHeight - .12f, panelWidth - .12f), doorMat);
+            DoorDetailBox(assembly, "door kick plate", new Vector3(face * .184f, -height * .5f + .16f, 0f), new Vector3(.022f, .20f, panelWidth), doorHardwareMat);
+            DoorDetailBox(assembly, "door closer", new Vector3(face * .19f, height * .5f - .12f, 0f), new Vector3(.08f, .08f, .58f), doorHardwareMat);
+            DoorDetailBox(assembly, "door lever plate", new Vector3(face * .195f, .06f, width * .27f), new Vector3(.025f, .24f, .07f), doorHardwareMat);
+            var handle = DoorDetailBox(assembly, "door lever", new Vector3(face * .23f, .06f, width * .27f - .10f), new Vector3(.09f, .045f, .20f), doorHardwareMat);
+            var handleRenderer = handle.GetComponent<Renderer>();
+            if (handleRenderer != null)
+            {
+                if (!doorHandleVisuals.TryGetValue(opening.Id, out var handles)) doorHandleVisuals[opening.Id] = handles = new List<DoorHandleVisual>();
+                handles.Add(new DoorHandleVisual { renderer = handleRenderer, baseMaterial = doorHardwareMat });
+            }
+            for (var hinge = -1; hinge <= 1; hinge++)
+                DoorDetailBox(assembly, "door hinge knuckle " + (hinge + 2), new Vector3(face * .195f, hinge * height * .28f, -width * .39f), new Vector3(.07f, .16f, .07f), doorHardwareMat);
+        }
+    }
+
+    void ClearDoorHandleHighlight()
+    {
+        if (highlightedDoorId < 0) return;
+        if (doorHandleVisuals.TryGetValue(highlightedDoorId, out var handles))
+            foreach (var handle in handles)
+                if (handle != null && handle.renderer != null) handle.renderer.sharedMaterial = handle.baseMaterial;
+        highlightedDoorId = -1;
+    }
+
+    void UpdateDoorHandleHighlight()
+    {
+        if (phase != Phase.Playing || streamedPlay || level == null || room == null) { ClearDoorHandleHighlight(); return; }
+        var opening = NearOpening();
+        if (opening == null || opening.Kind != OpeningKind.Door || opening.Open) { ClearDoorHandleHighlight(); return; }
+        if (highlightedDoorId != opening.Id)
+        {
+            ClearDoorHandleHighlight();
+            if (doorHandleVisuals.TryGetValue(opening.Id, out var handles))
+            {
+                foreach (var handle in handles)
+                    if (handle != null && handle.renderer != null) handle.renderer.sharedMaterial = doorHandleHighlightMat;
+                highlightedDoorId = opening.Id;
+            }
+        }
+        doorHandlePulse += Time.deltaTime;
+        if (doorHandleHighlightMat != null) doorHandleHighlightMat.SetColor("_EmissionColor", C("F4DF3B") * (.92f + Mathf.Sin(doorHandlePulse * 4.2f) * .18f));
+    }
+
     GameObject Box(string name, Vector3 pos, Vector3 scale, Material mat)
     {
         var g = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -629,8 +773,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         cam.useOcclusionCulling = true;
         cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = C("22231C"); cam.gameObject.AddComponent<AudioListener>();
         hunter = new GameObject("Hunter").transform; hunter.SetParent(world);
-        var body = GameObject.CreatePrimitive(PrimitiveType.Capsule); body.transform.SetParent(hunter); body.transform.localPosition = new Vector3(0f, 1.05f, 0f); body.transform.localScale = new Vector3(.65f, 1.05f, .65f); body.GetComponent<Renderer>().sharedMaterial = darkMat;
-        var head = GameObject.CreatePrimitive(PrimitiveType.Sphere); head.transform.SetParent(hunter); head.transform.localPosition = new Vector3(0f, 2.03f, 0f); head.transform.localScale = Vector3.one * .46f; head.GetComponent<Renderer>().sharedMaterial = whiteMat;
+        hunterRig = hunter.gameObject.AddComponent<FrontRoomsRelayRig>();
+        hunterRig.Configure(darkMat, whiteMat, yellowMat);
         PositionView();
     }
 
@@ -703,6 +847,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
         if (cam == null) cam = world.GetComponentInChildren<Camera>(true);
         if (hunter == null) hunter = world.Find("Hunter");
+        if (hunter != null)
+        {
+            hunterRig = hunter.GetComponent<FrontRoomsRelayRig>();
+            if (hunterRig == null) hunterRig = hunter.gameObject.AddComponent<FrontRoomsRelayRig>();
+            hunterRig.Configure(darkMat, whiteMat, yellowMat);
+        }
         PositionView();
     }
 
@@ -783,21 +933,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (roomStream == null || cam == null) return;
         roomStream.Tick(dt);
         titleElapsed += dt;
-        // The editorial letter wipe is a start transition, not an idle-title
-        // animation. Keep the complete wordmark visible while the title
-        // waits for input, then restart the wipe clock from zero when the
-        // player triggers the game.
-        if (titleHandoffPending) logoMotionElapsed += dt;
+        // Historical title clock: the complete wordmark stays present while
+        // the first streamed door drives the two trailing-S relays.
+        logoMotionElapsed += dt;
         titleCameraZ = roomStream.CameraZ;
         titleLogoAlpha = roomStream.LogoVisibility;
         UpdateLogoMotion();
-        // The camera can arrive at the next-room anchor before the editorial
-        // logo transition finishes. Hold the title state until both the
-        // per-letter wipe and the two-stage S relay have completed, then hand
-        // control to the player on the same camera position.
-        if (titleHandoffPending && roomStream.HasControl
-            && logoMotionElapsed >= LogoGlyphWipeCompleteSeconds + LogoRelaySeconds)
-            EnterGameplayFromTitle();
+        if (titleHandoffPending && roomStream.HasControl) EnterGameplayFromTitle();
     }
 
     void UpdateLogoMotion()
@@ -808,42 +950,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             if (vectorLogoRoot != null) vectorLogoRoot.style.display = vectorVisible ? UiDisplayStyle.Flex : UiDisplayStyle.None;
             if (!vectorVisible || vectorLogoLeftImage == null || vectorLogoS1Image == null || vectorLogoS2Image == null) return;
 
-            // Each front glyph owns a local, hard-edged clipping box. The
-            // source SVG stays stationary; only the mask width grows from
-            // left to right. A small stagger creates the editorial rhythm
-            // without fading, scaling, or wiping the word as one object.
-            var wipeElapsed = titleHandoffPending
-                ? Mathf.Max(0f, logoMotionElapsed - LogoGlyphWipeStartDelay)
-                : LogoGlyphWipeCompleteSeconds;
-            for (var i = 0; i < vectorLogoLetterMasks.Count; i++)
-            {
-                var stagger = i * LogoGlyphWipeStagger;
-                var reveal = Mathf.Clamp01((wipeElapsed - stagger) / LogoGlyphWipeLetterSeconds);
-                reveal = reveal * reveal * (3f - 2f * reveal);
-                vectorLogoLetterMasks[i].style.width = new UiLength(vectorLogoLetterWidths[i] * reveal, UiLengthUnit.Pixel);
-            }
-            // FRONTROOMS includes the solid base S. It follows the same local
-            // left-to-right wipe as the nine preceding glyphs; only after this
-            // tenth glyph is complete may the two relay S forms travel right.
-            if (vectorLogoSolidSMask != null)
-            {
-                var solidSReveal = Mathf.Clamp01((wipeElapsed - 9f * LogoGlyphWipeStagger) / LogoGlyphWipeLetterSeconds);
-                solidSReveal = solidSReveal * solidSReveal * (3f - 2f * solidSReveal);
-                vectorLogoSolidSMask.style.width = new UiLength(83f * solidSReveal, UiLengthUnit.Pixel);
-            }
-
-            // Door progress is the motion clock. The afterimage S forms begin
-            // exactly on top of the solid final S, then peel away one at a time
-            // as the first physical door opens. The full title stays visible
-            // after the movement completes while the corridor keeps looping.
-            // The physical first door still starts on the same player trigger,
-            // but the relay waits until FRONTROOMS has finished its wipe. This
-            // preserves the existing S1 -> S2 hand-off without letting the
-            // afterimages appear before the wordmark is readable.
-            var relayClock = titleHandoffPending
-                ? Mathf.Clamp01((logoMotionElapsed - LogoGlyphWipeCompleteSeconds) / LogoRelaySeconds)
-                : 0f;
-            var doorProgress = relayClock;
+            // Historical 11:53 title motion: the complete wordmark is
+            // stationary and the two afterimage S forms relay from the final
+            // S as the first streamed door opens. The later per-letter wipe is
+            // intentionally disabled; room/gameplay systems are unchanged.
+            var doorProgress = roomStream == null ? 0f : roomStream.FirstDoorProgress;
             var s1End = logoMotionVariation == LogoMotionVariation.FullLockup ? .66f : LogoS1SettleAt;
             var s2Start = logoMotionVariation == LogoMotionVariation.FullLockup ? .70f : LogoS2StartAt;
             var vectorS1T = Mathf.Clamp01(doorProgress / s1End);
@@ -861,29 +972,15 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             var vectorS2X = doorProgress < s2Start
                 ? vectorS1X
                 : Mathf.Lerp(vectorS2StartX, 880f, vectorS2T);
-            // Position by the painted left edge of each imported SVG. Using
-            // the asset's full viewBox here shifts the relay S forms left and
-            // leaves a white sliver beside the F. The painted bounds are the
-            // actual optical baseline for the lockup.
             vectorLogoS1Image.style.left = new UiLength(vectorS1X - 841.734f, UiLengthUnit.Pixel);
             vectorLogoS2Image.style.left = new UiLength(vectorS2X - 879.734f, UiLengthUnit.Pixel);
             // Keep the vector mark on the same fade-in clock as the title
             // corridor. It remains at full opacity after the reveal; only the
             // player handoff hides it.
-            // Keep the mark fully visible for the complete trigger transition.
-            // The room stream may reach its handoff anchor first and begin its
-            // own exit fade; that fade must not cut the S relay short.
-            var vectorAlpha = titleHandoffPending ? 1f : Mathf.Clamp01(titleLogoAlpha);
+            var vectorAlpha = Mathf.Clamp01(titleLogoAlpha);
             vectorLogoLeftImage.style.opacity = vectorAlpha;
-            // The idle title keeps only FRONTROOMS visible. During the
-            // triggered transition the nearer S appears first, then the far
-            // S joins from the nearer S's moving position.
-            var relayNearAlpha = titleHandoffPending ? 1f : 0f;
-            var relayFarAlpha = titleHandoffPending
-                ? Mathf.Clamp01((relayClock - s2Start) / .12f)
-                : 0f;
-            vectorLogoS1Image.style.opacity = vectorAlpha * relayNearAlpha;
-            vectorLogoS2Image.style.opacity = vectorAlpha * relayFarAlpha;
+            vectorLogoS1Image.style.opacity = vectorAlpha;
+            vectorLogoS2Image.style.opacity = vectorAlpha;
             return;
         }
         if (logoMotionRoot == null || logoLeftImage == null || logoSlideImage == null) return;
@@ -925,9 +1022,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (titleHandoffPending || streamedPlay) return;
         if (roomStream == null) return;
-        // Arm the per-glyph wipe exactly when the player presses Start. The
-        // title can sit in its fully revealed state indefinitely beforehand.
-        logoMotionElapsed = 0f;
         roomStream.RequestStart();
         titleHandoffPending = true;
     }
@@ -1004,12 +1098,14 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         streamThreatObject = new GameObject("STREAM THREAT / RELAY");
         streamThreatObject.transform.SetParent(titleWorld, false);
         streamThreatObject.SetActive(false);
-        streamThreatBody = StreamPrimitive(PrimitiveType.Capsule, "body / hunched", streamThreatObject.transform, new Vector3(0f, 1.15f, 0f), new Vector3(.55f, 1.15f, .55f), darkMat);
-        streamThreatHead = StreamPrimitive(PrimitiveType.Sphere, "head / blank", streamThreatObject.transform, new Vector3(0f, 2.15f, .02f), new Vector3(.62f, .7f, .52f), whiteMat);
-        streamThreatArmLeft = StreamPrimitive(PrimitiveType.Cube, "arm / left", streamThreatObject.transform, new Vector3(-.52f, 1.18f, 0f), new Vector3(.18f, .9f, .18f), darkMat);
-        streamThreatArmRight = StreamPrimitive(PrimitiveType.Cube, "arm / right", streamThreatObject.transform, new Vector3(.52f, 1.18f, 0f), new Vector3(.18f, .9f, .18f), darkMat);
-        streamThreatLegLeft = StreamPrimitive(PrimitiveType.Cube, "leg / left", streamThreatObject.transform, new Vector3(-.2f, .45f, 0f), new Vector3(.2f, .85f, .2f), darkMat);
-        streamThreatLegRight = StreamPrimitive(PrimitiveType.Cube, "leg / right", streamThreatObject.transform, new Vector3(.2f, .45f, 0f), new Vector3(.2f, .85f, .2f), darkMat);
+        streamThreatRig = streamThreatObject.AddComponent<FrontRoomsRelayRig>();
+        streamThreatRig.Configure(darkMat, whiteMat, yellowMat);
+        streamThreatBody = streamThreatRig.Body;
+        streamThreatHead = streamThreatRig.Head;
+        streamThreatArmLeft = streamThreatRig.ArmLeft;
+        streamThreatArmRight = streamThreatRig.ArmRight;
+        streamThreatLegLeft = streamThreatRig.LegLeft;
+        streamThreatLegRight = streamThreatRig.LegRight;
     }
 
     Transform StreamPrimitive(PrimitiveType type, string name, Transform parent, Vector3 localPosition, Vector3 scale, Material material)
@@ -1085,12 +1181,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         threatTransform.position = V(streamThreatPos);
         var facing = Mathf.Atan2(player.x - streamThreatPos.x, player.y - streamThreatPos.y) * Mathf.Rad2Deg;
         threatTransform.rotation = Quaternion.Euler(0f, facing, 0f);
-        var gait = streamThreatState == StreamThreatState.Chase ? Mathf.Sin(Time.time * 18f) : Mathf.Sin(Time.time * 2.2f) * .12f;
-        if (streamThreatArmLeft != null) streamThreatArmLeft.localRotation = Quaternion.Euler(gait * 28f, 0f, 0f);
-        if (streamThreatArmRight != null) streamThreatArmRight.localRotation = Quaternion.Euler(-gait * 28f, 0f, 0f);
-        if (streamThreatLegLeft != null) streamThreatLegLeft.localRotation = Quaternion.Euler(-gait * 20f, 0f, 0f);
-        if (streamThreatLegRight != null) streamThreatLegRight.localRotation = Quaternion.Euler(gait * 20f, 0f, 0f);
-        if (streamThreatHead != null) streamThreatHead.localRotation = Quaternion.Euler(0f, Mathf.Sin(Time.time * 1.8f) * 6f, 0f);
+        if (streamThreatRig != null)
+        {
+            var motion = streamThreatState == StreamThreatState.Chase ? FrontRoomsRelayRig.MotionState.Run : FrontRoomsRelayRig.MotionState.IdleListen;
+            streamThreatRig.TickAnimation(dt, motion, streamThreatState == StreamThreatState.Chase, streamThreatState == StreamThreatState.Chase ? 1.15f : .7f);
+        }
     }
 
     /// <summary>
@@ -1396,37 +1491,19 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         vectorLogoRoot.pickingMode = UiPickingMode.Ignore;
         panel.Add(vectorLogoRoot);
 
+        // Restore the 11:53 lockup: one complete FRONTROOMS vector wordmark
+        // plus the two trailing S assets. The individual glyph resources stay
+        // available for later variants, but are not used by this title motion.
         vectorLogoLetterMasks.Clear();
         vectorLogoLetterWidths.Clear();
-        // The supplied left SVG contains FRONTROOMS. Each front glyph now
-        // uses its own cropped VectorImage so the local mask reveals the
-        // correct letter instead of repeating the source SVG's first F.
-        var glyphNames = new[] { "F", "R", "O1", "N", "T", "R2", "O2", "O3", "M" };
-        // Five px optical tracking between the imported glyph viewBoxes keeps
-        // the word readable at the title scale while retaining the original
-        // 965 px lockup width.
-        var glyphStarts = new[] { 8f, 85f, 177f, 267f, 353f, 444f, 537f, 626f, 715f };
-        var glyphEnds = new[] { 80f, 172f, 262f, 348f, 439f, 532f, 621f, 710f, 809f };
-        var glyphAssets = new UiVectorImage[glyphNames.Length];
-        for (var i = 0; i < glyphNames.Length; i++)
-        {
-            glyphAssets[i] = Resources.Load<UiVectorImage>("Brand/FrontRoomsGlyph_" + glyphNames[i]);
-            if (glyphAssets[i] == null) return false;
-            var mask = MaskedVectorGlyph("SVG front glyph " + i.ToString("00"), glyphAssets[i], glyphStarts[i], glyphEnds[i], out _);
-            vectorLogoLetterMasks.Add(mask);
-            vectorLogoLetterWidths.Add(glyphEnds[i] - glyphStarts[i]);
-            vectorLogoRoot.Add(mask);
-        }
+        vectorLogoSolidSMask = null;
+        vectorLogoLeftImage = VectorLogoImage("SVG complete wordmark", leftAsset, 8f, 17.6f);
+        vectorLogoRoot.Add(vectorLogoLeftImage);
 
-        var solidSAsset = Resources.Load<UiVectorImage>("Brand/FrontRoomsGlyph_S");
-        if (solidSAsset == null) return false;
-        vectorLogoSolidSMask = MaskedVectorGlyph("SVG solid S mask", solidSAsset, 814f, 897f, out vectorLogoLeftImage);
-        vectorLogoRoot.Add(vectorLogoSolidSMask);
-        // Keep the original full-width viewBox so each relay S retains its
-        // gradient. The painted paths start at these source x coordinates;
-        // subtract them so both visible glyphs begin on the solid S baseline.
-        vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 814f - 841.734f, 0f);
-        vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 814f - 879.734f, 0f);
+        // Keep each imported S's full viewBox and align its painted path to
+        // the final S baseline so the old relay does not create a left sliver.
+        vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 814f - 841.734f, 17.8f);
+        vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 814f - 879.734f, 17.8f);
         vectorLogoRoot.Add(vectorLogoS1Image);
         vectorLogoRoot.Add(vectorLogoS2Image);
         vectorLogoRoot.style.display = UiDisplayStyle.None;
@@ -1941,6 +2018,14 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                 var hunterDistance = Vector2.Distance(playerPos, hunterPos);
                 HunterSound(hunterPos, .36f + Mathf.Clamp01(1f - hunterDistance / 24f) * (state == HunterState.Chase ? .64f : .40f));
             }
+        }
+        if (hunterRig != null)
+        {
+            var motion = state == HunterState.Chase ? FrontRoomsRelayRig.MotionState.Run
+                : state == HunterState.BreakDoor ? FrontRoomsRelayRig.MotionState.BreakDoor
+                : state == HunterState.Hunt ? FrontRoomsRelayRig.MotionState.Walk
+                : FrontRoomsRelayRig.MotionState.IdleListen;
+            hunterRig.TickAnimation(dt, motion, Vector2.Distance(before, hunterPos) > .001f, state == HunterState.Chase ? 1.15f : 1f);
         }
         if (Vector2.Distance(hunterPos, playerPos) < .62f && level.LineOfSight(hunterPos, playerPos)) End(false);
     }
