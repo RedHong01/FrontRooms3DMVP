@@ -743,7 +743,16 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         if (room.roomLights != null)
         {
             for (var i = 0; i < room.roomLights.Length; i++)
-                if (room.roomLights[i] != null) room.roomLights[i].color = ProfileLightColor(room.rule);
+            {
+                var light = room.roomLights[i];
+                if (light == null) continue;
+                light.color = ProfileLightColor(room.rule);
+                if (light.gameObject.name.Contains("fluorescent"))
+                {
+                    room.lightBaseIntensity[i] = room.rule == RoomRule.Run ? 1.5f : room.rule == RoomRule.Office ? 1.55f : 1.35f;
+                    light.range = room.rule == RoomRule.Run ? 8.3f : room.rule == RoomRule.Office ? 9.5f : 9.2f;
+                }
+            }
         }
         if (room.profileVariants != null)
             for (var i = 0; i < room.profileVariants.Length; i++)

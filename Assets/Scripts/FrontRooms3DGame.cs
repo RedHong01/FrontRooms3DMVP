@@ -74,6 +74,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Outline logoOutline;
     Transform titleWorld;
     FrontRoomsRoomStream roomStream;
+    enum StreamThreatState { Dormant, Listening, Chase, Lost }
+    StreamThreatState streamThreatState;
+    GameObject streamThreatObject;
+    Transform streamThreatBody, streamThreatHead, streamThreatArmLeft, streamThreatArmRight, streamThreatLegLeft, streamThreatLegRight;
+    Vector2 streamThreatPos;
+    float streamThreatStateTime, streamThreatStepTime;
+    bool streamThreatTriggered;
     [SerializeField, Tooltip("Optional room prefab/template copied into each streamed title room.")]
     GameObject streamedRoomTemplate;
     readonly List<TitleSegment> titleSegments = new List<TitleSegment>();
@@ -624,6 +631,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             new[] { WallMaterial(RoomRule.Lobby), WallMaterial(RoomRule.Shift), WallMaterial(RoomRule.Office), WallMaterial(RoomRule.Run), WallMaterial(RoomRule.Exit) },
             new[] { FloorMaterial(RoomRule.Lobby), FloorMaterial(RoomRule.Shift), FloorMaterial(RoomRule.Office), FloorMaterial(RoomRule.Run), FloorMaterial(RoomRule.Exit) },
             new[] { CeilingMaterial(RoomRule.Lobby), CeilingMaterial(RoomRule.Shift), CeilingMaterial(RoomRule.Office), CeilingMaterial(RoomRule.Run), CeilingMaterial(RoomRule.Exit) });
+        BuildStreamThreat();
         titleCameraZ = cam == null ? 0f : cam.transform.position.z;
         titleLogoAlpha = 0f;
         logoMotionElapsed = 0f;
@@ -711,6 +719,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         titleWorld = null;
         roomStream = null;
         titleSegments.Clear();
+        streamThreatObject = null;
+        streamThreatBody = null;
+        streamThreatHead = null;
+        streamThreatArmLeft = null;
+        streamThreatArmRight = null;
+        streamThreatLegLeft = null;
+        streamThreatLegRight = null;
     }
 
     void RequestTitleStart()
@@ -734,6 +749,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         pitch = 0f;
         elapsed = 0f;
         if (hunter != null) hunter.gameObject.SetActive(false);
+        streamThreatState = StreamThreatState.Dormant;
+        streamThreatStateTime = 0f;
+        streamThreatStepTime = 0f;
+        streamThreatTriggered = false;
+        if (streamThreatObject != null) streamThreatObject.SetActive(false);
         SetPhase(Phase.Playing);
         Event("start", "streamed-room");
     }
@@ -759,9 +779,107 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             if (stepTime > (sprint ? .3f : .5f))
             {
                 stepTime = 0f;
-                FoleyFootstep(after, FrontRoomsFoleyActor.Player, FrontRoomsFoleySurface.Carpet, sprint, sprint ? .48f : .15f);
+                FoleyFootstep(after, FrontRoomsFoleyActor.Player, StreamSurface(), sprint, sprint ? .48f : .15f);
             }
         }
+        UpdateStreamThreat(dt, after, sprint);
+    }
+
+    FrontRoomsFoleySurface StreamSurface()
+    {
+        if (roomStream == null) return FrontRoomsFoleySurface.Carpet;
+        switch (roomStream.CurrentRule)
+        {
+            case RoomRule.Office: return FrontRoomsFoleySurface.Tile;
+            case RoomRule.Run: return FrontRoomsFoleySurface.Concrete;
+            case RoomRule.Exit: return FrontRoomsFoleySurface.Metal;
+            default: return FrontRoomsFoleySurface.Carpet;
+        }
+    }
+
+    void BuildStreamThreat()
+    {
+        if (titleWorld == null || streamThreatObject != null) return;
+        streamThreatObject = new GameObject("STREAM THREAT / RELAY");
+        streamThreatObject.transform.SetParent(titleWorld, false);
+        streamThreatObject.SetActive(false);
+        streamThreatBody = StreamPrimitive(PrimitiveType.Capsule, "body / hunched", streamThreatObject.transform, new Vector3(0f, 1.15f, 0f), new Vector3(.55f, 1.15f, .55f), darkMat);
+        streamThreatHead = StreamPrimitive(PrimitiveType.Sphere, "head / blank", streamThreatObject.transform, new Vector3(0f, 2.15f, .02f), new Vector3(.62f, .7f, .52f), whiteMat);
+        streamThreatArmLeft = StreamPrimitive(PrimitiveType.Cube, "arm / left", streamThreatObject.transform, new Vector3(-.52f, 1.18f, 0f), new Vector3(.18f, .9f, .18f), darkMat);
+        streamThreatArmRight = StreamPrimitive(PrimitiveType.Cube, "arm / right", streamThreatObject.transform, new Vector3(.52f, 1.18f, 0f), new Vector3(.18f, .9f, .18f), darkMat);
+        streamThreatLegLeft = StreamPrimitive(PrimitiveType.Cube, "leg / left", streamThreatObject.transform, new Vector3(-.2f, .45f, 0f), new Vector3(.2f, .85f, .2f), darkMat);
+        streamThreatLegRight = StreamPrimitive(PrimitiveType.Cube, "leg / right", streamThreatObject.transform, new Vector3(.2f, .45f, 0f), new Vector3(.2f, .85f, .2f), darkMat);
+    }
+
+    Transform StreamPrimitive(PrimitiveType type, string name, Transform parent, Vector3 localPosition, Vector3 scale, Material material)
+    {
+        var primitive = GameObject.CreatePrimitive(type);
+        primitive.name = name;
+        primitive.transform.SetParent(parent, false);
+        primitive.transform.localPosition = localPosition;
+        primitive.transform.localScale = scale;
+        var renderer = primitive.GetComponent<Renderer>();
+        if (renderer != null) renderer.sharedMaterial = material;
+        return primitive.transform;
+    }
+
+    void UpdateStreamThreat(float dt, Vector2 player, bool sprint)
+    {
+        if (roomStream == null || streamThreatObject == null) return;
+        var rule = roomStream.CurrentRule;
+        if (!streamThreatTriggered && roomStream.CurrentRoomNumber >= 2 && rule == RoomRule.Office)
+        {
+            streamThreatTriggered = true;
+            streamThreatState = StreamThreatState.Listening;
+            streamThreatStateTime = 0f;
+            streamThreatPos = new Vector2(player.x, player.y - 5.2f);
+            streamThreatObject.SetActive(true);
+            Event("threat", "relay-listening");
+        }
+        if (!streamThreatTriggered) return;
+
+        streamThreatStateTime += dt;
+        if (rule == RoomRule.Run && streamThreatState != StreamThreatState.Chase)
+        {
+            streamThreatState = StreamThreatState.Chase;
+            streamThreatStateTime = 0f;
+            Event("threat", "relay-chase");
+            Flash("RUN  /  KEEP THE RED ROOM MOVING", 3f);
+        }
+        if (streamThreatState == StreamThreatState.Listening && (sprint || streamThreatStateTime > 3.2f))
+        {
+            streamThreatState = StreamThreatState.Chase;
+            streamThreatStateTime = 0f;
+            Event("threat", "relay-chase");
+        }
+        if (streamThreatState == StreamThreatState.Chase)
+        {
+            var speed = sprint ? 4.35f : 3.72f;
+            streamThreatPos = Vector2.MoveTowards(streamThreatPos, player, speed * dt);
+            streamThreatStepTime += dt;
+            if (streamThreatStepTime > (sprint ? .29f : .43f))
+            {
+                streamThreatStepTime = 0f;
+                FoleyFootstep(streamThreatPos, FrontRoomsFoleyActor.Hunter, StreamSurface(), sprint, .34f);
+            }
+            if (Vector2.Distance(streamThreatPos, player) < .8f)
+            {
+                streamThreatState = StreamThreatState.Lost;
+                streamThreatObject.SetActive(false);
+                End(false);
+                return;
+            }
+        }
+        var threatTransform = streamThreatObject.transform;
+        threatTransform.position = V(streamThreatPos);
+        var facing = Mathf.Atan2(player.x - streamThreatPos.x, player.y - streamThreatPos.y) * Mathf.Rad2Deg;
+        threatTransform.rotation = Quaternion.Euler(0f, facing, 0f);
+        var gait = streamThreatState == StreamThreatState.Chase ? Mathf.Sin(Time.time * 18f) : Mathf.Sin(Time.time * 2.2f) * .12f;
+        if (streamThreatArmLeft != null) streamThreatArmLeft.localRotation = Quaternion.Euler(gait * 28f, 0f, 0f);
+        if (streamThreatArmRight != null) streamThreatArmRight.localRotation = Quaternion.Euler(-gait * 28f, 0f, 0f);
+        if (streamThreatLegLeft != null) streamThreatLegLeft.localRotation = Quaternion.Euler(-gait * 20f, 0f, 0f);
+        if (streamThreatLegRight != null) streamThreatLegRight.localRotation = Quaternion.Euler(gait * 20f, 0f, 0f);
+        if (streamThreatHead != null) streamThreatHead.localRotation = Quaternion.Euler(0f, Mathf.Sin(Time.time * 1.8f) * 6f, 0f);
     }
 
     /// <summary>
@@ -1585,10 +1703,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         ApplyGameplayHudAlpha();
         if (streamedPlay)
         {
-            roomMetaText.text = play ? "ROOM STREAM  /  ACTIVE" : "";
-            roomText.text = play ? "CONTINUOUS ROOM" : "";
-            threatStateText.text = play ? "DOOR  /  LISTEN" : "";
-            distanceText.text = "";
+            var streamRule = roomStream == null ? RoomRule.Lobby : roomStream.CurrentRule;
+            var streamName = streamRule == RoomRule.Office ? "LEVEL 4 / OFFICE" : streamRule == RoomRule.Run ? "LEVEL ! / RUN" : streamRule == RoomRule.Shift ? "LEVEL 0 / SHIFT" : streamRule == RoomRule.Exit ? "EXIT / COLD THRESHOLD" : "LOBBY / THRESHOLD";
+            var streamLabel = streamThreatState == StreamThreatState.Chase ? "RELAY  /  CHASE" : streamThreatState == StreamThreatState.Listening ? "RELAY  /  LISTEN" : streamThreatState == StreamThreatState.Lost ? "RELAY  /  LOST" : "DOOR  /  LISTEN";
+            roomMetaText.text = play ? "ROOM " + ((roomStream == null ? 0 : roomStream.CurrentRoomNumber) + 1).ToString("00") + "  /  ACTIVE" : "";
+            roomText.text = play ? streamName : "";
+            threatStateText.text = play ? streamLabel : "";
+            distanceText.text = play && streamThreatTriggered && streamThreatObject != null && streamThreatObject.activeSelf ? "RELAY  " + Mathf.RoundToInt(Vector2.Distance(new Vector2(cam.transform.position.x, cam.transform.position.z), streamThreatPos)) + " M" : "";
             crosshair.enabled = play;
             contextText.text = "";
             notebook.text = "";
