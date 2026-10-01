@@ -21,3 +21,7 @@ The first-person prototype uses contrast and distance to make the rooms feel occ
 | Exit | cool cyan `#A9D7D0` | 0.98 | 6.4 | cold contrast at the end |
 
 `FrontRoomsLightFlicker` retains the authored voltage behaviour on top of these base values. In the editor, select a `Room light` under `EDITOR_PREVIEW / FrontRooms3D` to tune intensity, range, colour, shadow strength, or the flicker seed; the serialized scene is used in Play Mode as well.
+
+## Streamed title rooms
+
+The first title room starts at its authored intensity. When a connecting door finishes opening, the room beyond it stays dark for one second, gives its ballast one short flicker, then rises with a 1.8-second SmoothStep fade. Recycled rooms reset to the dark state before receiving their next sequence number, so the cue repeats without allocating new lights or changing the fixed three-room pool.

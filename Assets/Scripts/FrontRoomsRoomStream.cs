@@ -24,6 +24,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     const float LogoDelay = .7f;
     const float LogoFadeSeconds = 2.2f;
     const float LogoExitSeconds = .55f;
+    const float LightRevealDelaySeconds = 1f;
+    const float LightFlickerSeconds = .34f;
+    const float LightRevealSeconds = 1.8f;
 
     [Tooltip("Optional room authoring template. A copy is placed inside each streamed room root.")]
     public GameObject roomTemplate;
@@ -44,6 +47,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         public bool connected;
         public bool doorSoundPlayed;
         public AudioSource doorAudio;
+        public Light[] roomLights;
+        public float[] lightBaseIntensity;
+        public bool[] lightWasEnabled;
+        public float lightRevealProgress;
+        public bool lightRevealStarted;
+        public bool lightTriggerScheduled;
+        public float lightDelayRemaining;
+        public float lightFlickerElapsed;
     }
 
     Camera streamCamera;
@@ -133,6 +144,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             BuildRoom(room, i);
             pool[i] = room;
         }
+        // The first title room is already occupied when the sequence begins.
+        // Subsequent rooms receive their light cue from the door that connects
+        // them, so the corridor can fall away into darkness beyond the first
+        // threshold.
+        ActivateRoomLightImmediately(pool[0]);
         currentPoolIndex = 0;
         currentSequence = 0;
         maxExposure = MaxRooms;
@@ -159,6 +175,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             TickArrival(dt);
         }
         TickNearbyDoors(dt);
+        TickRoomLights(dt);
         var firstDoor = FindSequence(0);
         if (firstDoor != null) firstDoorMotionProgress = Mathf.Max(firstDoorMotionProgress, firstDoor.doorProgress);
         else firstDoorMotionProgress = 1f;
@@ -247,6 +264,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 source.doorOpen = true;
                 target.connected = true;
                 if (target.rearSeal != null) target.rearSeal.SetActive(false);
+                ScheduleRoomLight(target);
             }
             return;
         }
@@ -298,6 +316,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                     {
                         next.connected = true;
                         if (next.rearSeal != null) next.rearSeal.SetActive(false);
+                        ScheduleRoomLight(next);
                     }
                 }
             }
@@ -311,6 +330,53 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 ApplyDoorPose(room);
             }
         }
+    }
+
+    /// <summary>
+    /// A door opening cues the room beyond it: wait one second, flash the
+    /// ballast once, then bring its fixtures up over a smooth fade. The room
+    /// pool is fixed, so this remains allocation-free while rooms recycle.
+    /// </summary>
+    void TickRoomLights(float dt)
+    {
+        for (var i = 0; i < MaxRooms; i++)
+        {
+            var room = pool[i];
+            if (room == null || room.roomLights == null || room.roomLights.Length == 0) continue;
+            if (room.lightRevealStarted && room.lightRevealProgress >= 1f) continue;
+            if (!room.lightTriggerScheduled && !room.lightRevealStarted) continue;
+
+            if (room.lightTriggerScheduled)
+            {
+                room.lightDelayRemaining -= dt;
+                if (room.lightDelayRemaining > 0f) continue;
+                room.lightFlickerElapsed += dt;
+                if (room.lightFlickerElapsed < LightFlickerSeconds)
+                {
+                    var flickerT = room.lightFlickerElapsed / LightFlickerSeconds;
+                    var flickerLevel = flickerT < .24f ? .85f : flickerT < .48f ? .08f : .52f;
+                    SetRoomLightIntensity(room, flickerLevel, true);
+                    continue;
+                }
+                room.lightTriggerScheduled = false;
+                room.lightRevealStarted = true;
+                room.lightRevealProgress = 0f;
+            }
+            if (!room.lightRevealStarted || room.lightRevealProgress >= 1f) continue;
+
+            room.lightRevealProgress = Mathf.MoveTowards(room.lightRevealProgress, 1f, dt / LightRevealSeconds);
+            var eased = room.lightRevealProgress * room.lightRevealProgress * (3f - 2f * room.lightRevealProgress);
+            SetRoomLightIntensity(room, eased, true);
+        }
+    }
+
+    void ScheduleRoomLight(RoomSlot room)
+    {
+        if (room == null || room.roomLights == null || room.roomLights.Length == 0) return;
+        if (room.lightTriggerScheduled || room.lightRevealStarted) return;
+        room.lightTriggerScheduled = true;
+        room.lightDelayRemaining = LightRevealDelaySeconds;
+        room.lightFlickerElapsed = 0f;
     }
 
     void MaintainPool()
@@ -343,6 +409,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         oldest.doorSoundPlayed = false;
         if (oldest.doorAudio != null) oldest.doorAudio.Stop();
         if (oldest.rearSeal != null) oldest.rearSeal.SetActive(true);
+        ResetRoomLights(oldest);
         ApplyDoorPose(oldest);
         recycledCount++;
     }
@@ -458,6 +525,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             room.entry = CreateEntry(room.root.transform);
         }
 
+        CacheRoomLights(room);
+
         room.rearSeal = Box(room.root.transform, "opaque rear boundary seal", new Vector3(0f, RoomHeight * .5f, 0f), new Vector3(RoomWidth, RoomHeight, .18f), wallMaterial);
         room.rearSeal.SetActive(index == 0);
         BuildDoor(room);
@@ -508,6 +577,59 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         room.doorAudio = audio;
         room.doorProgress = 0f; room.doorOpening = false; room.doorOpen = false; room.doorSoundPlayed = false;
         ApplyDoorPose(room);
+    }
+
+    void CacheRoomLights(RoomSlot room)
+    {
+        room.roomLights = room.root.GetComponentsInChildren<Light>(true);
+        room.lightBaseIntensity = new float[room.roomLights.Length];
+        room.lightWasEnabled = new bool[room.roomLights.Length];
+        for (var i = 0; i < room.roomLights.Length; i++)
+        {
+            var light = room.roomLights[i];
+            room.lightBaseIntensity[i] = light == null ? 0f : light.intensity;
+            room.lightWasEnabled[i] = light != null && light.enabled && room.lightBaseIntensity[i] > 0f;
+        }
+        ResetRoomLights(room);
+    }
+
+    void ResetRoomLights(RoomSlot room)
+    {
+        room.lightRevealProgress = 0f;
+        room.lightRevealStarted = false;
+        room.lightTriggerScheduled = false;
+        room.lightDelayRemaining = 0f;
+        room.lightFlickerElapsed = 0f;
+        if (room.roomLights == null) return;
+        for (var i = 0; i < room.roomLights.Length; i++)
+        {
+            var light = room.roomLights[i];
+            if (light == null) continue;
+            light.intensity = 0f;
+            light.enabled = false;
+        }
+    }
+
+    void ActivateRoomLightImmediately(RoomSlot room)
+    {
+        if (room == null || room.roomLights == null) return;
+        room.lightTriggerScheduled = false;
+        room.lightRevealStarted = true;
+        room.lightRevealProgress = 1f;
+        SetRoomLightIntensity(room, 1f, true);
+    }
+
+    void SetRoomLightIntensity(RoomSlot room, float normalizedIntensity, bool enabled)
+    {
+        if (room == null || room.roomLights == null) return;
+        normalizedIntensity = Mathf.Clamp01(normalizedIntensity);
+        for (var i = 0; i < room.roomLights.Length; i++)
+        {
+            var light = room.roomLights[i];
+            if (light == null || !room.lightWasEnabled[i]) continue;
+            light.enabled = enabled;
+            light.intensity = room.lightBaseIntensity[i] * normalizedIntensity;
+        }
     }
 
     void BeginDoorOpening(RoomSlot room)
