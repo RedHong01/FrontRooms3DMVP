@@ -1329,7 +1329,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         mask.style.height = 192f;
         mask.style.overflow = UiOverflow.Hidden;
         mask.pickingMode = UiPickingMode.Ignore;
-        innerImage = VectorLogoImage(name + " / stationary glyph source", vectorImage, 8f, 17.6f);
+        // The mask lives at the glyph's global x position. Translate the
+        // complete stationary SVG back by that same amount so the mask
+        // reveals the requested glyph slice instead of repeating the first
+        // F-shaped slice in every box.
+        innerImage = VectorLogoImage(name + " / stationary glyph source", vectorImage, -glyphStart, 17.6f);
         innerImage.style.opacity = 1f;
         mask.Add(innerImage);
         return mask;
