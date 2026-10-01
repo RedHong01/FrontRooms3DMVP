@@ -46,6 +46,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     readonly Dictionary<RoomRule, Material> floorMats = new Dictionary<RoomRule, Material>();
     readonly Dictionary<RoomRule, Material> ceilingMats = new Dictionary<RoomRule, Material>();
     Material trimMat, seamMat, fixtureMat;
+    // Door materials are kept separate from the generic dark furniture
+    // material so serialized editor doors can be repaired without losing the
+    // authored laminate, gasket and brushed-hardware treatment.
+    Material doorMat, doorTrimMat, doorHardwareMat, doorHandleHighlightMat;
+    readonly Dictionary<int, List<DoorHandleVisual>> doorHandleVisuals = new Dictionary<int, List<DoorHandleVisual>>();
+    int highlightedDoorId = -1;
+    float doorHandlePulse;
     AudioSource hum;
     AudioClip playerStepClip, playerRunStepClip, hunterStepClip, glassClip, keyClip, doorClip, slamClip, bangClip, caughtClip, escapeClip;
     FrontRoomsFoley foley;
@@ -142,6 +149,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         public bool doorOpening;
         public bool doorOpened;
         public float doorTimer;
+    }
+
+    sealed class DoorHandleVisual
+    {
+        public Renderer renderer;
+        public Material baseMaterial;
     }
 
     void OnEnable()
@@ -731,7 +744,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
     void BuildTitleCorridor()
     {
-        if (titleWorld != null) return;
+        // Fast Enter Play Mode can preserve the previous generated stream.
+        // Rebuild it so the title always starts with a fresh wipe/relay clock.
+        if (titleWorld != null) StopTitleCorridor();
         titleWorld = new GameObject("Title sequence / recycled corridor").transform;
         // Keep the runtime title layer away from the authored gameplay greybox.
         // The camera stays in the same generated room through handoff, then the
@@ -835,19 +850,23 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             vectorS1T = vectorS1T * vectorS1T * (3f - 2f * vectorS1T);
             var vectorS2T = Mathf.Clamp01((doorProgress - s2Start) / (1f - s2Start));
             vectorS2T = vectorS2T * vectorS2T * (3f - 2f * vectorS2T);
-            var vectorS1X = Mathf.Lerp(798f, 842f, vectorS1T);
+            var vectorS1X = Mathf.Lerp(814f, 846f, vectorS1T);
             // The far S follows the first afterimage until the relay point,
             // then continues from the first S's actual position at that point.
             // This keeps the earlier hand-off continuous and preserves the
             // intended left-to-right depth relationship.
             var s2StartS1T = Mathf.Clamp01(s2Start / s1End);
             s2StartS1T = s2StartS1T * s2StartS1T * (3f - 2f * s2StartS1T);
-            var vectorS2StartX = Mathf.Lerp(798f, 842f, s2StartS1T);
+            var vectorS2StartX = Mathf.Lerp(814f, 846f, s2StartS1T);
             var vectorS2X = doorProgress < s2Start
                 ? vectorS1X
                 : Mathf.Lerp(vectorS2StartX, 880f, vectorS2T);
-            vectorLogoS1Image.style.left = new UiLength(vectorS1X - 880.895f, UiLengthUnit.Pixel);
-            vectorLogoS2Image.style.left = new UiLength(vectorS2X - 918.895f, UiLengthUnit.Pixel);
+            // Position by the painted left edge of each imported SVG. Using
+            // the asset's full viewBox here shifts the relay S forms left and
+            // leaves a white sliver beside the F. The painted bounds are the
+            // actual optical baseline for the lockup.
+            vectorLogoS1Image.style.left = new UiLength(vectorS1X - 841.734f, UiLengthUnit.Pixel);
+            vectorLogoS2Image.style.left = new UiLength(vectorS2X - 879.734f, UiLengthUnit.Pixel);
             // Keep the vector mark on the same fade-in clock as the title
             // corridor. It remains at full opacity after the reveal; only the
             // player handoff hides it.
@@ -856,8 +875,15 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             // own exit fade; that fade must not cut the S relay short.
             var vectorAlpha = titleHandoffPending ? 1f : Mathf.Clamp01(titleLogoAlpha);
             vectorLogoLeftImage.style.opacity = vectorAlpha;
-            vectorLogoS1Image.style.opacity = vectorAlpha;
-            vectorLogoS2Image.style.opacity = vectorAlpha;
+            // The idle title keeps only FRONTROOMS visible. During the
+            // triggered transition the nearer S appears first, then the far
+            // S joins from the nearer S's moving position.
+            var relayNearAlpha = titleHandoffPending ? 1f : 0f;
+            var relayFarAlpha = titleHandoffPending
+                ? Mathf.Clamp01((relayClock - s2Start) / .12f)
+                : 0f;
+            vectorLogoS1Image.style.opacity = vectorAlpha * relayNearAlpha;
+            vectorLogoS2Image.style.opacity = vectorAlpha * relayFarAlpha;
             return;
         }
         if (logoMotionRoot == null || logoLeftImage == null || logoSlideImage == null) return;
@@ -1376,8 +1402,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // uses its own cropped VectorImage so the local mask reveals the
         // correct letter instead of repeating the source SVG's first F.
         var glyphNames = new[] { "F", "R", "O1", "N", "T", "R2", "O2", "O3", "M" };
-        var glyphStarts = new[] { 8f, 88f, 178f, 268f, 349f, 432f, 523f, 610f, 700f };
-        var glyphEnds = new[] { 80f, 175f, 263f, 349f, 435f, 520f, 607f, 694f, 794f };
+        // Five px optical tracking between the imported glyph viewBoxes keeps
+        // the word readable at the title scale while retaining the original
+        // 965 px lockup width.
+        var glyphStarts = new[] { 8f, 85f, 177f, 267f, 353f, 444f, 537f, 626f, 715f };
+        var glyphEnds = new[] { 80f, 172f, 262f, 348f, 439f, 532f, 621f, 710f, 809f };
         var glyphAssets = new UiVectorImage[glyphNames.Length];
         for (var i = 0; i < glyphNames.Length; i++)
         {
@@ -1391,13 +1420,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
         var solidSAsset = Resources.Load<UiVectorImage>("Brand/FrontRoomsGlyph_S");
         if (solidSAsset == null) return false;
-        vectorLogoSolidSMask = MaskedVectorGlyph("SVG solid S mask", solidSAsset, 798f, 881f, out vectorLogoLeftImage);
+        vectorLogoSolidSMask = MaskedVectorGlyph("SVG solid S mask", solidSAsset, 814f, 897f, out vectorLogoLeftImage);
         vectorLogoRoot.Add(vectorLogoSolidSMask);
         // Keep the original full-width viewBox so each relay S retains its
         // gradient. The painted paths start at these source x coordinates;
         // subtract them so both visible glyphs begin on the solid S baseline.
-        vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 798f - 880.895f, 0f);
-        vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 798f - 918.895f, 0f);
+        vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 814f - 841.734f, 0f);
+        vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 814f - 879.734f, 0f);
         vectorLogoRoot.Add(vectorLogoS1Image);
         vectorLogoRoot.Add(vectorLogoS2Image);
         vectorLogoRoot.style.display = UiDisplayStyle.None;
