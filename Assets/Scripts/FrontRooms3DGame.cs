@@ -577,7 +577,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (logoMotionRoot == null || logoLeftImage == null || logoSlideImage == null) return;
         var visible = phase == Phase.Title;
-        logoMotionRoot.gameObject.SetActive(visible);
+        logoLeftImage.enabled = visible;
+        logoSlideImage.enabled = visible;
         if (!visible) return;
 
         var slideT = Mathf.Clamp01((logoMotionElapsed - .78f) / 1.25f);
@@ -851,9 +852,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (texture == null || logoImage == null || logoImage.transform.parent == null) return;
         var parent = logoImage.transform.parent;
         var rootObject = new GameObject("FrontRooms logo motion");
+        if (rootObject == null) return;
         logoMotionRoot = rootObject.transform;
+        if (logoMotionRoot == null) return;
         logoMotionRoot.SetParent(parent, false);
-        var rootRect = rootObject.AddComponent<RectTransform>();
+        var rootRect = rootObject.GetComponent<RectTransform>();
+        if (rootRect == null) rootRect = rootObject.AddComponent<RectTransform>();
+        if (rootRect == null) return;
         rootRect.anchorMin = rootRect.anchorMax = new Vector2(.5f, .5f);
         rootRect.pivot = new Vector2(.5f, .5f);
         rootRect.anchoredPosition = Vector2.zero;
@@ -871,20 +876,25 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         rightSprite.name = "FrontRooms logo sliding SS";
         logoLeftImage = LogoPart(logoMotionRoot, "Logo left lockup", leftSprite, leftWidth, -((texture.width - leftWidth) * .5f));
         logoSlideImage = LogoPart(logoMotionRoot, "Logo sliding SS", rightSprite, rightWidth, -((texture.width - leftWidth) * .5f));
+        if (logoLeftImage == null || logoSlideImage == null) return;
         if (whiteLogoMaterial != null)
         {
             logoLeftImage.material = whiteLogoMaterial;
             logoSlideImage.material = whiteLogoMaterial;
         }
-        logoImage.gameObject.SetActive(false);
-        logoMotionRoot.gameObject.SetActive(false);
+        if (logoImage != null) logoImage.enabled = false;
+        logoLeftImage.enabled = false;
+        logoSlideImage.enabled = false;
     }
 
     Image LogoPart(Transform parent, string name, Sprite sprite, float width, float x)
     {
+        if (parent == null || sprite == null) return null;
         var objectForImage = new GameObject(name);
+        if (objectForImage == null) return null;
         objectForImage.transform.SetParent(parent, false);
         var image = objectForImage.AddComponent<Image>();
+        if (image == null) return null;
         image.sprite = sprite;
         image.preserveAspect = false;
         image.raycastTarget = false;
@@ -972,10 +982,14 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (overlayImage != null) overlayImage.color = p == Phase.Title ? new Color(0f, 0f, 0f, 0f) : new Color(.93f, .92f, .88f, .98f);
         if (logoImage != null)
         {
-            logoImage.gameObject.SetActive(p == Phase.Title && logoMotionRoot == null);
+            logoImage.enabled = p == Phase.Title && logoMotionRoot == null;
             if (p == Phase.Title && logoMotionRoot == null) logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
         }
-        if (logoMotionRoot != null) logoMotionRoot.gameObject.SetActive(p == Phase.Title);
+        if (logoMotionRoot != null)
+        {
+            if (logoLeftImage != null) logoLeftImage.enabled = p == Phase.Title;
+            if (logoSlideImage != null) logoSlideImage.enabled = p == Phase.Title;
+        }
         if (roomPanel != null) roomPanel.SetActive(playing);
         if (threatPanel != null) threatPanel.SetActive(playing);
         if (contextPanel != null) contextPanel.SetActive(false);
