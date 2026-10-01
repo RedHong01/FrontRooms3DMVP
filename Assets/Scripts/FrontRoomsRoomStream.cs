@@ -48,6 +48,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     [Tooltip("Optional room authoring template. A copy is placed inside each streamed room root.")]
     public GameObject roomTemplate;
 
+    [SerializeField, Tooltip("Keep the title and arrival stream on authored Level 0 Lobby replicas. Player control is handed off separately after arrival.")]
+    bool lobbyOnlyTitle = true;
+
     sealed class RoomSlot
     {
         public GameObject root;
@@ -129,6 +132,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     public int RecycledCount => recycledCount;
     public int RebaseCount => rebaseCount;
     public int CurrentRoomNumber => currentSequence;
+    public bool LobbyOnlyTitle => lobbyOnlyTitle;
     public RoomRule CurrentRule
     {
         get
@@ -182,7 +186,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         {
             var room = new RoomSlot();
             room.sequence = i;
-            room.rule = RuleForSequence(i);
+            room.rule = RuleForStreamSequence(i);
             room.startZ = firstStart + i * RoomLength;
             room.endZ = room.startZ + RoomLength;
             room.root = new GameObject("Stream room / " + i.ToString("000"));
@@ -220,6 +224,15 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             case 4: return RoomRule.Exit;
             default: return RoomRule.Lobby;
         }
+    }
+
+    RoomRule RuleForStreamSequence(int sequence)
+    {
+        // The opening stream is a visual title/arrival space, not the first
+        // playable level. Recycled rooms therefore keep the Level 0 Lobby
+        // materials and prop language until FrontRooms3DGame hands control to
+        // the player.
+        return lobbyOnlyTitle ? RoomRule.Lobby : RuleForSequence(sequence);
     }
 
     /// <summary>
@@ -501,7 +514,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         if (newest == null) return;
         var nextSequence = newest.sequence + 1;
         oldest.sequence = nextSequence;
-        oldest.rule = RuleForSequence(nextSequence);
+        oldest.rule = RuleForStreamSequence(nextSequence);
         oldest.startZ = newest.endZ;
         oldest.endZ = oldest.startZ + RoomLength;
         oldest.root.transform.position = new Vector3(centerX, 0f, oldest.startZ);

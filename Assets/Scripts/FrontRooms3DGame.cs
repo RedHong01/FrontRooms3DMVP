@@ -721,7 +721,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (roomStream == null || cam == null) return;
         roomStream.Tick(dt);
         titleElapsed += dt;
-        logoMotionElapsed += dt;
+        // The editorial letter wipe is a start transition, not an idle-title
+        // animation. Keep the complete wordmark visible while the title
+        // waits for input, then restart the wipe clock from zero when the
+        // player triggers the game.
+        if (titleHandoffPending) logoMotionElapsed += dt;
         titleCameraZ = roomStream.CameraZ;
         titleLogoAlpha = roomStream.LogoVisibility;
         UpdateLogoMotion();
@@ -740,7 +744,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             // source SVG stays stationary; only the mask width grows from
             // left to right. A small stagger creates the editorial rhythm
             // without fading, scaling, or wiping the word as one object.
-            var revealClock = Mathf.Clamp01((logoMotionElapsed - .75f) / 2.85f);
+            var revealClock = titleHandoffPending
+                ? Mathf.Clamp01((logoMotionElapsed - .12f) / 2.85f)
+                : 1f;
             for (var i = 0; i < vectorLogoLetterMasks.Count; i++)
             {
                 var stagger = i * .055f;
@@ -821,6 +827,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (titleHandoffPending || streamedPlay) return;
         if (roomStream == null) return;
+        // Arm the per-glyph wipe exactly when the player presses Start. The
+        // title can sit in its fully revealed state indefinitely beforehand.
+        logoMotionElapsed = 0f;
         roomStream.RequestStart();
         titleHandoffPending = true;
     }
