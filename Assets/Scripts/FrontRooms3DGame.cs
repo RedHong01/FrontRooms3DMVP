@@ -925,6 +925,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         streamThreatGrace = 0f;
         streamThreatTriggered = false;
         if (streamThreatObject != null) streamThreatObject.SetActive(false);
+        // The title pool is intentionally Lobby-only until this handoff.
+        // Once the camera reaches the first room's Entry anchor, reveal the
+        // authored sequence so subsequent doors become Shift → Office → Run → Exit.
+        roomStream.BeginPlayableSequence();
         SetPhase(Phase.Playing);
         Event("start", "streamed-room");
     }

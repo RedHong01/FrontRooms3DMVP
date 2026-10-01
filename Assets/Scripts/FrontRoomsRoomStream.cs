@@ -298,6 +298,25 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     }
 
     /// <summary>
+    /// Switch the pooled title corridor to the authored playable sequence at
+    /// the exact moment camera control is handed to the player. The first
+    /// door remains the Lobby → Shift handoff; only the rooms beyond it change
+    /// profile, so the title never flashes a gameplay material early.
+    /// </summary>
+    public void BeginPlayableSequence()
+    {
+        if (!initialized) return;
+        lobbyOnlyTitle = false;
+        for (var i = 0; i < MaxRooms; i++)
+        {
+            var room = pool[i];
+            if (room == null) continue;
+            room.rule = RuleForSequence(room.sequence);
+            RefreshRoomMaterials(room);
+        }
+    }
+
+    /// <summary>
     /// Move the camera after handoff. The analytical bounds keep the stream
     /// editable without requiring physics colliders on every generated mesh.
     /// </summary>
