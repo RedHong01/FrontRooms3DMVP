@@ -57,6 +57,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     UiVisualElement vectorLogoRoot;
     UiImage vectorLogoLeftImage, vectorLogoS1Image, vectorLogoS2Image;
     UiVectorImage vectorLogoLeftAsset, vectorLogoS1Asset, vectorLogoS2Asset;
+    readonly List<UiVisualElement> vectorLogoLetterMasks = new List<UiVisualElement>();
+    readonly List<float> vectorLogoLetterWidths = new List<float>();
+    UiVisualElement vectorLogoSolidSMask;
     bool vectorLogoActive;
     Material whiteLogoMaterial;
     Sprite brandLogo;
@@ -733,6 +736,19 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             if (vectorLogoRoot != null) vectorLogoRoot.style.display = vectorVisible ? UiDisplayStyle.Flex : UiDisplayStyle.None;
             if (!vectorVisible || vectorLogoLeftImage == null || vectorLogoS1Image == null || vectorLogoS2Image == null) return;
 
+            // Each front glyph owns a local, hard-edged clipping box. The
+            // source SVG stays stationary; only the mask width grows from
+            // left to right. A small stagger creates the editorial rhythm
+            // without fading, scaling, or wiping the word as one object.
+            var revealClock = Mathf.Clamp01((logoMotionElapsed - .75f) / 2.85f);
+            for (var i = 0; i < vectorLogoLetterMasks.Count; i++)
+            {
+                var stagger = i * .055f;
+                var reveal = Mathf.Clamp01((revealClock - stagger) / .72f);
+                reveal = reveal * reveal * (3f - 2f * reveal);
+                vectorLogoLetterMasks[i].style.width = new UiLength(vectorLogoLetterWidths[i] * reveal, UiLengthUnit.Pixel);
+            }
+
             // Door progress is the motion clock. The afterimage S forms begin
             // exactly on top of the solid final S, then peel away one at a time
             // as the first physical door opens. The full title stays visible
@@ -1269,14 +1285,45 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         vectorLogoRoot.pickingMode = UiPickingMode.Ignore;
         panel.Add(vectorLogoRoot);
 
-        vectorLogoLeftImage = VectorLogoImage("SVG complete wordmark", leftAsset, 8f, 17.6f);
+        vectorLogoLetterMasks.Clear();
+        vectorLogoLetterWidths.Clear();
+        // The supplied left SVG contains FRONTROOMS. The final solid S is
+        // kept as the stationary base of the three-S depth mark, so only the
+        // preceding nine letters receive the independent wipe masks.
+        var glyphStarts = new[] { 8f, 88f, 178f, 268f, 349f, 432f, 523f, 610f, 700f };
+        var glyphEnds = new[] { 74f, 170f, 257f, 343f, 427f, 514f, 602f, 689f, 790f };
+        for (var i = 0; i < glyphStarts.Length; i++)
+        {
+            var mask = MaskedVectorGlyph("SVG front glyph " + i.ToString("00"), leftAsset, glyphStarts[i], glyphEnds[i], out _);
+            vectorLogoLetterMasks.Add(mask);
+            vectorLogoLetterWidths.Add(glyphEnds[i] - glyphStarts[i]);
+            vectorLogoRoot.Add(mask);
+        }
+
+        vectorLogoSolidSMask = MaskedVectorGlyph("SVG solid S mask", leftAsset, 798f, 877f, out vectorLogoLeftImage);
+        vectorLogoRoot.Add(vectorLogoSolidSMask);
         vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 798f, 17.8f);
         vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 798f, 17.8f);
-        vectorLogoRoot.Add(vectorLogoLeftImage);
         vectorLogoRoot.Add(vectorLogoS1Image);
         vectorLogoRoot.Add(vectorLogoS2Image);
         vectorLogoRoot.style.display = UiDisplayStyle.None;
         return vectorLogoLeftImage != null && vectorLogoS1Image != null && vectorLogoS2Image != null;
+    }
+
+    UiVisualElement MaskedVectorGlyph(string name, UiVectorImage vectorImage, float glyphStart, float glyphEnd, out UiImage innerImage)
+    {
+        var mask = new UiVisualElement { name = name + " / hard wipe mask" };
+        mask.style.position = UiPosition.Absolute;
+        mask.style.left = glyphStart;
+        mask.style.top = 0f;
+        mask.style.width = 0f;
+        mask.style.height = 192f;
+        mask.style.overflow = UiOverflow.Hidden;
+        mask.pickingMode = UiPickingMode.Ignore;
+        innerImage = VectorLogoImage(name + " / stationary glyph source", vectorImage, 8f, 17.6f);
+        innerImage.style.opacity = 1f;
+        mask.Add(innerImage);
+        return mask;
     }
 
     UiImage VectorLogoImage(string name, UiVectorImage vectorImage, float left, float top)

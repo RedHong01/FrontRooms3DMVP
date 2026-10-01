@@ -25,7 +25,13 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     const float RearSealOffset = .24f;
     const float BoundaryMargin = .34f;
     const float TitleSpeed = 1.15f;
-    const float TransitionSpeed = 2.25f;
+    // The title crawl is intentionally slow, but the start trigger should
+    // feel like a handoff into play rather than another title beat. Accelerate
+    // over a short ramp, then settle precisely on the next room's authored
+    // Entry / 2m inside anchor.
+    const float TransitionSpeed = 6.2f;
+    const float TransitionFinalSpeed = 1.2f;
+    const float TransitionAccelerationSeconds = .36f;
     const float DoorOpenSeconds = .9f;
     const float RecycleDistance = 8f;
     const float RebaseThreshold = 256f;
@@ -258,8 +264,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         transitionPoolIndex = PoolIndex(next);
         transitionElapsed = 0f;
         transitionStartZ = streamCamera.transform.position.z;
-        pendingTargetZ = next.startZ + 2f;
-        PendingAnchorPosition = new Vector3(streamCamera.transform.position.x, streamCamera.transform.position.y, pendingTargetZ);
+        var targetAnchor = next.entry == null
+            ? new Vector3(centerX, streamCamera.transform.position.y, next.startZ + 2f)
+            : next.entry.position;
+        pendingTargetZ = targetAnchor.z;
+        PendingAnchorPosition = new Vector3(targetAnchor.x, streamCamera.transform.position.y, targetAnchor.z);
         next.connected = false;
         // The next room stays closed until it reaches the normal proximity
         // trigger. Opening its animation here would make a distant door play
@@ -334,17 +343,21 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         var remaining = pendingTargetZ - currentPosition.z;
         if (remaining > .001f)
         {
-            // Ease only inside the final metre and clamp the step. This keeps
-            // the handoff C1-smooth without ever overshooting the anchor.
+            // Accelerate after the start trigger, then ease only inside the
+            // final metre and clamp the step. This keeps the handoff quick
+            // without ever overshooting the authored anchor.
             var normalized = Mathf.Clamp01(remaining / 1f);
-            var speed = Mathf.Lerp(.62f, TransitionSpeed, normalized);
+            transitionElapsed += dt;
+            var acceleration = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(transitionElapsed / TransitionAccelerationSeconds));
+            var cruiseSpeed = Mathf.Lerp(TitleSpeed, TransitionSpeed, acceleration);
+            var speed = Mathf.Lerp(TransitionFinalSpeed, cruiseSpeed, normalized);
             currentPosition.z += Mathf.Min(remaining, speed * dt);
             streamCamera.transform.position = currentPosition;
-            transitionElapsed += dt;
             return;
         }
 
-        currentPosition.z = pendingTargetZ;
+        currentPosition.x = PendingAnchorPosition.x;
+        currentPosition.z = PendingAnchorPosition.z;
         streamCamera.transform.position = currentPosition;
         hasControl = true;
         isEntering = false;
