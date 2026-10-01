@@ -50,6 +50,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     bool titleHandoffPending;
     bool streamedPlay;
     float titleHandoffTargetZ;
+    // Keep the runtime title layer away from the authored gameplay greybox.
+    // FrontRoomsRoomStream uses the camera's initial X as its room centerline.
     const float TitleCenterX = 256f;
     const float TitleSegmentLength = 12f;
     const float TitleLookAhead = 72f;
