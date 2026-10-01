@@ -14,6 +14,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     public const float RoomHeight = 2.9f;
     public const float RoomLength = 12f;
     const float DoorWidth = 2.4f;
+    // Leave only a small construction tolerance below the header. The old
+    // 2.4m leaf stopped 0.26m below the 2.66m header bottom.
+    const float DoorHeaderHeight = .24f;
+    const float DoorLeafHeight = RoomHeight - .02f;
     const float WallThickness = .26f;
     // The rear seal belongs to the room behind a threshold. Keep it just
     // inside the next room so it cannot sit on the same plane as the door
@@ -645,16 +649,16 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         var roomWall = ProfileMaterial(profileWallMaterials, room.rule, wallMaterial);
         Box(room.root.transform, "door wall return left", new Vector3(-sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), roomWall);
         Box(room.root.transform, "door wall return right", new Vector3(sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), roomWall);
-        Box(room.root.transform, "door wall above", new Vector3(0f, RoomHeight - .12f, RoomLength), new Vector3(DoorWidth, .24f, WallThickness), roomWall);
+        Box(room.root.transform, "door wall above", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, RoomLength), new Vector3(DoorWidth, DoorHeaderHeight, WallThickness), roomWall);
         Box(room.root.transform, "door frame left", new Vector3(-1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
         Box(room.root.transform, "door frame right", new Vector3(1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
-        Box(room.root.transform, "door frame header", new Vector3(0f, RoomHeight - .12f, RoomLength), new Vector3(3.12f, .24f, .22f), frameMaterial);
+        Box(room.root.transform, "door frame header", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, RoomLength), new Vector3(3.12f, DoorHeaderHeight, .22f), frameMaterial);
         var leftPivot = new GameObject("double door left hinge").transform;
         leftPivot.SetParent(room.root.transform, false); leftPivot.localPosition = new Vector3(-1.2f, 0f, RoomLength);
         var rightPivot = new GameObject("double door right hinge").transform;
         rightPivot.SetParent(room.root.transform, false); rightPivot.localPosition = new Vector3(1.2f, 0f, RoomLength);
-        var left = Box(leftPivot, "double door left", new Vector3(.6f, 1.2f, 0f), new Vector3(1.2f, 2.4f, .14f), doorMaterial ?? wallMaterial);
-        var right = Box(rightPivot, "double door right", new Vector3(-.6f, 1.2f, 0f), new Vector3(1.2f, 2.4f, .14f), doorMaterial ?? wallMaterial);
+        var left = Box(leftPivot, "double door left", new Vector3(.6f, DoorLeafHeight * .5f, 0f), new Vector3(1.2f, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
+        var right = Box(rightPivot, "double door right", new Vector3(-.6f, DoorLeafHeight * .5f, 0f), new Vector3(1.2f, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
         room.leftDoor = leftPivot; room.rightDoor = rightPivot;
         var audioObject = new GameObject("door creak / spatial");
         audioObject.transform.SetParent(room.root.transform, false);

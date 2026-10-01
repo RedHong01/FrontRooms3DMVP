@@ -37,6 +37,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     List<Vector2Int> path = new List<Vector2Int>();
     readonly HashSet<int> keys = new HashSet<int>();
     readonly Dictionary<int, GameObject> openingObjects = new Dictionary<int, GameObject>();
+    readonly Dictionary<int, GameObject> openingLintels = new Dictionary<int, GameObject>();
     readonly Dictionary<int, GameObject> keyObjects = new Dictionary<int, GameObject>();
     readonly Dictionary<int, Renderer> noteObjects = new Dictionary<int, Renderer>();
     readonly List<string> events = new List<string>();
@@ -187,6 +188,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             world = existing;
             cam = existing.GetComponentInChildren<Camera>(true);
             hunter = existing.Find("Hunter");
+            openingObjects.Clear();
+            openingLintels.Clear();
+            RebindSerializedWorld();
+            RepairSerializedOpeningHeights();
             return;
         }
 
@@ -227,10 +232,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         world = preview;
         cam = preview == null ? null : preview.GetComponentInChildren<Camera>(true);
         hunter = preview == null ? null : preview.Find("Hunter");
-        openingObjects.Clear(); keyObjects.Clear(); noteObjects.Clear();
+        openingObjects.Clear(); openingLintels.Clear(); keyObjects.Clear(); noteObjects.Clear();
         wallMats.Clear(); floorMats.Clear(); ceilingMats.Clear();
         if (world == null) BuildWorld();
-        else RebindSerializedWorld();
+        else { RebindSerializedWorld(); RepairSerializedOpeningHeights(); }
         ResolveSerializedMaterials();
         hdrEnabled = PlayerPrefs.GetInt(HdrPreferenceKey, defaultHdr ? 1 : 0) != 0;
         ApplyHdrMode(hdrEnabled, false);
@@ -347,6 +352,68 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Material WallMaterial(RoomRule rule) => wallMats.TryGetValue(rule, out var m) ? m : wallMat;
     Material FloorMaterial(RoomRule rule) => floorMats.TryGetValue(rule, out var m) ? m : floorMat;
     Material CeilingMaterial(RoomRule rule) => ceilingMats.TryGetValue(rule, out var m) ? m : ceilingMat;
+
+    static float HeightFor(FrontRoom room)
+    {
+        if (room == null) return 2.9f;
+        switch (room.Rule)
+        {
+            case RoomRule.Run: return 4.8f;
+            case RoomRule.Office: return 3.5f;
+            default: return 2.9f;
+        }
+    }
+
+    static float OpeningHeight(FrontOpening opening)
+    {
+        return Mathf.Max(HeightFor(opening == null ? null : opening.Owner), HeightFor(opening == null ? null : opening.Other));
+    }
+
+    static void SetOpeningHeight(GameObject opening, float height)
+    {
+        if (opening == null) return;
+        var position = opening.transform.localPosition;
+        position.y = height * .5f;
+        opening.transform.localPosition = position;
+        var scale = opening.transform.localScale;
+        scale.y = height;
+        opening.transform.localScale = scale;
+    }
+
+    /// <summary>
+    /// Repairs an already serialized greybox after the procedural opening
+    /// dimensions change, so an old preview cannot reintroduce a door-height
+    /// slit when the scene is opened or built.
+    /// </summary>
+    public void RepairSerializedOpeningHeights()
+    {
+        InitializeLevel();
+        if (world == null) return;
+        if (openingObjects.Count == 0 || openingLintels.Count == 0)
+        {
+            openingObjects.Clear();
+            openingLintels.Clear();
+            RebindSerializedWorld();
+        }
+
+        const float headerHeight = .24f;
+        foreach (var opening in level.Openings)
+        {
+            var height = OpeningHeight(opening);
+            var leafHeight = Mathf.Max(.1f, height - .04f);
+            if (openingObjects.TryGetValue(opening.Id, out var slab)) SetOpeningHeight(slab, leafHeight);
+            if (openingLintels.TryGetValue(opening.Id, out var lintel))
+            {
+                var position = lintel.transform.localPosition;
+                position.y = height - headerHeight * .5f;
+                lintel.transform.localPosition = position;
+                var scale = lintel.transform.localScale;
+                scale.y = headerHeight;
+                lintel.transform.localScale = scale;
+            }
+        }
+    }
+
     GameObject Box(string name, Vector3 pos, Vector3 scale, Material mat)
     {
         var g = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -418,7 +485,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         fill.transform.rotation = Quaternion.Euler(70f, -30f, 0f);
         foreach (var r in level.Rooms)
         {
-            float height = r.Rule == RoomRule.Run ? 4.8f : r.Rule == RoomRule.Office ? 3.5f : 2.9f;
+            float height = HeightFor(r);
             var center = V(r.Center);
             Box(r.Name + " / floor", center + Vector3.down * .12f, new Vector3(12f, .24f, 10f), FloorMaterial(r.Rule));
             Box(r.Name + " / ceiling", center + Vector3.up * (height + .1f), new Vector3(12f, .2f, 10f), CeilingMaterial(r.Rule));
@@ -480,13 +547,16 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         foreach (var o in level.Openings)
         {
             var center = V(o.Center);
-            var slab = Box(o.Kind.ToString(), center + Vector3.up * 1.2f, new Vector3(.3f, 2.4f, o.Tiles.Count), o.Kind == OpeningKind.Window ? glassMat : o.Kind == OpeningKind.Door ? darkMat : wallMat);
+            var openingHeight = OpeningHeight(o);
+            var leafHeight = Mathf.Max(.1f, openingHeight - .04f);
+            var slab = Box(o.Kind.ToString(), center + Vector3.up * (leafHeight * .5f), new Vector3(.3f, leafHeight, o.Tiles.Count), o.Kind == OpeningKind.Window ? glassMat : o.Kind == OpeningKind.Door ? darkMat : wallMat);
             openingObjects[o.Id] = slab;
             if (o.Kind == OpeningKind.Hall) slab.SetActive(o.Sealed);
-            Box("Lintel", center + Vector3.up * 2.65f, new Vector3(1f, .5f, o.Tiles.Count), wallMat);
+            var lintel = Box("Lintel", center + Vector3.up * (openingHeight - .12f), new Vector3(1f, .24f, o.Tiles.Count), wallMat);
+            openingLintels[o.Id] = lintel;
             if (o.Kind == OpeningKind.Door) Box("Brass lock", center + new Vector3(-.17f, 1.15f, -.55f), new Vector3(.06f, .18f, .18f), yellowMat).transform.SetParent(slab.transform, true);
             if (o.Kind == OpeningKind.Window)
-                for (int n = -1; n <= 1; n++) Box("Glass frame", center + new Vector3(0f, 1.2f, n * o.Tiles.Count * .45f), new Vector3(.38f, 2.4f, .06f), darkMat).transform.SetParent(slab.transform, true);
+                for (int n = -1; n <= 1; n++) Box("Glass frame", center + new Vector3(0f, leafHeight * .5f, n * o.Tiles.Count * .45f), new Vector3(.38f, leafHeight, .06f), darkMat).transform.SetParent(slab.transform, true);
         }
         Box("Exit light", new Vector3(58f, .025f, 5.5f), new Vector3(2f, .05f, 3f), Mat("Exit glow", C("B2F6DA"), true));
         cam = new GameObject("First-person camera").AddComponent<Camera>();
