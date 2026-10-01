@@ -47,7 +47,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Material trimMat, seamMat, fixtureMat;
     AudioSource hum;
     AudioClip playerStepClip, playerRunStepClip, hunterStepClip, glassClip, keyClip, doorClip, slamClip, bangClip, caughtClip, escapeClip;
-    Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, crosshair, notebook;
+    Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, crosshair, notebook, displaySettingsText;
     Image logoImage;
     Image logoLeftImage, logoSlideImage;
     Transform logoMotionRoot;
@@ -61,8 +61,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     enum LogoMotionVariation { SlideThenFade, FullLockup }
     [SerializeField, Tooltip("Title logo test: SlideThenFade isolates the SS mark; FullLockup keeps the complete wordmark.")]
     LogoMotionVariation logoMotionVariation = LogoMotionVariation.SlideThenFade;
+    [SerializeField, Tooltip("Initial display mode. The player can switch HDR on or off from Display Settings while paused.")]
+    bool defaultHdr = true;
+    const string HdrPreferenceKey = "FrontRooms.Display.HDR";
+    bool hdrEnabled;
+    bool displaySettingsOpen;
     Font monoFont, bayonFont, serifFont;
-    GameObject overlay, roomPanel, threatPanel, contextPanel, journalPanel;
+    GameObject overlay, roomPanel, threatPanel, contextPanel, journalPanel, displaySettingsPanel;
     Image overlayImage;
     Outline logoOutline;
     Transform titleWorld;
@@ -207,6 +212,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (world == null) BuildWorld();
         else RebindSerializedWorld();
         ResolveSerializedMaterials();
+        hdrEnabled = PlayerPrefs.GetInt(HdrPreferenceKey, defaultHdr ? 1 : 0) != 0;
+        ApplyHdrMode(hdrEnabled, false);
         BuildHud();
         BuildSound();
         BuildTitleCorridor();
@@ -980,6 +987,40 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         return image;
     }
 
+    void ApplyHdrMode(bool enabled, bool persist)
+    {
+        var supported = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.DefaultHDR);
+        if (cam != null) cam.allowHDR = enabled && supported;
+        // Unity 6 no longer exposes a readable Camera.hdr property. The
+        // support check plus the value applied to allowHDR is the portable
+        // runtime state for the built-in renderer and WebGL fallback.
+        hdrEnabled = enabled && supported;
+        if (persist)
+        {
+            PlayerPrefs.SetInt(HdrPreferenceKey, hdrEnabled ? 1 : 0);
+            PlayerPrefs.Save();
+        }
+        UpdateDisplaySettingsText();
+    }
+
+    void UpdateDisplaySettingsText()
+    {
+        if (displaySettingsText == null) return;
+        var mode = hdrEnabled ? "HDR RENDER  /  ON" : "HDR RENDER  /  OFF  (SDR)";
+        displaySettingsText.text = "<size=30><b>DISPLAY SETTINGS</b></size>\n\n"
+            + "OUTPUT\n<size=34><color=#F4DF3B>" + mode + "</color></size>\n\n"
+            + "H  TOGGLE HDR\nESC  CLOSE";
+    }
+
+    void ToggleDisplaySettings()
+    {
+        if (phase != Phase.Paused || displaySettingsPanel == null) return;
+        displaySettingsOpen = !displaySettingsOpen;
+        displaySettingsPanel.SetActive(displaySettingsOpen);
+        if (overlayText != null) overlayText.enabled = !displaySettingsOpen;
+        UpdateDisplaySettingsText();
+    }
+
     void ConfigureLogoMotion(Texture2D texture)
     {
         if (texture == null || logoImage == null || logoImage.transform.parent == null) return;
@@ -1093,6 +1134,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         notebook = Text(journalPanel.transform, "Notebook", new Vector2(0, 1), new Vector2(96, -56), new Vector2(1110, 620), 24, TextAnchor.UpperLeft);
         notebook.color = paper;
         journalPanel.SetActive(false);
+        displaySettingsPanel = Panel(g.transform, "Display settings", new Vector2(.5f, .5f), Vector2.zero, new Vector2(920, 420), new Color(.055f, .055f, .05f, .97f));
+        Rule(displaySettingsPanel.transform, "Display settings accent", new Vector2(0, .5f), new Vector2(28, 0), new Vector2(4, 176), accent);
+        displaySettingsText = Text(displaySettingsPanel.transform, "Display settings text", new Vector2(.5f, .5f), new Vector2(18, 0), new Vector2(760, 320), 24, TextAnchor.MiddleCenter);
+        displaySettingsText.color = paper;
+        displaySettingsPanel.SetActive(false);
         overlay = new GameObject("Menu"); overlay.transform.SetParent(g.transform, false); var image = overlay.AddComponent<Image>(); overlayImage = image;
         // The title uses the supplied brand asset with a white runtime shader;
         // the room remains visible behind it while the mark fades in.
@@ -1101,16 +1147,34 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         overlayText = Text(overlay.transform, "Menu text", new Vector2(.5f, .5f), Vector2.zero, new Vector2(1440, 760), 20, TextAnchor.MiddleCenter);
         overlayText.color = C("0A0A0A");
         overlayText.rectTransform.anchoredPosition = new Vector2(0f, -170f);
+        // Keep the settings card inside the pause overlay so its dark surface
+        // renders above the light pause wash.  It is still created with the
+        // same canvas-scale coordinates, then normalized after reparenting.
+        if (displaySettingsPanel != null)
+        {
+            displaySettingsPanel.transform.SetParent(overlay.transform, false);
+            var settingsRect = displaySettingsPanel.GetComponent<RectTransform>();
+            settingsRect.anchorMin = settingsRect.anchorMax = new Vector2(.5f, .5f);
+            settingsRect.pivot = new Vector2(.5f, .5f);
+            settingsRect.anchoredPosition = Vector2.zero;
+            settingsRect.sizeDelta = new Vector2(920f, 420f);
+        }
         logoImage = Panel(overlay.transform, "FrontRooms brand logo", new Vector2(.5f, .5f), Vector2.zero, new Vector2(965f, 192f), Color.white).GetComponent<Image>();
         logoImage.raycastTarget = false;
         logoOutline = logoImage.gameObject.AddComponent<Outline>();
         logoOutline.effectDistance = new Vector2(2f, -2f);
         logoOutline.effectColor = new Color(1f, .86f, .34f, 0f);
         LoadBrandLogo();
+        UpdateDisplaySettingsText();
     }
     void SetPhase(Phase p)
     {
         phase = p; bool playing = p == Phase.Playing;
+        if (p != Phase.Paused)
+        {
+            displaySettingsOpen = false;
+            if (displaySettingsPanel != null) displaySettingsPanel.SetActive(false);
+        }
         overlay.SetActive(!playing); crosshair.enabled = playing;
         if (overlayImage != null) overlayImage.color = p == Phase.Title ? new Color(0f, 0f, 0f, 0f) : new Color(.93f, .92f, .88f, .98f);
         if (logoImage != null)
@@ -1135,7 +1199,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             overlayText.enabled = false;
         }
         else overlayText.enabled = true;
-        if (p == Phase.Paused) overlayText.text = "<size=88><b>PAUSED</b></size>\n\n<size=13>WASD  MOVE    MOUSE  LOOK    SHIFT  RUN\nHOLD E  READ OR BREAK    E  OPEN KEYED DOOR\nTAB  NOTES    R  RESTART</size>\n\n<color=#F4DF3B><size=20>ESC  RESUME</size></color>";
+        if (p == Phase.Paused) overlayText.text = "<size=88><b>PAUSED</b></size>\n\n<size=13>WASD  MOVE    MOUSE  LOOK    SHIFT  RUN\nHOLD E  READ OR BREAK    E  OPEN KEYED DOOR\nTAB  NOTES    R  RESTART\nO  DISPLAY SETTINGS</size>\n\n<color=#F4DF3B><size=20>ESC  RESUME</size></color>";
         if (p == Phase.Escaped || p == Phase.Caught)
             overlayText.text = "<size=88><b>" + (p == Phase.Escaped ? "ESCAPED" : "CAUGHT") + "</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  " + notesRead + " NOTES</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
     }
@@ -1159,6 +1223,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (testDir == null)
         {
             if (phase == Phase.Title && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) RequestTitleStart();
+            else if (phase == Phase.Paused && Input.GetKeyDown(KeyCode.O)) ToggleDisplaySettings();
+            else if (displaySettingsOpen && Input.GetKeyDown(KeyCode.H)) ApplyHdrMode(!hdrEnabled, true);
+            else if (Input.GetKeyDown(KeyCode.Escape) && displaySettingsOpen) ToggleDisplaySettings();
             else if (Input.GetKeyDown(KeyCode.Escape) && (phase == Phase.Playing || phase == Phase.Paused)) SetPhase(phase == Phase.Playing ? Phase.Paused : Phase.Playing);
             if (Input.GetKeyDown(KeyCode.R) && phase != Phase.Playing && phase != Phase.Title) { restart = true; SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
             if (Input.GetKeyDown(KeyCode.Tab) && phase == Phase.Playing) journal = !journal;
