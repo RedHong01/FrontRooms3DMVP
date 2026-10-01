@@ -1,0 +1,1045 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
+[ExecuteAlways]
+// A separate first-person experiment. World X/Z uses the same authored five-cell topology as 2D.
+public sealed class FrontRooms3DGame : MonoBehaviour
+{
+    enum Phase { Title, Playing, Paused, Escaped, Caught }
+    enum HunterState { Listen, Hunt, Search, Chase, BreakDoor }
+    FrontRoomsLevel level;
+    Phase phase;
+    HunterState state;
+    Camera cam;
+    Transform world, hunter;
+    Vector2 playerPos, hunterPos, hunterTarget, lastSeen;
+    FrontRoom room;
+    FrontOpening breakingDoor;
+    List<Vector2Int> path = new List<Vector2Int>();
+    readonly HashSet<int> keys = new HashSet<int>();
+    readonly Dictionary<int, GameObject> openingObjects = new Dictionary<int, GameObject>();
+    readonly Dictionary<int, GameObject> keyObjects = new Dictionary<int, GameObject>();
+    readonly Dictionary<int, Renderer> noteObjects = new Dictionary<int, Renderer>();
+    readonly List<string> events = new List<string>();
+    Material wallMat, floorMat, redMat, darkMat, glassMat, yellowMat, whiteMat, ceilingMat;
+    readonly Dictionary<RoomRule, Material> wallMats = new Dictionary<RoomRule, Material>();
+    readonly Dictionary<RoomRule, Material> floorMats = new Dictionary<RoomRule, Material>();
+    readonly Dictionary<RoomRule, Material> ceilingMats = new Dictionary<RoomRule, Material>();
+    Material trimMat, seamMat, fixtureMat;
+    AudioSource hum;
+    AudioClip playerStepClip, playerRunStepClip, hunterStepClip, glassClip, keyClip, doorClip, slamClip, bangClip, caughtClip, escapeClip;
+    Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, crosshair, notebook;
+    Image logoImage;
+    Sprite brandLogo;
+    Font monoFont, bayonFont, serifFont;
+    GameObject overlay, roomPanel, threatPanel, contextPanel, journalPanel;
+    float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
+    string flash = "", actionIdentity = "";
+    bool released, shiftWarning, journal, manualStarted;
+    int notesRead, windowsBroken, doorsBroken, shifts, transitions;
+    const float Radius = .27f;
+    const float Walk = 3.2f, Run = 5.5f;
+    Vector2 testMove;
+    bool testRun, testInteract;
+    string testDir, testRoute = "door";
+    bool testFailed;
+    static bool restart;
+
+    void OnEnable()
+    {
+        // The editor preview is kept inactive while Play Mode owns the runtime
+        // world. Re-enable the serialized preview when the scene returns to edit
+        // mode so the hierarchy and Scene view remain useful after a test run.
+        if (!Application.isPlaying)
+        {
+            var preview = EditorPreviewTransform();
+            if (preview != null) preview.gameObject.SetActive(true);
+        }
+    }
+
+    Transform EditorPreviewTransform()
+    {
+        // Transform.Find treats '/' as a hierarchy separator. The slash is part
+        // of the readable object name, so inspect direct children instead.
+        for (var i = 0; i < transform.childCount; i++)
+            if (transform.GetChild(i).name == "EDITOR_PREVIEW / FrontRooms3D") return transform.GetChild(i);
+        return null;
+    }
+
+    void InitializeLevel()
+    {
+        if (level != null) return;
+        var fallback = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        monoFont = Resources.Load<Font>("Fonts/IBMPlexMono-Regular") ?? fallback;
+        bayonFont = Resources.Load<Font>("Fonts/Bayon-Regular") ?? fallback;
+        serifFont = Resources.Load<Font>("Fonts/SourceSerif4-Variable") ?? fallback;
+        level = new FrontRoomsLevel();
+        level.Openings[3].Sealed = true;
+        playerPos = FrontRoomsLevel.CenterOf(level.PlayerStart);
+        hunterPos = FrontRoomsLevel.CenterOf(level.HunterStart);
+        hunterTarget = hunterPos;
+        room = level.Rooms[0];
+    }
+
+    /// <summary>
+    /// Builds the authored first-person greybox into the scene asset while the
+    /// editor is idle. This is deliberately public so the scene builder can
+    /// finish serialization deterministically instead of relying on a later
+    /// Play Mode frame.
+    /// </summary>
+    public void EnsureEditorPreview()
+    {
+        if (Application.isPlaying) return;
+        InitializeLevel();
+        var existing = EditorPreviewTransform();
+        if (existing != null)
+        {
+            existing.gameObject.SetActive(true);
+            world = existing;
+            cam = existing.GetComponentInChildren<Camera>(true);
+            hunter = existing.Find("Hunter");
+            return;
+        }
+
+        BuildWorld();
+        if (world == null) return;
+        world.name = "EDITOR_PREVIEW / FrontRooms3D";
+        world.SetParent(transform, true);
+        if (cam != null) cam.transform.SetParent(world, true);
+    }
+
+    void Awake()
+    {
+        InitializeLevel();
+        if (!Application.isPlaying)
+        {
+            EnsureEditorPreview();
+            return;
+        }
+
+        Application.targetFrameRate = 60;
+        // Keep the first-person image and overlay text at native resolution.
+        // The project previously requested MSAA on the camera but left the
+        // active Ultra quality level at 0x, so the Game view/build could show
+        // soft geometry and UI edges.
+        QualitySettings.antiAliasing = 4;
+        QualitySettings.globalTextureMipmapLimit = 0;
+        Time.timeScale = 1f;
+        var args = Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "-verify3d" && i + 1 < args.Length) testDir = args[i + 1];
+            if (args[i] == "-route" && i + 1 < args.Length) testRoute = args[i + 1];
+        }
+        // Use the serialized scene world in Play Mode as well. That makes a
+        // material, light, camera or wall adjustment made in the editor survive
+        // into a test run instead of being replaced by a second generated copy.
+        var preview = EditorPreviewTransform();
+        world = preview;
+        cam = preview == null ? null : preview.GetComponentInChildren<Camera>(true);
+        hunter = preview == null ? null : preview.Find("Hunter");
+        openingObjects.Clear(); keyObjects.Clear(); noteObjects.Clear();
+        wallMats.Clear(); floorMats.Clear(); ceilingMats.Clear();
+        if (world == null) BuildWorld();
+        else RebindSerializedWorld();
+        BuildHud();
+        BuildSound();
+        SetPhase(Phase.Title);
+        if (testDir != null) { Directory.CreateDirectory(testDir); StartCoroutine(VerifyRoute()); }
+        else if (restart) StartGame();
+        Log("READY · manual title, first-person · " + (testDir == null ? "no automation" : "explicit verification"));
+    }
+
+    static Color C(string hex) { ColorUtility.TryParseHtmlString("#" + hex, out var c); return c; }
+    static Vector3 V(Vector2 p, float y = 0f) => new Vector3(p.x, y, p.y);
+    static Vector2 P(Vector3 p) => new Vector2(p.x, p.z);
+    Material Mat(string name, Color color, bool emission = false)
+    {
+        var shader = Shader.Find("Standard");
+        if (shader == null) shader = Shader.Find("UI/Default");
+        var m = new Material(shader);
+        m.name = name;
+        m.color = color;
+        m.SetFloat("_Glossiness", .12f);
+        if (emission) { m.EnableKeyword("_EMISSION"); m.SetColor("_EmissionColor", color * .8f); }
+        return m;
+    }
+
+    Texture2D WallpaperTexture(Color baseColor, Color patternColor, int style)
+    {
+        // Keep the procedural source large enough to survive the close first-person
+        // view.  The old 64px texture was magnified across an entire wall slab,
+        // which made seams and the diamond weave look like a soft colour wash.
+        const int size = 256;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true, false);
+        tex.name = "Procedural wallpaper";
+        tex.wrapMode = TextureWrapMode.Repeat;
+        tex.filterMode = FilterMode.Trilinear;
+        tex.anisoLevel = 4;
+        tex.mipMapBias = -0.35f;
+        var pixels = new Color[size * size];
+        for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+            {
+                var v = 0.97f + 0.025f * Mathf.Sin((x + style * 20) * 0.14f) + 0.012f * Mathf.Sin(y * 0.24f);
+                var c = baseColor * v;
+                // Repeating vertical seams and a restrained diamond motif make the
+                // walls read as wallpaper instead of untextured yellow blocks.
+                var seam = (x + style * 12) % 64 == 0 || (x + style * 12 + 1) % 64 == 0;
+                var diamond = ((x + y + style * 28) % 96 == 0) || ((x - y + style * 28 + 384) % 96 == 0);
+                if (seam) c = Color.Lerp(c, patternColor, .28f);
+                else if (diamond) c = Color.Lerp(c, patternColor, .13f);
+                pixels[y * size + x] = new Color(c.r, c.g, c.b, 1f);
+            }
+        tex.SetPixels(pixels); tex.Apply(true, true);
+        return tex;
+    }
+
+    Texture2D CarpetTexture(Color baseColor, int style)
+    {
+        const int size = 256;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true, false);
+        tex.name = "Procedural carpet weave";
+        tex.wrapMode = TextureWrapMode.Repeat;
+        tex.filterMode = FilterMode.Trilinear;
+        tex.anisoLevel = 4;
+        var pixels = new Color[size * size];
+        for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+            {
+                var weave = ((x + y + style * 44) % 16 == 0 ? .07f : -.025f);
+                var c = baseColor * (1f + weave);
+                if ((x + style * 20) % 96 == 0) c *= .86f;
+                pixels[y * size + x] = new Color(c.r, c.g, c.b, 1f);
+            }
+        tex.SetPixels(pixels); tex.Apply(true, true);
+        return tex;
+    }
+
+    Material TexturedMat(string name, Color baseColor, Texture2D texture, Vector2 scale, bool emission = false)
+    {
+        var m = Mat(name, baseColor, emission);
+        m.mainTexture = texture;
+        m.mainTextureScale = scale;
+        return m;
+    }
+
+    Material WallMaterial(RoomRule rule) => wallMats.TryGetValue(rule, out var m) ? m : wallMat;
+    Material FloorMaterial(RoomRule rule) => floorMats.TryGetValue(rule, out var m) ? m : floorMat;
+    Material CeilingMaterial(RoomRule rule) => ceilingMats.TryGetValue(rule, out var m) ? m : ceilingMat;
+    GameObject Box(string name, Vector3 pos, Vector3 scale, Material mat)
+    {
+        var g = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        g.name = name; g.transform.SetParent(world); g.transform.position = pos; g.transform.localScale = scale;
+        g.GetComponent<Renderer>().sharedMaterial = mat;
+        return g;
+    }
+    void BuildWorld()
+    {
+        world = new GameObject("Five rooms / first-person").transform;
+        wallMat = Mat("Warm wallpaper", C("B5A66A"));
+        floorMat = Mat("Carpet", C("51472F"));
+        redMat = Mat("Red corridor", C("571E21"));
+        darkMat = Mat("Door and furniture", C("252525"));
+        glassMat = Mat("Frosted blue glass", C("8DBAC2"), true);
+        yellowMat = Mat("Brass", C("EACB37"), true);
+        whiteMat = Mat("Paper", C("EBE6CF"));
+        ceilingMat = Mat("Ceiling", C("797467"));
+
+        // The visual grammar follows the deck: yellowed repeating wallpaper,
+        // low-sheen carpet, and room-specific temperature/contrast changes.
+        // Each room gets a material instance so the transition itself is legible.
+        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("D4C37B"), WallpaperTexture(C("D4C37B"), C("9C8C55"), 0), new Vector2(.8f, 1.9f));
+        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("B8A86F"), WallpaperTexture(C("B8A86F"), C("7F754D"), 1), new Vector2(.72f, 2.1f));
+        wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office", C("C9BA82"), WallpaperTexture(C("C9BA82"), C("92855D"), 2), new Vector2(.82f, 1.8f));
+        wallMats[RoomRule.Run] = TexturedMat("Wallpaper / red run", C("6F272E"), WallpaperTexture(C("6F272E"), C("3C151B"), 3), new Vector2(.9f, 2.2f));
+        wallMats[RoomRule.Exit] = TexturedMat("Wallpaper / exit", C("5D7770"), WallpaperTexture(C("5D7770"), C("334B46"), 4), new Vector2(.9f, 2f));
+
+        floorMats[RoomRule.Lobby] = TexturedMat("Carpet / lobby", C("51472F"), CarpetTexture(C("51472F"), 0), new Vector2(2.8f, 2.8f));
+        floorMats[RoomRule.Shift] = TexturedMat("Carpet / level 0", C("4B4330"), CarpetTexture(C("4B4330"), 1), new Vector2(2.8f, 2.8f));
+        floorMats[RoomRule.Office] = TexturedMat("Carpet / office", C("5B5037"), CarpetTexture(C("5B5037"), 2), new Vector2(2.8f, 2.8f));
+        floorMats[RoomRule.Run] = TexturedMat("Carpet / red run", C("3A1E22"), CarpetTexture(C("3A1E22"), 3), new Vector2(2.5f, 2.5f));
+        floorMats[RoomRule.Exit] = TexturedMat("Carpet / exit", C("283A38"), CarpetTexture(C("283A38"), 4), new Vector2(2.8f, 2.8f));
+
+        ceilingMats[RoomRule.Lobby] = Mat("Ceiling / lobby", C("777266"));
+        ceilingMats[RoomRule.Shift] = Mat("Ceiling / level 0", C("696355"));
+        ceilingMats[RoomRule.Office] = Mat("Ceiling / office", C("807A6D"));
+        ceilingMats[RoomRule.Run] = Mat("Ceiling / red run", C("3B2427"));
+        ceilingMats[RoomRule.Exit] = Mat("Ceiling / exit", C("354846"));
+        trimMat = Mat("Aged wall trim", C("716440"));
+        seamMat = Mat("Wallpaper seam", C("81744A"));
+        fixtureMat = Mat("Fluorescent diffuser", C("F7F2D8"), true);
+
+        // Keep the room readable through local fixtures rather than flooding the
+        // whole map with a flat grey/yellow ambient wash.  Trilight gives the
+        // unlit side of the walls a cool ceiling bounce and a much darker floor
+        // bounce, which is closer to a real fluorescent room and keeps doorways
+        // and corners from looking like unlit solid-colour blocks.
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+        // Set ambientLight first: in Unity's built-in renderer this property is
+        // an alias for the sky colour and would otherwise overwrite it.
+        RenderSettings.ambientLight = new Color(.10f, .095f, .075f);
+        RenderSettings.ambientSkyColor = C("5B5E5A");
+        RenderSettings.ambientEquatorColor = C("26221B");
+        RenderSettings.ambientGroundColor = C("0F0D0A");
+        RenderSettings.reflectionIntensity = .25f;
+        RenderSettings.fog = true; RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogColor = C("1B1A17"); RenderSettings.fogDensity = .024f;
+        QualitySettings.shadowDistance = 48f;
+        QualitySettings.shadowCascades = 4;
+        var fill = new GameObject("Soft ambient direction").AddComponent<Light>();
+        fill.transform.SetParent(world);
+        fill.type = LightType.Directional; fill.intensity = .10f; fill.color = C("C4D0CC");
+        fill.shadows = LightShadows.Soft;
+        fill.shadowStrength = .22f;
+        fill.shadowBias = .045f;
+        fill.shadowNormalBias = .28f;
+        fill.shadowNearPlane = .1f;
+        fill.transform.rotation = Quaternion.Euler(70f, -30f, 0f);
+        foreach (var r in level.Rooms)
+        {
+            float height = r.Rule == RoomRule.Run ? 4.8f : r.Rule == RoomRule.Office ? 3.5f : 2.9f;
+            var center = V(r.Center);
+            Box(r.Name + " / floor", center + Vector3.down * .12f, new Vector3(12f, .24f, 10f), FloorMaterial(r.Rule));
+            Box(r.Name + " / ceiling", center + Vector3.up * (height + .1f), new Vector3(12f, .2f, 10f), CeilingMaterial(r.Rule));
+            BuildRoomTrim(r, height);
+            for (int i = 0; i < 3; i++)
+            {
+                var lampPos = new Vector3(r.Interior.xMin + 2f + i * 3.3f, height - .08f, 5f);
+                var fixture = Box(r.Name + " / fluorescent fixture", lampPos, new Vector3(1.7f, .1f, .36f), r.Rule == RoomRule.Run ? yellowMat : fixtureMat);
+                var light = new GameObject("Room light").AddComponent<Light>();
+                light.transform.SetParent(world); light.transform.position = lampPos - Vector3.up * .28f;
+                light.type = LightType.Point;
+                // Point lights naturally fall off with distance.  The lower
+                // ranges and intensities make each fluorescent fixture read as
+                // a small pool of light, leaving the seams, trim and corners in
+                // believable shade instead of evenly lighting the whole room.
+                light.range = r.Rule == RoomRule.Shift ? 5.7f : r.Rule == RoomRule.Run ? 6.2f : r.Rule == RoomRule.Office ? 6.8f : 6.4f;
+                light.intensity = r.Rule == RoomRule.Shift ? .78f : r.Rule == RoomRule.Run ? 1.15f : r.Rule == RoomRule.Office ? 1.25f : .98f;
+                light.color = r.Rule == RoomRule.Run ? C("D8493D") : r.Rule == RoomRule.Shift ? C("B9B694") : r.Rule == RoomRule.Office ? C("FFE1B1") : r.Rule == RoomRule.Exit ? C("A9D7D0") : C("E6D5A7");
+                light.shadows = LightShadows.Soft;
+                light.shadowStrength = r.Rule == RoomRule.Run ? .82f : .67f;
+                light.shadowBias = .035f;
+                light.shadowNormalBias = .18f;
+                light.shadowNearPlane = .06f;
+                light.bounceIntensity = .18f;
+                var flicker = light.gameObject.AddComponent<FrontRoomsLightFlicker>();
+                flicker.baseIntensity = light.intensity;
+                flicker.rule = r.Rule;
+                flicker.seed = r.Id * 17 + i * 31;
+            }
+            if (r.Rule != RoomRule.Run && r.Rule != RoomRule.Exit)
+            {
+                var notePos = V(FrontRoomsLevel.CenterOf(r.TellTile), 1.15f);
+                var stand = Box("Note stand", notePos + Vector3.down * .57f, new Vector3(.1f, 1.1f, .1f), darkMat);
+                var board = Box("Readable note", notePos, new Vector3(.09f, .72f, .62f), whiteMat);
+                noteObjects[r.Id] = board.GetComponent<Renderer>();
+                for (int n = 0; n < 3; n++) Box("Ink on note", notePos + new Vector3(-.052f, .18f - n * .14f, 0f), new Vector3(.008f, .025f, .4f), darkMat);
+            }
+            if (r.HasKey)
+            {
+                var g = new GameObject("Office key"); g.transform.SetParent(world); g.transform.position = V(FrontRoomsLevel.CenterOf(r.KeyTile), .85f);
+                var key = Box("Key shaft", g.transform.position, new Vector3(.6f, .07f, .07f), yellowMat); key.transform.SetParent(g.transform);
+                var tooth = Box("Key tooth", g.transform.position + new Vector3(.22f, -.08f, 0f), new Vector3(.08f, .2f, .07f), yellowMat); tooth.transform.SetParent(g.transform);
+                var bow = GameObject.CreatePrimitive(PrimitiveType.Sphere); bow.name = "Key bow"; bow.transform.SetParent(g.transform); bow.transform.localPosition = new Vector3(-.35f, 0f, 0f); bow.transform.localScale = Vector3.one * .25f; bow.GetComponent<Renderer>().sharedMaterial = yellowMat;
+                keyObjects[r.Id] = g;
+            }
+            if (r.Rule == RoomRule.Office)
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    // Decorative desk islands leave both perimeter lanes clear.
+                    Box("Desk top", new Vector3(28f + i * 2.6f, .72f, 5.9f), new Vector3(1.7f, .12f, 1f), darkMat);
+                    Box("Desk pedestal", new Vector3(28f + i * 2.6f, .32f, 5.9f), new Vector3(.4f, .64f, .5f), darkMat);
+                }
+            }
+            for (int i = 0; i < 5 && r.Rule != RoomRule.Exit; i++)
+                Box("Footprint", new Vector3(r.Interior.xMin + .8f + i * .5f, .013f, 3.5f + (i % 2 == 0 ? .12f : -.12f)), new Vector3(.19f, .015f, .1f), darkMat);
+        }
+        BuildContinuousWallSlabs();
+        foreach (var o in level.Openings)
+        {
+            var center = V(o.Center);
+            var slab = Box(o.Kind.ToString(), center + Vector3.up * 1.2f, new Vector3(.3f, 2.4f, o.Tiles.Count), o.Kind == OpeningKind.Window ? glassMat : o.Kind == OpeningKind.Door ? darkMat : wallMat);
+            openingObjects[o.Id] = slab;
+            if (o.Kind == OpeningKind.Hall) slab.SetActive(o.Sealed);
+            Box("Lintel", center + Vector3.up * 2.65f, new Vector3(1f, .5f, o.Tiles.Count), wallMat);
+            if (o.Kind == OpeningKind.Door) Box("Brass lock", center + new Vector3(-.17f, 1.15f, -.55f), new Vector3(.06f, .18f, .18f), yellowMat).transform.SetParent(slab.transform, true);
+            if (o.Kind == OpeningKind.Window)
+                for (int n = -1; n <= 1; n++) Box("Glass frame", center + new Vector3(0f, 1.2f, n * o.Tiles.Count * .45f), new Vector3(.38f, 2.4f, .06f), darkMat).transform.SetParent(slab.transform, true);
+        }
+        Box("Exit light", new Vector3(58f, .025f, 5.5f), new Vector3(2f, .05f, 3f), Mat("Exit glow", C("B2F6DA"), true));
+        cam = new GameObject("First-person camera").AddComponent<Camera>();
+        cam.fieldOfView = 76f; cam.nearClipPlane = .06f; cam.farClipPlane = 80f;
+        cam.allowHDR = true;
+        cam.allowMSAA = true;
+        cam.useOcclusionCulling = true;
+        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = C("22231C"); cam.gameObject.AddComponent<AudioListener>();
+        hunter = new GameObject("Hunter").transform; hunter.SetParent(world);
+        var body = GameObject.CreatePrimitive(PrimitiveType.Capsule); body.transform.SetParent(hunter); body.transform.localPosition = new Vector3(0f, 1.05f, 0f); body.transform.localScale = new Vector3(.65f, 1.05f, .65f); body.GetComponent<Renderer>().sharedMaterial = darkMat;
+        var head = GameObject.CreatePrimitive(PrimitiveType.Sphere); head.transform.SetParent(hunter); head.transform.localPosition = new Vector3(0f, 2.03f, 0f); head.transform.localScale = Vector3.one * .46f; head.GetComponent<Renderer>().sharedMaterial = whiteMat;
+        PositionView();
+    }
+
+    void RebindSerializedWorld()
+    {
+        if (world == null) return;
+        var direct = new Dictionary<string, List<GameObject>>();
+        foreach (Transform child in world)
+        {
+            if (!direct.TryGetValue(child.name, out var list)) direct[child.name] = list = new List<GameObject>();
+            list.Add(child.gameObject);
+        }
+
+        GameObject[] candidates(string name)
+        {
+            return direct.TryGetValue(name, out var list) ? list.ToArray() : Array.Empty<GameObject>();
+        }
+        var halls = candidates("Hall");
+        var doors = candidates("Door");
+        var windows = candidates("Window");
+        var hallIndex = 0;
+        var doorIndex = 0;
+        var windowIndex = 0;
+        foreach (var opening in level.Openings)
+        {
+            var source = opening.Kind == OpeningKind.Hall ? halls : opening.Kind == OpeningKind.Door ? doors : windows;
+            var index = opening.Kind == OpeningKind.Hall ? hallIndex++ : opening.Kind == OpeningKind.Door ? doorIndex++ : windowIndex++;
+            if (index >= source.Length) continue;
+            openingObjects[opening.Id] = source[index];
+            source[index].SetActive(opening.Kind == OpeningKind.Hall ? opening.Sealed : true);
+            var renderer = source[index].GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                if (opening.Kind == OpeningKind.Window && glassMat == null) glassMat = renderer.sharedMaterial;
+                if (opening.Kind == OpeningKind.Door && darkMat == null) darkMat = renderer.sharedMaterial;
+            }
+        }
+
+        var keysFound = candidates("Office key");
+        var keyIndex = 0;
+        foreach (var room in level.Rooms)
+            if (room.HasKey && keyIndex < keysFound.Length) keyObjects[room.Id] = keysFound[keyIndex++];
+
+        var notesFound = candidates("Readable note");
+        var noteIndex = 0;
+        foreach (var room in level.Rooms)
+        {
+            if (room.Rule == RoomRule.Run || room.Rule == RoomRule.Exit) continue;
+            if (noteIndex >= notesFound.Length) break;
+            var renderer = notesFound[noteIndex++].GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                noteObjects[room.Id] = renderer;
+                if (whiteMat == null) whiteMat = renderer.sharedMaterial;
+            }
+        }
+
+        if (yellowMat == null)
+        {
+            var lockObject = world.GetComponentsInChildren<Transform>(true);
+            foreach (var t in lockObject)
+            {
+                if (t.name != "Brass lock" && t.name != "Key shaft") continue;
+                var renderer = t.GetComponent<Renderer>();
+                if (renderer != null) { yellowMat = renderer.sharedMaterial; break; }
+            }
+        }
+        if (cam == null) cam = world.GetComponentInChildren<Camera>(true);
+        if (hunter == null) hunter = world.Find("Hunter");
+        PositionView();
+    }
+
+    /// <summary>
+    /// The first greybox made one cube per wall tile. That read as a row of
+    /// pillars in first person. Merge adjacent wall cells into continuous
+    /// slabs, breaking only at openings and room-material changes, so the
+    /// wallpaper reads as an actual building surface.
+    /// </summary>
+    void BuildContinuousWallSlabs()
+    {
+        var used = new bool[level.Width, level.Height];
+        for (var y = 0; y < level.Height; y++)
+        {
+            for (var x = 0; x < level.Width; x++)
+            {
+                if (used[x, y] || level.Tiles[x, y] != TileKind.Wall) continue;
+                var room = WallRoomAt(x, y);
+                var horizontalNeighbor = IsWall(x - 1, y) || IsWall(x + 1, y);
+                var verticalNeighbor = IsWall(x, y - 1) || IsWall(x, y + 1);
+
+                if (horizontalNeighbor || !verticalNeighbor)
+                {
+                    var end = x;
+                    while (end + 1 < level.Width && !used[end + 1, y] && IsWall(end + 1, y) && SameWallRoom(room, WallRoomAt(end + 1, y))) end++;
+                    MarkWallRun(used, x, end, y, y);
+                    AddWallSlab(room, x, end, y, y);
+                }
+                else
+                {
+                    var end = y;
+                    while (end + 1 < level.Height && !used[x, end + 1] && IsWall(x, end + 1) && SameWallRoom(room, WallRoomAt(x, end + 1))) end++;
+                    MarkWallRun(used, x, x, y, end);
+                    AddWallSlab(room, x, x, y, end);
+                }
+            }
+        }
+    }
+
+    bool IsWall(int x, int y) => x >= 0 && y >= 0 && x < level.Width && y < level.Height && level.Tiles[x, y] == TileKind.Wall;
+
+    FrontRoom WallRoomAt(int x, int y)
+    {
+        var around = new[] { Vector2Int.left, Vector2Int.right, Vector2Int.down, Vector2Int.up };
+        foreach (var d in around)
+        {
+            var p = new Vector2Int(x + d.x, y + d.y);
+            if (!level.InBounds(p)) continue;
+            var room = level.RoomOf(p);
+            if (room != null) return room;
+        }
+        return level.Rooms[Mathf.Clamp(x / FrontRoomsLevel.CellW, 0, level.Rooms.Count - 1)];
+    }
+
+    static bool SameWallRoom(FrontRoom a, FrontRoom b) => a == null || b == null || a.Rule == b.Rule;
+
+    void MarkWallRun(bool[,] used, int x0, int x1, int y0, int y1)
+    {
+        for (var x = x0; x <= x1; x++)
+            for (var y = y0; y <= y1; y++)
+                used[x, y] = true;
+    }
+
+    void AddWallSlab(FrontRoom room, int x0, int x1, int y0, int y1)
+    {
+        var h = room.Rule == RoomRule.Run ? 4.8f : room.Rule == RoomRule.Office ? 3.5f : 2.9f;
+        var center = new Vector3((x0 + x1 + 1f) * .5f, h * .5f, (y0 + y1 + 1f) * .5f);
+        var scale = new Vector3(x1 - x0 + 1f, h, y1 - y0 + 1f);
+        var slab = Box(room.Name + " / continuous wallpaper", center, scale, WallMaterial(room.Rule));
+
+        // A cube's default UVs are 0..1 regardless of its transform scale.  Set
+        // the wallpaper transform from the slab's actual dimensions so a 1-cell
+        // wall and a 4-cell wall keep the same physical paper repeat.  This also
+        // makes every generated slab a useful, editable material instance in the
+        // serialized scene rather than relying on one global stretched material.
+        var renderer = slab.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            var material = new Material(WallMaterial(room.Rule));
+            material.name = room.Name + " / wallpaper material (" + (x1 - x0 + 1) + "x" + (y1 - y0 + 1) + ")";
+            var horizontal = x1 > x0 || y1 == y0;
+            var runLength = horizontal ? scale.x : scale.z;
+            const float paperRepeatX = 2.25f;
+            const float paperRepeatY = 2.4f;
+            material.mainTextureScale = new Vector2(Mathf.Max(.25f, runLength / paperRepeatX), Mathf.Max(.25f, h / paperRepeatY));
+            // Keep the paper pattern phase continuous across adjacent slabs.
+            var runStart = horizontal ? x0 : y0;
+            material.mainTextureOffset = new Vector2(runStart / paperRepeatX, 0f);
+            renderer.sharedMaterial = material;
+        }
+    }
+
+    void BuildRoomTrim(FrontRoom room, float height)
+    {
+        // A narrow baseboard and ceiling shadow line keep the large repeated rooms
+        // readable in first person without introducing furniture that blocks routes.
+        var x0 = room.Interior.xMin + .06f;
+        var x1 = room.Interior.xMax - .06f;
+        var z0 = room.Interior.yMin + .06f;
+        var z1 = room.Interior.yMax - .06f;
+        var width = room.Interior.width - .12f;
+        var depth = room.Interior.height - .12f;
+        Box(room.Name + " / baseboard front", new Vector3(room.Center.x, .18f, z0), new Vector3(width, .16f, .08f), trimMat);
+        Box(room.Name + " / baseboard back", new Vector3(room.Center.x, .18f, z1), new Vector3(width, .16f, .08f), trimMat);
+        Box(room.Name + " / baseboard left", new Vector3(x0, .18f, room.Center.y), new Vector3(.08f, .16f, depth), trimMat);
+        Box(room.Name + " / baseboard right", new Vector3(x1, .18f, room.Center.y), new Vector3(.08f, .16f, depth), trimMat);
+        for (var i = 1; i < 4; i++)
+        {
+            var x = room.Interior.xMin + room.Interior.width * i / 4f;
+            Box(room.Name + " / paper seam", new Vector3(x, height * .5f, z0 + .045f), new Vector3(.028f, height * .82f, .012f), seamMat);
+            Box(room.Name + " / paper seam", new Vector3(x, height * .5f, z1 - .045f), new Vector3(.028f, height * .82f, .012f), seamMat);
+        }
+    }
+    void BuildSound()
+    {
+        playerStepClip = FrontRoomsAudio.PlayerStep(); playerRunStepClip = FrontRoomsAudio.PlayerRunStep(); hunterStepClip = FrontRoomsAudio.HunterStep();
+        glassClip = FrontRoomsAudio.Glass(); keyClip = FrontRoomsAudio.Key();
+        doorClip = FrontRoomsAudio.DoorOpen(); slamClip = FrontRoomsAudio.DoorSlam(); bangClip = FrontRoomsAudio.DoorBang();
+        caughtClip = FrontRoomsAudio.Caught(); escapeClip = FrontRoomsAudio.Escape();
+        hum = cam.gameObject.AddComponent<AudioSource>(); hum.clip = FrontRoomsAudio.Hum(); hum.loop = true; hum.volume = .18f; hum.Play();
+    }
+    void Sound(AudioClip clip, Vector2 p, float volume = .7f)
+    {
+        var g = new GameObject("Spatial sound"); g.transform.position = V(p, 1f);
+        var source = g.AddComponent<AudioSource>(); source.clip = clip; source.spatialBlend = 1f; source.minDistance = 2f; source.maxDistance = 26f; source.volume = volume; source.Play();
+        Destroy(g, clip.length + .1f);
+    }
+
+    void HunterSound(Vector2 p, float volume)
+    {
+        var g = new GameObject("Hunter footstep / spatial"); g.transform.position = V(p, .45f);
+        var source = g.AddComponent<AudioSource>();
+        source.clip = hunterStepClip;
+        source.spatialBlend = 1f;
+        source.minDistance = 1.25f;
+        source.maxDistance = 32f;
+        source.rolloffMode = AudioRolloffMode.Logarithmic;
+        source.dopplerLevel = .15f;
+        source.spread = 28f;
+        source.priority = 64;
+        source.volume = volume;
+        var low = g.AddComponent<AudioLowPassFilter>();
+        low.cutoffFrequency = 1450f;
+        low.lowpassResonanceQ = 1.1f;
+        source.Play();
+        Destroy(g, hunterStepClip.length + .1f);
+    }
+    Font UiFont(string name, int fontSize)
+    {
+        if (name.Contains("Room meta") || name.Contains("Distance") || name.Contains("Aim")) return monoFont;
+        if (name.Contains("Threat") || name.Contains("Menu text")) return bayonFont;
+        return serifFont;
+    }
+    Text Text(Transform parent, string name, Vector2 anchor, Vector2 pos, Vector2 size, int fontSize, TextAnchor alignment)
+    {
+        var g = new GameObject(name); g.transform.SetParent(parent, false); var t = g.AddComponent<Text>();
+        t.font = UiFont(name, fontSize); t.fontSize = fontSize; t.color = C("ECEAE0"); t.alignment = alignment; t.raycastTarget = false;
+        t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Overflow;
+        var rt = t.rectTransform; rt.anchorMin = rt.anchorMax = anchor; rt.pivot = anchor; rt.anchoredPosition = pos; rt.sizeDelta = size;
+        t.lineSpacing = 1f;
+        if (name != "Menu text") g.AddComponent<Outline>().effectColor = new Color(0, 0, 0, .7f); return t;
+    }
+    GameObject Panel(Transform parent, string name, Vector2 anchor, Vector2 pos, Vector2 size, Color color)
+    {
+        var g = new GameObject(name); g.transform.SetParent(parent, false); var image = g.AddComponent<Image>(); image.color = color; image.raycastTarget = false;
+        var rt = image.rectTransform; rt.anchorMin = rt.anchorMax = anchor; rt.pivot = anchor; rt.anchoredPosition = pos; rt.sizeDelta = size;
+        return g;
+    }
+    void LoadBrandLogo()
+    {
+        var texture = Resources.Load<Texture2D>("Brand/FrontRoomsLogo");
+        if (texture == null) return;
+        brandLogo = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(.5f, .5f), 100f);
+        brandLogo.name = "FrontRooms brand logo (runtime)";
+        if (logoImage != null)
+        {
+            logoImage.sprite = brandLogo;
+            logoImage.preserveAspect = true;
+            logoImage.color = Color.white;
+        }
+    }
+    GameObject TypographyGroup(Transform parent, string name, Vector2 anchor, Vector2 pos, Vector2 size)
+    {
+        // A RectTransform-only group keeps the HUD typography positioned without
+        // introducing a visible card behind information that belongs to the world.
+        var g = new GameObject(name); g.transform.SetParent(parent, false);
+        var rt = g.AddComponent<RectTransform>(); rt.anchorMin = rt.anchorMax = anchor; rt.pivot = anchor; rt.anchoredPosition = pos; rt.sizeDelta = size;
+        return g;
+    }
+    GameObject Rule(Transform parent, string name, Vector2 anchor, Vector2 pos, Vector2 size, Color color)
+    {
+        return Panel(parent, name, anchor, pos, size, color);
+    }
+    void BuildHud()
+    {
+        var g = new GameObject("Minimal HUD"); var c = g.AddComponent<Canvas>(); c.renderMode = RenderMode.ScreenSpaceOverlay; c.pixelPerfect = true;
+        var scale = g.AddComponent<CanvasScaler>(); scale.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; scale.referenceResolution = new Vector2(1920, 1080); scale.matchWidthOrHeight = .5f;
+        var media = new Color(.078f, .078f, .078f, .9f);
+        var paper = C("F4F1E8");
+        var accent = C("F4DF3B");
+
+        // The play HUD follows the 72px outer margin and 24px internal rhythm from UI_SYSTEM.
+        // Room and threat are direct typography overlays. Their cards obscured the
+        // environment and allowed long room names to bleed past the top-left edge.
+        roomPanel = TypographyGroup(g.transform, "Room typography", new Vector2(0, 1), new Vector2(72, -72), new Vector2(720, 144));
+        Rule(roomPanel.transform, "Room accent", new Vector2(0, 1), new Vector2(0, -24), new Vector2(4, 72), accent);
+        roomMetaText = Text(roomPanel.transform, "Room meta", new Vector2(0, 1), new Vector2(24, -18), new Vector2(660, 22), 13, TextAnchor.UpperLeft);
+        roomMetaText.color = C("BDBAB0");
+        roomText = Text(roomPanel.transform, "Room", new Vector2(0, 1), new Vector2(24, -44), new Vector2(660, 72), 50, TextAnchor.UpperLeft);
+        roomText.color = paper;
+        roomText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        roomText.verticalOverflow = VerticalWrapMode.Overflow;
+
+        threatPanel = TypographyGroup(g.transform, "Threat typography", Vector2.one, new Vector2(-72, -72), new Vector2(720, 144));
+        Rule(threatPanel.transform, "Threat accent", new Vector2(1, 1), new Vector2(0, -24), new Vector2(4, 72), accent);
+        threatStateText = Text(threatPanel.transform, "Threat state", new Vector2(1, 1), new Vector2(-24, -18), new Vector2(660, 34), 20, TextAnchor.UpperRight);
+        threatStateText.color = accent; threatStateText.fontStyle = FontStyle.Bold;
+        threatStateText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        threatStateText.verticalOverflow = VerticalWrapMode.Truncate;
+        distanceText = Text(threatPanel.transform, "Distance", new Vector2(1, 1), new Vector2(-24, -57), new Vector2(660, 24), 13, TextAnchor.UpperRight);
+        distanceText.color = C("BDBAB0");
+        distanceText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        distanceText.verticalOverflow = VerticalWrapMode.Truncate;
+
+        contextPanel = Panel(g.transform, "Context panel", new Vector2(.5f, 0), new Vector2(0, 72), new Vector2(920, 120), media);
+        Rule(contextPanel.transform, "Context accent", new Vector2(0, .5f), new Vector2(24, 0), new Vector2(4, 72), accent);
+        contextText = Text(contextPanel.transform, "Context", new Vector2(.5f, .5f), new Vector2(12, 0), new Vector2(790, 72), 24, TextAnchor.MiddleCenter);
+        contextText.color = paper;
+
+        crosshair = Text(g.transform, "Aim", new Vector2(.5f, .5f), Vector2.zero, new Vector2(32, 32), 20, TextAnchor.MiddleCenter); crosshair.text = "·";
+        crosshair.color = accent;
+        journalPanel = Panel(g.transform, "Notes panel", new Vector2(.5f, .5f), Vector2.zero, new Vector2(1296, 744), new Color(.055f, .055f, .05f, .96f));
+        Rule(journalPanel.transform, "Notes accent", new Vector2(0, 1), new Vector2(48, -48), new Vector2(4, 120), accent);
+        notebook = Text(journalPanel.transform, "Notebook", new Vector2(0, 1), new Vector2(96, -56), new Vector2(1110, 620), 24, TextAnchor.UpperLeft);
+        notebook.color = paper;
+        journalPanel.SetActive(false);
+        overlay = new GameObject("Menu"); overlay.transform.SetParent(g.transform, false); var image = overlay.AddComponent<Image>();
+        // The supplied brand SVG is a black mark. Keep the title surface light so
+        // the original artwork remains legible without recolouring the logo asset.
+        image.color = new Color(.93f, .92f, .88f, .98f);
+        var rt = image.rectTransform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
+        overlayText = Text(overlay.transform, "Menu text", new Vector2(.5f, .5f), Vector2.zero, new Vector2(1440, 760), 20, TextAnchor.MiddleCenter);
+        overlayText.color = C("0A0A0A");
+        overlayText.rectTransform.anchoredPosition = new Vector2(0f, -170f);
+        logoImage = Panel(overlay.transform, "FrontRooms brand logo", new Vector2(.5f, 1f), new Vector2(0f, -160f), new Vector2(965f, 192f), Color.white).GetComponent<Image>();
+        logoImage.raycastTarget = false;
+        LoadBrandLogo();
+    }
+    void SetPhase(Phase p)
+    {
+        phase = p; bool playing = p == Phase.Playing;
+        overlay.SetActive(!playing); crosshair.enabled = playing;
+        if (logoImage != null) logoImage.gameObject.SetActive(p == Phase.Title);
+        if (roomPanel != null) roomPanel.SetActive(playing);
+        if (threatPanel != null) threatPanel.SetActive(playing);
+        if (contextPanel != null) contextPanel.SetActive(false);
+        if (journalPanel != null) journalPanel.SetActive(false);
+        Cursor.lockState = playing && testDir == null ? CursorLockMode.Locked : CursorLockMode.None; Cursor.visible = !playing;
+        if (p == Phase.Title) overlayText.text = "<size=24>READ THE ROOM / CHOOSE AN EXIT</size>\n\n<size=16>WASD  MOVE    MOUSE  LOOK    SHIFT  RUN\nHOLD E  READ OR BREAK    E  OPEN KEYED DOOR\nTAB  NOTES    ESC  PAUSE</size>\n\n<color=#F4DF3B><size=20>SPACE  START</size></color>";
+        if (p == Phase.Paused) overlayText.text = "<size=88><b>PAUSED</b></size>\n\n<size=13>WASD  MOVE    MOUSE  LOOK    SHIFT  RUN\nHOLD E  READ OR BREAK    E  OPEN KEYED DOOR\nTAB  NOTES    R  RESTART</size>\n\n<color=#F4DF3B><size=20>ESC  RESUME</size></color>";
+        if (p == Phase.Escaped || p == Phase.Caught)
+            overlayText.text = "<size=88><b>" + (p == Phase.Escaped ? "ESCAPED" : "CAUGHT") + "</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  " + notesRead + " NOTES</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
+    }
+    void StartGame() { elapsed = 0; manualStarted = true; SetPhase(Phase.Playing); Event("start", "first-person"); }
+    void OnApplicationFocus(bool focused) { if (!focused && phase == Phase.Playing && testDir == null) SetPhase(Phase.Paused); }
+    void Update()
+    {
+        if (!Application.isPlaying) return;
+        if (testDir == null)
+        {
+            if (phase == Phase.Title && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) StartGame();
+            else if (Input.GetKeyDown(KeyCode.Escape) && (phase == Phase.Playing || phase == Phase.Paused)) SetPhase(phase == Phase.Playing ? Phase.Paused : Phase.Playing);
+            if (Input.GetKeyDown(KeyCode.R) && phase != Phase.Playing && phase != Phase.Title) { restart = true; SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
+            if (Input.GetKeyDown(KeyCode.Tab) && phase == Phase.Playing) journal = !journal;
+        }
+        if (phase == Phase.Playing)
+        {
+            float dt = Mathf.Min(Time.deltaTime, .1f); elapsed += dt; flashTime -= dt;
+            if (testDir == null) { yaw += Input.GetAxisRaw("Mouse X") * 2.1f; pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * 2.1f, -75f, 75f); }
+            var local = testDir == null ? new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")) : Vector2.zero;
+            var forward = new Vector2(Mathf.Sin(yaw * Mathf.Deg2Rad), Mathf.Cos(yaw * Mathf.Deg2Rad));
+            var right = new Vector2(forward.y, -forward.x);
+            var move = testDir == null ? right * local.x + forward * local.y : testMove;
+            bool sprint = testDir == null ? Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift) : testRun;
+            bool interact = testDir == null ? Input.GetKey(KeyCode.E) : testInteract;
+            if (actionTime > 0f && interact) move = Vector2.zero;
+            var before = playerPos;
+            playerPos = Move(playerPos, move.normalized * (sprint ? Run : Walk) * dt);
+            if (Vector2.Distance(before, playerPos) > .001f)
+            {
+                stepTime += dt;
+                if (stepTime > (sprint ? .3f : .5f))
+                {
+                    stepTime = 0;
+                    Sound(sprint ? playerRunStepClip : playerStepClip, playerPos, sprint ? .48f : .15f);
+                    if (sprint) Noise(playerPos, 7f, "running");
+                }
+            }
+            var next = level.RoomOf(FrontRoomsLevel.TileOf(playerPos));
+            if (next != null && next != room) { room = next; transitions++; Event("room", room.Name); if (room.Rule == RoomRule.Run) { Noise(playerPos, 999f, "alarm"); Flash("Run. Break the window ahead."); } }
+            PositionView(); Interactions(interact, dt); UpdateDoors(dt); UpdateShift(dt); UpdateHunter(dt);
+            if (phase == Phase.Playing && level.ExitTiles.Contains(FrontRoomsLevel.TileOf(playerPos))) End(true);
+        }
+        PositionView(); UpdateHud();
+    }
+    Vector2 Move(Vector2 pos, Vector2 delta)
+    {
+        int steps = Mathf.Max(1, Mathf.CeilToInt(delta.magnitude / .15f)); var d = delta / steps;
+        for (int i = 0; i < steps; i++)
+        {
+            var nx = pos + new Vector2(d.x, 0); if (Free(nx)) pos = nx;
+            var ny = pos + new Vector2(0, d.y); if (Free(ny)) pos = ny;
+        }
+        return pos;
+    }
+    bool Free(Vector2 p)
+    {
+        for (int i = 0; i < 4; i++) if (!level.PlayerPassable(FrontRoomsLevel.TileOf(p + new Vector2(i % 2 == 0 ? -Radius : Radius, i < 2 ? -Radius : Radius)))) return false;
+        // Match the visible office desk islands, keeping the front and back routes clear.
+        for (int i = 0; i < 3; i++) if (Mathf.Abs(p.x - (28f + i * 2.6f)) < .85f + Radius && Mathf.Abs(p.y - 5.9f) < .5f + Radius) return false;
+        return true;
+    }
+    void PositionView()
+    {
+        cam.transform.position = V(playerPos, 1.62f); cam.transform.rotation = Quaternion.Euler(pitch, yaw, 0);
+        hunter.position = V(hunterPos); hunter.rotation = Quaternion.Euler(0, Mathf.Atan2(playerPos.x - hunterPos.x, playerPos.y - hunterPos.y) * Mathf.Rad2Deg, 0);
+    }
+    bool Looking(Vector2 p, float reach)
+    {
+        var delta = p - playerPos;
+        if (delta.magnitude > reach) return false;
+        if (delta.magnitude < .35f) return true;
+        return Vector2.Dot(delta.normalized, P(cam.transform.forward).normalized) > .72f;
+    }
+    float Distance(FrontOpening o, Vector2 p)
+    {
+        float best = float.MaxValue;
+        foreach (var t in o.Tiles) best = Mathf.Min(best, Vector2.Distance(p, FrontRoomsLevel.CenterOf(t)));
+        return best;
+    }
+    FrontOpening NearOpening()
+    {
+        FrontOpening best = null; float distance = 2f;
+        foreach (var o in room.AllOpenings)
+        {
+            if (o.Kind == OpeningKind.Hall || o.Open) continue;
+            float d = Distance(o, playerPos);
+            if (d < distance && Looking(o.Center, 2.5f)) { best = o; distance = d; }
+        }
+        return best;
+    }
+    void Interactions(bool holding, float dt)
+    {
+        foreach (var r in level.Rooms)
+            if (r.HasKey && !r.KeyTaken && Vector2.Distance(playerPos, FrontRoomsLevel.CenterOf(r.KeyTile)) < .9f)
+            {
+                r.KeyTaken = true; keys.Add(r.Id); keyObjects[r.Id].SetActive(false); Sound(keyClip, playerPos); Noise(playerPos, 10f, "key"); Event("key", r.Name); Flash("Key taken.");
+            }
+        string id = ""; float duration = 1.5f; var o = NearOpening();
+        bool note = noteObjects.ContainsKey(room.Id) && !room.Read && Looking(FrontRoomsLevel.CenterOf(room.TellTile), 2f);
+        if (o != null)
+        {
+            if (o.Kind == OpeningKind.Door)
+            {
+                if (holding && keys.Contains(o.Owner.Id)) { o.Open = true; openingObjects[o.Id].SetActive(false); Noise(o.Center, 5f, "door"); Sound(doorClip, o.Center); Event("door_open", o.Id.ToString()); }
+            }
+            else { id = "window" + o.Id; duration = 1f; }
+        }
+        else if (note) id = "note" + room.Id;
+        if (!holding || id == "") { actionTime = 0; actionIdentity = ""; return; }
+        if (actionIdentity != id) { actionTime = 0; actionIdentity = id; Event("interaction_start", id); }
+        actionTime += dt;
+        if (actionTime < duration) return;
+        actionTime = 0; actionIdentity = "";
+        if (o != null && o.Kind == OpeningKind.Window)
+        {
+            o.Open = o.Broken = true; openingObjects[o.Id].SetActive(false); windowsBroken++;
+            Noise(o.Center, 999f, "glass"); Sound(glassClip, o.Center, 1f); Event("glass", o.Id.ToString()); Flash("The hunter heard the glass.");
+            for (int n = 0; n < 7; n++) Box("Broken glass", V(o.Center + new Vector2(UnityEngine.Random.Range(-.8f, .8f), UnityEngine.Random.Range(-1f, 1f)), .025f), new Vector3(.12f, .035f, .2f), glassMat);
+        }
+        else if (note)
+        {
+            room.Read = true; notesRead++; noteObjects[room.Id].sharedMaterial = yellowMat; Event("note", room.Name); Flash(room.RuleText, 7f);
+        }
+    }
+    void UpdateDoors(float dt)
+    {
+        foreach (var o in level.Openings)
+        {
+            if (o.Kind != OpeningKind.Door || !o.Open || o.Broken) continue;
+            if (Distance(o, playerPos) > 1.7f && Distance(o, hunterPos) > 1.3f) o.CloseTimer += dt; else o.CloseTimer = 0;
+            if (o.CloseTimer > .6f) { o.Open = false; o.CloseTimer = 0; openingObjects[o.Id].SetActive(true); Sound(slamClip, o.Center); }
+        }
+    }
+    void UpdateShift(float dt)
+    {
+        var a = level.Openings[2]; var b = level.Openings[3];
+        bool visible = Visible(a) || Visible(b);
+        bool occupied = Distance(a, playerPos) < 2f || Distance(b, playerPos) < 2f || Distance(a, hunterPos) < 2f || Distance(b, hunterPos) < 2f;
+        if (visible || occupied) { shiftTime = 0; shiftWarning = false; }
+        else
+        {
+            shiftTime += dt;
+            if (shiftTime > 5f) shiftWarning = true;
+            if (shiftTime > 6f)
+            {
+                a.Sealed = !a.Sealed; b.Sealed = !a.Sealed; openingObjects[a.Id].SetActive(a.Sealed); openingObjects[b.Id].SetActive(b.Sealed);
+                shiftTime = 0; shiftWarning = false; shifts++; Repath(hunterTarget); Event("shift", a.Sealed ? "upper" : "lower");
+            }
+        }
+        hum.volume = shiftWarning ? .025f : .18f;
+    }
+    bool Visible(FrontOpening o)
+    {
+        var viewport = cam.WorldToViewportPoint(V(o.Center, 1.4f));
+        if (viewport.z <= 0 || viewport.x < 0 || viewport.x > 1 || viewport.y < 0 || viewport.y > 1) return false;
+        var near = o.Center + (playerPos - o.Center).normalized * .8f;
+        return level.LineOfSight(playerPos, near);
+    }
+    void Noise(Vector2 p, float radius, string cause)
+    {
+        Event("noise", cause);
+        if (!released || Vector2.Distance(hunterPos, p) > radius || state == HunterState.Chase) return;
+        hunterTarget = p; if (state != HunterState.BreakDoor) SetHunter(HunterState.Hunt); Repath(hunterTarget);
+    }
+    void SetHunter(HunterState s) { if (s == state) return; state = s; stateTime = 0; Event("hunter", s.ToString()); }
+    void Repath(Vector2 p) { path = level.FindHunterPath(FrontRoomsLevel.TileOf(hunterPos), FrontRoomsLevel.TileOf(p)); repathTime = 0; }
+    void UpdateHunter(float dt)
+    {
+        if (!released)
+        {
+            if (elapsed < 10f) return;
+            released = true; hunterTarget = new Vector2(15.5f, 3.5f); SetHunter(HunterState.Hunt); Repath(hunterTarget);
+        }
+        stateTime += dt; repathTime += dt;
+        float distance = Vector2.Distance(hunterPos, playerPos);
+        bool sees = distance < 8f && level.LineOfSight(hunterPos, playerPos);
+        if (sees)
+        {
+            lastSeen = playerPos; lostTime = 0;
+            if (state != HunterState.Chase && state != HunterState.BreakDoor) { SetHunter(HunterState.Chase); Repath(lastSeen); }
+        }
+        var before = hunterPos;
+        switch (state)
+        {
+            case HunterState.Listen:
+                if (stateTime > 2f) { var r = level.RoomOf(FrontRoomsLevel.TileOf(hunterPos)); hunterTarget = level.Rooms[Mathf.Min(4, (r == null ? 0 : r.Id) + 1)].Center; SetHunter(HunterState.Hunt); Repath(hunterTarget); }
+                break;
+            case HunterState.Hunt: if (Follow(2.5f, dt)) SetHunter(HunterState.Search); break;
+            case HunterState.Search: if (stateTime > 2.5f) SetHunter(HunterState.Listen); break;
+            case HunterState.Chase:
+                if (repathTime > .25f) Repath(sees ? playerPos : lastSeen);
+                if (sees && distance < 1.5f) hunterPos = Vector2.MoveTowards(hunterPos, playerPos, 4f * dt); else Follow(4f, dt);
+                if (!sees) { lostTime += dt; if (lostTime > 1.5f) { hunterTarget = lastSeen; SetHunter(HunterState.Hunt); Repath(hunterTarget); } }
+                break;
+            case HunterState.BreakDoor:
+                hunterStepTime += dt;
+                if (hunterStepTime > .5f) { Sound(bangClip, breakingDoor.Center, 1f); hunterStepTime = 0; }
+                if (stateTime >= 2.5f)
+                {
+                    breakingDoor.Open = breakingDoor.Broken = true; openingObjects[breakingDoor.Id].SetActive(false); doorsBroken++;
+                    Event("door_broken", breakingDoor.Id.ToString()); breakingDoor = null; SetHunter(HunterState.Hunt); Repath(hunterTarget);
+                }
+                break;
+        }
+        if (Vector2.Distance(before, hunterPos) > .001f)
+        {
+            hunterStepTime += dt;
+            var cadence = state == HunterState.Chase ? .29f : .44f;
+            if (hunterStepTime > cadence)
+            {
+                hunterStepTime = 0;
+                var hunterDistance = Vector2.Distance(playerPos, hunterPos);
+                HunterSound(hunterPos, .36f + Mathf.Clamp01(1f - hunterDistance / 24f) * (state == HunterState.Chase ? .64f : .40f));
+            }
+        }
+        if (Vector2.Distance(hunterPos, playerPos) < .62f && level.LineOfSight(hunterPos, playerPos)) End(false);
+    }
+    bool Follow(float speed, float dt)
+    {
+        if (path.Count == 0) return true;
+        var next = path[0]; if (!level.CanHunterTraverse(next)) { Repath(hunterTarget); return false; }
+        var o = level.OpeningOf(next);
+        if (o != null && o.Kind == OpeningKind.Door && !o.Open) { breakingDoor = o; SetHunter(HunterState.BreakDoor); hunterStepTime = .5f; return false; }
+        var goal = FrontRoomsLevel.CenterOf(next); hunterPos = Vector2.MoveTowards(hunterPos, goal, speed * dt);
+        if (Vector2.Distance(hunterPos, goal) < .04f) path.RemoveAt(0);
+        return path.Count == 0;
+    }
+    void UpdateHud()
+    {
+        bool play = phase == Phase.Playing;
+        roomMetaText.text = play ? "ROOM " + (room.Id + 1).ToString("00") + "  /  ACTIVE" : "";
+        roomText.text = play ? Name(room).ToUpperInvariant() : "";
+        var hunterDistance = Mathf.RoundToInt(Vector2.Distance(playerPos, hunterPos));
+        var hunterLabel = !released ? "QUIET" : state.ToString().ToUpperInvariant();
+        threatStateText.text = play ? "THREAT  /  " + hunterLabel : "";
+        distanceText.text = play ? (released ? "HUNTER  " + hunterDistance + " M" : "HUNTER  /  OUT OF RANGE") : "";
+        crosshair.enabled = play && !journal;
+        contextText.text = "";
+        notebook.text = "";
+        if (journalPanel != null) journalPanel.SetActive(play && journal);
+        if (roomPanel != null) roomPanel.SetActive(play && !journal);
+        if (threatPanel != null) threatPanel.SetActive(play && !journal);
+        if (contextPanel != null) contextPanel.SetActive(false);
+        if (!play) return;
+        if (journal)
+        {
+            notebook.text = "<size=20><b>NOTES</b></size>\n\n";
+            foreach (var r in level.Rooms) if (r.Read) notebook.text += Name(r) + "\n" + r.RuleText + "\n\n";
+            if (notesRead == 0) notebook.text += "No notes yet.\n\n";
+            notebook.text += "<size=13>Tab  CLOSE    /    THE HUNTER KEEPS MOVING</size>";
+            return;
+        }
+        var o = NearOpening();
+        if (o != null)
+        {
+            if (o.Kind == OpeningKind.Door) contextText.text = keys.Contains(o.Owner.Id) ? "E  /  OPEN DOOR" : "LOCKED  /  FIND THE OFFICE KEY";
+            else contextText.text = actionTime > 0 ? "BREAKING GLASS  /  " + Mathf.RoundToInt(actionTime * 100f) + "%" : "HOLD E  /  BREAK GLASS";
+        }
+        else if (noteObjects.ContainsKey(room.Id) && !room.Read && Looking(FrontRoomsLevel.CenterOf(room.TellTile), 2f))
+            contextText.text = actionTime > 0 ? "READING  /  " + Mathf.RoundToInt(actionTime / 1.5f * 100f) + "%" : "HOLD E  /  READ NOTE";
+        else if (flashTime > 0) contextText.text = flash;
+        if (contextPanel != null) contextPanel.SetActive(play && contextText.text != "");
+    }
+    string Name(FrontRoom r) => r.Rule == RoomRule.Lobby ? "Lobby" : r.Rule == RoomRule.Shift ? "Level 0" : r.Rule == RoomRule.Office ? "Level 4 / Office" : r.Rule == RoomRule.Run ? "Level ! / Run" : "Exit";
+    void Flash(string message, float duration = 3f) { flash = message; flashTime = duration; }
+    void Event(string kind, string detail) { events.Add(elapsed.ToString("0.000", CultureInfo.InvariantCulture) + "," + kind + ",\"" + detail.Replace("\"", "\"\"") + "\"," + Vector2.Distance(playerPos, hunterPos).ToString("0.00", CultureInfo.InvariantCulture)); }
+    void End(bool escaped)
+    {
+        if (phase != Phase.Playing) return;
+        SetPhase(escaped ? Phase.Escaped : Phase.Caught); Sound(escaped ? escapeClip : caughtClip, playerPos); Event("outcome", escaped ? notesRead == 3 && keys.Count > 0 ? "informed" : "fast" : "caught");
+        string dir = testDir ?? Application.persistentDataPath; Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "events-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".csv"), "time_s,event,detail,hunter_m\n" + string.Join("\n", events));
+        Log(phase + " · " + elapsed.ToString("0.0") + " s");
+    }
+    static void Log(string message) => Debug.Log("[FrontRooms3D] " + message);
+
+    IEnumerator WalkTo(Vector2 target, bool run = true)
+    {
+        float timeout = 0; testRun = run;
+        while (phase == Phase.Playing && Vector2.Distance(playerPos, target) > .12f && timeout < 14f)
+        {
+            var delta = target - playerPos; testMove = delta; yaw = Mathf.Atan2(delta.x, delta.y) * Mathf.Rad2Deg; pitch = 0;
+            timeout += Time.deltaTime; yield return null;
+        }
+        testMove = Vector2.zero; testRun = false;
+        if (timeout >= 14f) { testFailed = true; Log("MOVE TIMEOUT " + playerPos + " -> " + target); }
+    }
+    IEnumerator HoldAt(Vector2 target, float seconds)
+    {
+        var delta = target - playerPos; yaw = Mathf.Atan2(delta.x, delta.y) * Mathf.Rad2Deg; pitch = 0; testInteract = true;
+        yield return new WaitForSeconds(seconds); testInteract = false; yield return null;
+    }
+    [Serializable] sealed class Report { public bool passed; public string route, outcome, evidence; public int notes, keys, windows, breachedDoors, transitions, shifts; public float seconds; }
+    IEnumerator VerifyRoute()
+    {
+        yield return null; StartGame();
+        if (testRoute == "caught") yield return new WaitForSeconds(16f);
+        else
+        {
+            if (testRoute == "door") { yield return WalkTo(new Vector2(7.3f, 5.5f)); yield return HoldAt(new Vector2(8.5f, 5.5f), 1.6f); }
+            yield return WalkTo(new Vector2(10.5f, 3.5f)); yield return WalkTo(new Vector2(14f, 3.5f));
+            if (testRoute == "door") { yield return WalkTo(new Vector2(16.2f, 5.5f)); yield return HoldAt(new Vector2(17.5f, 5.5f), 1.6f); }
+            var gate = level.Openings[2].Sealed ? level.Openings[3] : level.Openings[2];
+            yield return WalkTo(new Vector2(22.5f, gate.Center.y)); yield return WalkTo(new Vector2(26.5f, gate.Center.y));
+            if (testRoute == "door")
+            {
+                yield return WalkTo(new Vector2(26.5f, 5.5f)); yield return HoldAt(new Vector2(29.5f, 5.5f), .05f);
+                // Approach the note from the front lane, outside the physical desk volumes.
+                yield return WalkTo(new Vector2(29.5f, 4.35f)); yield return HoldAt(new Vector2(29.5f, 5.5f), 1.6f);
+                yield return WalkTo(new Vector2(26.5f, 4.3f)); yield return WalkTo(new Vector2(26.5f, 8.5f)); yield return WalkTo(new Vector2(33.5f, 8.5f));
+                yield return WalkTo(new Vector2(35.4f, 8.5f)); yield return WalkTo(new Vector2(35.4f, 3f)); yield return HoldAt(level.Openings[4].Center, .15f);
+                yield return WalkTo(new Vector2(39f, 3f));
+                float wait = 0; while (phase == Phase.Playing && state != HunterState.BreakDoor && wait < 30f) { wait += Time.deltaTime; yield return null; }
+                if (wait >= 30f) testFailed = true;
+            }
+            else
+            {
+                yield return WalkTo(new Vector2(26.5f, 8f)); yield return WalkTo(new Vector2(35.4f, 8f)); yield return HoldAt(level.Openings[5].Center, 1.1f); yield return WalkTo(new Vector2(39f, 8f));
+            }
+            yield return WalkTo(new Vector2(47.35f, 5f)); yield return HoldAt(level.Openings[6].Center, 1.1f); yield return WalkTo(new Vector2(51f, 5f)); yield return WalkTo(new Vector2(57.5f, 5f));
+        }
+        bool expected = testRoute == "caught" ? phase == Phase.Caught : phase == Phase.Escaped && transitions == 4 && windowsBroken >= (testRoute == "door" ? 1 : 2);
+        if (testRoute == "door") expected &= notesRead == 3 && keys.Count == 1 && doorsBroken >= 1;
+        if (testRoute == "fast") expected &= notesRead == 0 && keys.Count == 0;
+        var report = new Report { passed = !testFailed && expected, route = testRoute, outcome = phase.ToString(), notes = notesRead, keys = keys.Count, windows = windowsBroken, breachedDoors = doorsBroken, transitions = transitions, shifts = shifts, seconds = elapsed, evidence = "Scripted runtime interaction and pursuit checks. Mouse look, audio quality, and human playability require separate inspection." };
+        File.WriteAllText(Path.Combine(testDir, "result.json"), JsonUtility.ToJson(report, true));
+        Log("VERIFY " + (report.passed ? "PASS" : "FAIL")); yield return new WaitForSeconds(.1f); Application.Quit(report.passed ? 0 : 1);
+    }
+}

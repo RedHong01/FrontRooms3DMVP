@@ -1,0 +1,70 @@
+time_s,event,detail,hunter_m
+0.000,start,"first-person",3.00
+0.304,noise,"running",4.67
+0.504,interaction_start,"note0",5.68
+2.004,note,"Lobby",5.68
+2.237,noise,"running",6.24
+2.537,noise,"running",7.73
+2.839,noise,"running",9.30
+3.146,noise,"running",10.96
+3.287,room,"Level 0 · Shifting Rooms",11.73
+3.454,noise,"running",12.60
+3.757,noise,"running",13.74
+3.998,interaction_start,"note1",14.64
+5.490,note,"Level 0 · Shifting Rooms",14.64
+5.697,noise,"running",15.10
+6.004,noise,"running",16.72
+6.304,noise,"running",18.33
+6.604,noise,"running",19.93
+6.904,noise,"running",21.56
+7.204,noise,"running",23.20
+7.287,room,"Level 4 · Office",23.66
+7.504,noise,"running",24.85
+7.804,noise,"running",24.99
+8.170,noise,"running",25.61
+8.470,noise,"running",27.21
+8.620,interaction_start,"note2",27.92
+10.004,hunter,"Hunt",27.92
+10.104,note,"Level 4 · Office",27.73
+10.387,noise,"running",26.30
+10.687,noise,"running",24.02
+10.987,noise,"running",23.04
+11.287,noise,"running",22.70
+11.587,noise,"running",22.93
+11.887,noise,"running",23.82
+12.187,noise,"running",24.70
+12.487,noise,"running",25.59
+12.604,noise,"key",25.93
+12.604,key,"Level 4 · Office",25.93
+12.787,noise,"running",26.47
+13.087,noise,"running",27.36
+13.387,noise,"running",26.39
+13.687,noise,"running",25.51
+13.987,noise,"running",24.74
+14.087,noise,"door",24.50
+14.087,door_open,"4",24.50
+14.454,noise,"running",24.77
+14.537,room,"Level ! · Run",25.02
+14.537,noise,"alarm",25.02
+14.754,noise,"running",25.67
+16.970,shift,"upper",20.77
+24.904,hunter,"BreakDoor",3.44
+25.087,noise,"running",4.40
+25.387,noise,"running",6.00
+25.687,noise,"running",7.62
+25.987,noise,"running",9.25
+26.287,noise,"running",10.88
+26.487,interaction_start,"window6",11.89
+26.870,shift,"lower",11.89
+27.404,door_broken,"4",11.89
+27.404,hunter,"Hunt",11.89
+27.470,noise,"glass",11.76
+27.470,glass,"6",11.76
+27.704,noise,"running",11.82
+27.904,room,"Exit · the noclip patch",12.42
+28.004,noise,"running",12.72
+28.304,noise,"running",13.61
+28.604,noise,"running",14.50
+28.904,noise,"running",15.40
+29.204,noise,"running",16.30
+29.370,outcome,"informed",16.75
