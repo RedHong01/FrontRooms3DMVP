@@ -22,6 +22,24 @@ public static class FrontRooms3DBuild
         EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(Scene, true) };
     }
 
+    [MenuItem("FrontRooms 3D/Repair serialized door heights")]
+    public static void RepairSerializedDoorHeights()
+    {
+        if (!File.Exists(Scene))
+        {
+            CreateScene();
+            return;
+        }
+        var scene = EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
+        var root = GameObject.Find("FrontRooms 3D");
+        var game = root == null ? null : root.GetComponent<FrontRooms3DGame>();
+        if (game == null) throw new Exception("FrontRooms 3D scene root is missing");
+        game.RepairSerializedOpeningHeights();
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene, Scene);
+        Debug.Log("[FrontRooms3DBuild] Repaired serialized door and lintel heights");
+    }
+
     /// <summary>
     /// Build entry points must not regenerate an existing scene. The scene is
     /// the editable handoff between the runtime generator and the designer:
