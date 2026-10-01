@@ -68,6 +68,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     bool displaySettingsOpen;
     Font monoFont, bayonFont, serifFont;
     GameObject overlay, roomPanel, threatPanel, contextPanel, journalPanel, displaySettingsPanel;
+    CanvasGroup roomHudGroup, threatHudGroup, contextHudGroup, crosshairHudGroup;
     Image overlayImage;
     Outline logoOutline;
     Transform titleWorld;
@@ -95,6 +96,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     // pushes out to create the depth trail in the wordmark.
     const float LogoS1SettleAt = .58f;
     const float LogoS2StartAt = .62f;
+    const float GameplayHudFadeSeconds = .9f;
+    float gameplayHudAlpha;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
     string flash = "", actionIdentity = "";
     bool released, shiftWarning, journal;
@@ -650,8 +653,15 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             vectorS1T = vectorS1T * vectorS1T * (3f - 2f * vectorS1T);
             var vectorS2T = Mathf.Clamp01((doorProgress - s2Start) / (1f - s2Start));
             vectorS2T = vectorS2T * vectorS2T * (3f - 2f * vectorS2T);
-            vectorLogoS1Image.style.left = new UiLength(Mathf.Lerp(798f, 842f, vectorS1T), UiLengthUnit.Pixel);
-            vectorLogoS2Image.style.left = new UiLength(Mathf.Lerp(798f, 880f, vectorS2T), UiLengthUnit.Pixel);
+            var vectorS1X = Mathf.Lerp(798f, 842f, vectorS1T);
+            // The far S follows the first afterimage until that S has settled,
+            // then continues from its settled position instead of restarting
+            // from the solid wordmark S.
+            var vectorS2X = doorProgress < s2Start
+                ? vectorS1X
+                : Mathf.Lerp(842f, 880f, vectorS2T);
+            vectorLogoS1Image.style.left = new UiLength(vectorS1X, UiLengthUnit.Pixel);
+            vectorLogoS2Image.style.left = new UiLength(vectorS2X, UiLengthUnit.Pixel);
             // Keep the vector mark on the same fade-in clock as the title
             // corridor. It remains at full opacity after the reveal; only the
             // player handoff hides it.
@@ -1117,6 +1127,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // Room and threat are direct typography overlays. Their cards obscured the
         // environment and allowed long room names to bleed past the top-left edge.
         roomPanel = TypographyGroup(g.transform, "Room typography", new Vector2(0, 1), new Vector2(72, -72), new Vector2(720, 144));
+        roomHudGroup = roomPanel.AddComponent<CanvasGroup>();
         Rule(roomPanel.transform, "Room accent", new Vector2(0, 1), new Vector2(0, -24), new Vector2(4, 72), accent);
         roomMetaText = Text(roomPanel.transform, "Room meta", new Vector2(0, 1), new Vector2(24, -18), new Vector2(660, 22), 13, TextAnchor.UpperLeft);
         roomMetaText.color = C("BDBAB0");
@@ -1126,6 +1137,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         roomText.verticalOverflow = VerticalWrapMode.Overflow;
 
         threatPanel = TypographyGroup(g.transform, "Threat typography", Vector2.one, new Vector2(-72, -72), new Vector2(720, 144));
+        threatHudGroup = threatPanel.AddComponent<CanvasGroup>();
         Rule(threatPanel.transform, "Threat accent", new Vector2(1, 1), new Vector2(0, -24), new Vector2(4, 72), accent);
         threatStateText = Text(threatPanel.transform, "Threat state", new Vector2(1, 1), new Vector2(-24, -18), new Vector2(660, 34), 20, TextAnchor.UpperRight);
         threatStateText.color = accent; threatStateText.fontStyle = FontStyle.Bold;
@@ -1137,12 +1149,16 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         distanceText.verticalOverflow = VerticalWrapMode.Truncate;
 
         contextPanel = Panel(g.transform, "Context panel", new Vector2(.5f, 0), new Vector2(0, 72), new Vector2(920, 120), media);
+        contextHudGroup = contextPanel.AddComponent<CanvasGroup>();
         Rule(contextPanel.transform, "Context accent", new Vector2(0, .5f), new Vector2(24, 0), new Vector2(4, 72), accent);
         contextText = Text(contextPanel.transform, "Context", new Vector2(.5f, .5f), new Vector2(12, 0), new Vector2(790, 72), 24, TextAnchor.MiddleCenter);
         contextText.color = paper;
 
         crosshair = Text(g.transform, "Aim", new Vector2(.5f, .5f), Vector2.zero, new Vector2(32, 32), 20, TextAnchor.MiddleCenter); crosshair.text = "·";
+        crosshairHudGroup = crosshair.gameObject.AddComponent<CanvasGroup>();
         crosshair.color = accent;
+        gameplayHudAlpha = 0f;
+        ApplyGameplayHudAlpha();
         journalPanel = Panel(g.transform, "Notes panel", new Vector2(.5f, .5f), Vector2.zero, new Vector2(1296, 744), new Color(.055f, .055f, .05f, .96f));
         Rule(journalPanel.transform, "Notes accent", new Vector2(0, 1), new Vector2(48, -48), new Vector2(4, 120), accent);
         notebook = Text(journalPanel.transform, "Notebook", new Vector2(0, 1), new Vector2(96, -56), new Vector2(1110, 620), 24, TextAnchor.UpperLeft);
@@ -1183,7 +1199,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     }
     void SetPhase(Phase p)
     {
+        var wasPlaying = phase == Phase.Playing;
         phase = p; bool playing = p == Phase.Playing;
+        if (playing && !wasPlaying) gameplayHudAlpha = 0f;
+        if (!playing) gameplayHudAlpha = 0f;
         if (p != Phase.Paused)
         {
             displaySettingsOpen = false;
@@ -1206,6 +1225,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (threatPanel != null) threatPanel.SetActive(playing);
         if (contextPanel != null) contextPanel.SetActive(false);
         if (journalPanel != null) journalPanel.SetActive(false);
+        ApplyGameplayHudAlpha();
         Cursor.lockState = playing && testDir == null ? CursorLockMode.Locked : CursorLockMode.None; Cursor.visible = !playing;
         if (p == Phase.Title)
         {
@@ -1475,6 +1495,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     void UpdateHud()
     {
         bool play = phase == Phase.Playing;
+        if (play)
+            gameplayHudAlpha = Mathf.MoveTowards(gameplayHudAlpha, 1f, Time.unscaledDeltaTime / GameplayHudFadeSeconds);
+        else
+            gameplayHudAlpha = 0f;
+        ApplyGameplayHudAlpha();
         if (streamedPlay)
         {
             roomMetaText.text = play ? "ROOM STREAM  /  ACTIVE" : "";
@@ -1522,6 +1547,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             contextText.text = actionTime > 0 ? "READING  /  " + Mathf.RoundToInt(actionTime / 1.5f * 100f) + "%" : "HOLD E  /  READ NOTE";
         else if (flashTime > 0) contextText.text = flash;
         if (contextPanel != null) contextPanel.SetActive(play && contextText.text != "");
+    }
+    void ApplyGameplayHudAlpha()
+    {
+        if (roomHudGroup != null) roomHudGroup.alpha = gameplayHudAlpha;
+        if (threatHudGroup != null) threatHudGroup.alpha = gameplayHudAlpha;
+        if (contextHudGroup != null) contextHudGroup.alpha = gameplayHudAlpha;
+        if (crosshairHudGroup != null) crosshairHudGroup.alpha = gameplayHudAlpha;
     }
     string Name(FrontRoom r) => r.Rule == RoomRule.Lobby ? "Lobby" : r.Rule == RoomRule.Shift ? "Level 0" : r.Rule == RoomRule.Office ? "Level 4 / Office" : r.Rule == RoomRule.Run ? "Level ! / Run" : "Exit";
     void Flash(string message, float duration = 3f) { flash = message; flashTime = duration; }
