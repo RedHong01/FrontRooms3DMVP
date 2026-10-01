@@ -22,7 +22,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     const float RecycleDistance = 8f;
     const float RebaseThreshold = 256f;
     const float LogoDelay = .7f;
-    const float LogoFadeSeconds = 2.2f;
+    const float LogoFadeSeconds = 4f;
     const float LogoExitSeconds = .55f;
     const float LightRevealDelaySeconds = 1f;
     const float LightFlickerSeconds = .34f;

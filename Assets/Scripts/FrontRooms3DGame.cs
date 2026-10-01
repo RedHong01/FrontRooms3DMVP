@@ -89,6 +89,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     const float TitleDoorTriggerDistance = 4f;
     const float TitleDoorOpenDuration = .9f;
     const float TitleHandoffDepth = 2f;
+    const float LogoScale = .75f;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
     string flash = "", actionIdentity = "";
     bool released, shiftWarning, journal;
@@ -962,6 +963,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         vectorLogoRoot.style.top = UiLength.Percent(50);
         vectorLogoRoot.style.width = 965f; vectorLogoRoot.style.height = 192f;
         vectorLogoRoot.style.marginLeft = -482.5f; vectorLogoRoot.style.marginTop = -96f;
+        vectorLogoRoot.style.scale = new UnityEngine.UIElements.Scale(new Vector3(LogoScale, LogoScale, 1f));
         vectorLogoRoot.style.overflow = UiOverflow.Hidden;
         vectorLogoRoot.pickingMode = UiPickingMode.Ignore;
         panel.Add(vectorLogoRoot);
@@ -1042,6 +1044,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         rootRect.pivot = new Vector2(.5f, .5f);
         rootRect.anchoredPosition = Vector2.zero;
         rootRect.sizeDelta = new Vector2(texture.width, texture.height);
+        logoMotionRoot.localScale = Vector3.one * LogoScale;
 
         // The supplied lockup reserves the final 150 px for the two offset S
         // forms. Keeping those pixels as a separate sprite lets the title use
