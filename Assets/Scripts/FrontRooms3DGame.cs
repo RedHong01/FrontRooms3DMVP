@@ -93,8 +93,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     // The trailing S forms are deliberately sequenced instead of sharing the
     // same reveal clock: the near afterimage settles first, then the far one
     // pushes out to create the depth trail in the wordmark.
-    const float LogoS1SettleAt = .60f;
-    const float LogoS2StartAt = .54f;
+    const float LogoS1SettleAt = .58f;
+    const float LogoS2StartAt = .62f;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
     string flash = "", actionIdentity = "";
     bool released, shiftWarning, journal;
@@ -645,7 +645,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             // after the movement completes while the corridor keeps looping.
             var doorProgress = roomStream == null ? 0f : roomStream.FirstDoorProgress;
             var s1End = logoMotionVariation == LogoMotionVariation.FullLockup ? .66f : LogoS1SettleAt;
-            var s2Start = logoMotionVariation == LogoMotionVariation.FullLockup ? .48f : LogoS2StartAt;
+            var s2Start = logoMotionVariation == LogoMotionVariation.FullLockup ? .70f : LogoS2StartAt;
             var vectorS1T = Mathf.Clamp01(doorProgress / s1End);
             vectorS1T = vectorS1T * vectorS1T * (3f - 2f * vectorS1T);
             var vectorS2T = Mathf.Clamp01((doorProgress - s2Start) / (1f - s2Start));
