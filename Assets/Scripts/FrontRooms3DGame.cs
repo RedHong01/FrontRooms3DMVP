@@ -111,6 +111,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     // The relay is intentionally earlier than the near S settle point so the
     // two forms overlap in motion instead of waiting for a hard hand-off.
     const float LogoS2StartAt = .50f;
+    const float LogoGlyphWipeStartDelay = .12f;
+    const float LogoGlyphWipeStagger = .055f;
+    const float LogoGlyphWipeLetterSeconds = .72f;
+    const float LogoGlyphCount = 10f;
+    const float LogoGlyphWipeCompleteSeconds = LogoGlyphWipeStartDelay + (LogoGlyphCount - 1f) * LogoGlyphWipeStagger + LogoGlyphWipeLetterSeconds;
+    const float LogoRelaySeconds = 1.35f;
     const float GameplayHudFadeSeconds = .9f;
     float gameplayHudAlpha;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
@@ -441,20 +447,20 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // Each room gets a material instance so the transition itself is legible.
         wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("BDB18C"), WallpaperTexture(C("BDB18C"), C("958B6A"), 0), new Vector2(1.15f, 1.15f));
         wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("A8A07D"), WallpaperTexture(C("A8A07D"), C("81785F"), 1), new Vector2(1.05f, 1.2f));
-        wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office", C("C4B995"), WallpaperTexture(C("C4B995"), C("978D70"), 2), new Vector2(1.1f, 1.15f));
-        wallMats[RoomRule.Run] = TexturedMat("Wallpaper / red run", C("6F272E"), WallpaperTexture(C("6F272E"), C("3C151B"), 3), new Vector2(.9f, 2.2f));
+        wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office / woven beige", C("B7AE94"), WallpaperTexture(C("B7AE94"), C("87806E"), 2), new Vector2(1.35f, 1.18f));
+        wallMats[RoomRule.Run] = TexturedMat("Wall / run / chalky utility", C("766B60"), WallpaperTexture(C("766B60"), C("554B45"), 5), new Vector2(1.05f, 1.35f));
         wallMats[RoomRule.Exit] = TexturedMat("Wallpaper / exit", C("5D7770"), WallpaperTexture(C("5D7770"), C("334B46"), 4), new Vector2(.9f, 2f));
 
         floorMats[RoomRule.Lobby] = TexturedMat("Carpet / lobby", C("51472F"), CarpetTexture(C("51472F"), 0), new Vector2(2.8f, 2.8f));
         floorMats[RoomRule.Shift] = TexturedMat("Carpet / level 0", C("4B4330"), CarpetTexture(C("4B4330"), 1), new Vector2(2.8f, 2.8f));
-        floorMats[RoomRule.Office] = TexturedMat("Carpet / office", C("5B5037"), CarpetTexture(C("5B5037"), 2), new Vector2(2.8f, 2.8f));
-        floorMats[RoomRule.Run] = TexturedMat("Carpet / red run", C("3A1E22"), CarpetTexture(C("3A1E22"), 3), new Vector2(2.5f, 2.5f));
+        floorMats[RoomRule.Office] = TexturedMat("Carpet / office / worn grey brown", C("4A453C"), CarpetTexture(C("4A453C"), 2), new Vector2(2.35f, 2.35f));
+        floorMats[RoomRule.Run] = TexturedMat("Floor / run / dirty concrete", C("3B3735"), CarpetTexture(C("3B3735"), 5), new Vector2(2.8f, 2.8f));
         floorMats[RoomRule.Exit] = TexturedMat("Carpet / exit", C("283A38"), CarpetTexture(C("283A38"), 4), new Vector2(2.8f, 2.8f));
 
         ceilingMats[RoomRule.Lobby] = Mat("Ceiling / lobby", C("777266"));
         ceilingMats[RoomRule.Shift] = Mat("Ceiling / level 0", C("696355"));
-        ceilingMats[RoomRule.Office] = Mat("Ceiling / office", C("807A6D"));
-        ceilingMats[RoomRule.Run] = Mat("Ceiling / red run", C("3B2427"));
+        ceilingMats[RoomRule.Office] = Mat("Ceiling / office / acoustic tile", C("706D68"));
+        ceilingMats[RoomRule.Run] = Mat("Ceiling / run / exposed service", C("2B2926"));
         ceilingMats[RoomRule.Exit] = Mat("Ceiling / exit", C("354846"));
         trimMat = Mat("Aged wall trim", C("716440"));
         seamMat = Mat("Wallpaper seam", C("81744A"));
@@ -506,7 +512,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                 // believable shade instead of evenly lighting the whole room.
                 light.range = r.Rule == RoomRule.Shift ? 6.8f : r.Rule == RoomRule.Run ? 7.2f : r.Rule == RoomRule.Office ? 8f : 7.6f;
                 light.intensity = r.Rule == RoomRule.Shift ? 1.05f : r.Rule == RoomRule.Run ? 1.35f : r.Rule == RoomRule.Office ? 1.45f : 1.2f;
-                light.color = r.Rule == RoomRule.Run ? C("D8493D") : r.Rule == RoomRule.Shift ? C("B9B694") : r.Rule == RoomRule.Office ? C("FFE1B1") : r.Rule == RoomRule.Exit ? C("A9D7D0") : C("E6D5A7");
+                light.color = r.Rule == RoomRule.Run ? C("D7C2A4") : r.Rule == RoomRule.Shift ? C("B9B694") : r.Rule == RoomRule.Office ? C("F1DFC5") : r.Rule == RoomRule.Exit ? C("A9D7D0") : C("E6D5A7");
                 light.shadows = LightShadows.Soft;
                 light.shadowStrength = r.Rule == RoomRule.Run ? .82f : .67f;
                 light.shadowBias = .035f;
@@ -536,12 +542,53 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             }
             if (r.Rule == RoomRule.Office)
             {
-                for (int i = 0; i < 3; i++)
+                // Level 4 reads as an abandoned office building: low modular
+                // partitions, empty desk islands and a few ordinary supplies.
+                // The centre lane stays clear so the player can still read the
+                // threshold and the Relay silhouette. One partition is offset
+                // by design: a small architectural error is more unsettling
+                // than a room filled with random props.
+                var officeDesk = Mat("Office / stained laminate", C("4D4A43"));
+                var officeMetal = Mat("Office / oxidized steel", C("66635D"));
+                var officePaper = Mat("Office / paper", C("D7D0BB"));
+                for (int i = -1; i <= 1; i++)
                 {
-                    // Decorative desk islands leave both perimeter lanes clear.
-                    Box("Desk top", new Vector3(28f + i * 2.6f, .72f, 5.9f), new Vector3(1.7f, .12f, 1f), darkMat);
-                    Box("Desk pedestal", new Vector3(28f + i * 2.6f, .32f, 5.9f), new Vector3(.4f, .64f, .5f), darkMat);
+                    var x = 29f + i * 2.45f + (i == 1 ? .22f : 0f);
+                    var z = 6.65f;
+                    Box("Office desk surface", new Vector3(x, .72f, z), new Vector3(1.75f, .12f, .72f), officeDesk);
+                    Box("Office desk leg left", new Vector3(x - .67f, .35f, z), new Vector3(.12f, .62f, .45f), officeMetal);
+                    Box("Office desk leg right", new Vector3(x + .67f, .35f, z), new Vector3(.12f, .62f, .45f), officeMetal);
+                    Box("Office CRT monitor", new Vector3(x, 1.08f, z + .18f), new Vector3(.48f, .34f, .08f), officeMetal);
+                    Box("Office monitor stand", new Vector3(x, .88f, z + .1f), new Vector3(.08f, .18f, .08f), officeMetal);
+                    Box("Office paper stack", new Vector3(x - .42f, .82f, z - .16f), new Vector3(.22f, .03f, .28f), officePaper);
+                    Box("Office low partition", new Vector3(x, 1.2f, z + .82f), new Vector3(1.45f, 1.0f, .09f), WallMaterial(r.Rule));
                 }
+                // A cooler and a filing cabinet make the office legible without
+                // turning the room into a prop museum.
+                Box("Office water cooler body", new Vector3(32.9f, .9f, 3.8f), new Vector3(.48f, .9f, .48f), officeMetal);
+                Box("Office water cooler bottle", new Vector3(32.9f, 1.58f, 3.8f), new Vector3(.31f, .42f, .31f), glassMat);
+                Box("Office filing cabinet", new Vector3(25.25f, .78f, 8.15f), new Vector3(.56f, .78f, .52f), officeMetal);
+                Box("Office cabinet handle", new Vector3(25.25f, 1.02f, 7.87f), new Vector3(.22f, .035f, .035f), officePaper);
+            }
+            else if (r.Rule == RoomRule.Run)
+            {
+                // Run is a utility transition rather than a red-painted room:
+                // neutral chalky walls carry the space, while emergency red is
+                // reserved for a warning source near the next threshold.
+                var runMetal = Mat("Run / galvanized cabinet", C("5D5B57"));
+                var runCable = Mat("Run / rubber cable", C("1B1A19"));
+                var runHazard = Mat("Run / emergency warning", C("B54A36"), true);
+                Box("Run utility cabinet left", new Vector3(38.4f, 1.0f, 4.1f), new Vector3(.7f, 1.0f, 1.0f), runMetal);
+                Box("Run utility cabinet right", new Vector3(45.1f, 1.0f, 7.7f), new Vector3(.7f, 1.0f, 1.0f), runMetal);
+                Box("Run cable tray", new Vector3(0f + 42f, 2.48f, 7.0f), new Vector3(4.2f, .12f, .18f), runCable);
+                Box("Run hazard marker left", new Vector3(37.25f, 1.2f, 9.5f), new Vector3(.08f, 1.25f, 1.1f), runHazard);
+                Box("Run hazard marker right", new Vector3(46.25f, 1.2f, 9.5f), new Vector3(.08f, 1.25f, 1.1f), runHazard);
+                Box("Run service cart", new Vector3(45.15f, .52f, 3.8f), new Vector3(.72f, .12f, .48f), runMetal);
+                Box("Run cart handle", new Vector3(45.15f, .95f, 4.12f), new Vector3(.62f, .08f, .08f), runCable);
+                var runEmergency = new GameObject("Run emergency light").AddComponent<Light>();
+                runEmergency.transform.SetParent(world); runEmergency.transform.position = new Vector3(42f, 2.35f, 10.7f);
+                runEmergency.type = LightType.Point; runEmergency.range = 6.5f; runEmergency.intensity = .65f;
+                runEmergency.color = C("C84C39"); runEmergency.shadows = LightShadows.Soft; runEmergency.shadowStrength = .7f;
             }
             for (int i = 0; i < 5 && r.Rule != RoomRule.Exit; i++)
                 Box("Footprint", new Vector3(r.Interior.xMin + .8f + i * .5f, .013f, 3.5f + (i % 2 == 0 ? .12f : -.12f)), new Vector3(.19f, .015f, .1f), darkMat);
@@ -729,7 +776,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         titleCameraZ = roomStream.CameraZ;
         titleLogoAlpha = roomStream.LogoVisibility;
         UpdateLogoMotion();
-        if (titleHandoffPending && roomStream.HasControl) EnterGameplayFromTitle();
+        // The camera can arrive at the next-room anchor before the editorial
+        // logo transition finishes. Hold the title state until both the
+        // per-letter wipe and the two-stage S relay have completed, then hand
+        // control to the player on the same camera position.
+        if (titleHandoffPending && roomStream.HasControl
+            && logoMotionElapsed >= LogoGlyphWipeCompleteSeconds + LogoRelaySeconds)
+            EnterGameplayFromTitle();
     }
 
     void UpdateLogoMotion()
@@ -744,22 +797,38 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             // source SVG stays stationary; only the mask width grows from
             // left to right. A small stagger creates the editorial rhythm
             // without fading, scaling, or wiping the word as one object.
-            var revealClock = titleHandoffPending
-                ? Mathf.Clamp01((logoMotionElapsed - .12f) / 2.85f)
-                : 1f;
+            var wipeElapsed = titleHandoffPending
+                ? Mathf.Max(0f, logoMotionElapsed - LogoGlyphWipeStartDelay)
+                : LogoGlyphWipeCompleteSeconds;
             for (var i = 0; i < vectorLogoLetterMasks.Count; i++)
             {
-                var stagger = i * .055f;
-                var reveal = Mathf.Clamp01((revealClock - stagger) / .72f);
+                var stagger = i * LogoGlyphWipeStagger;
+                var reveal = Mathf.Clamp01((wipeElapsed - stagger) / LogoGlyphWipeLetterSeconds);
                 reveal = reveal * reveal * (3f - 2f * reveal);
                 vectorLogoLetterMasks[i].style.width = new UiLength(vectorLogoLetterWidths[i] * reveal, UiLengthUnit.Pixel);
+            }
+            // FRONTROOMS includes the solid base S. It follows the same local
+            // left-to-right wipe as the nine preceding glyphs; only after this
+            // tenth glyph is complete may the two relay S forms travel right.
+            if (vectorLogoSolidSMask != null)
+            {
+                var solidSReveal = Mathf.Clamp01((wipeElapsed - 9f * LogoGlyphWipeStagger) / LogoGlyphWipeLetterSeconds);
+                solidSReveal = solidSReveal * solidSReveal * (3f - 2f * solidSReveal);
+                vectorLogoSolidSMask.style.width = new UiLength(83f * solidSReveal, UiLengthUnit.Pixel);
             }
 
             // Door progress is the motion clock. The afterimage S forms begin
             // exactly on top of the solid final S, then peel away one at a time
             // as the first physical door opens. The full title stays visible
             // after the movement completes while the corridor keeps looping.
-            var doorProgress = roomStream == null ? 0f : roomStream.FirstDoorProgress;
+            // The physical first door still starts on the same player trigger,
+            // but the relay waits until FRONTROOMS has finished its wipe. This
+            // preserves the existing S1 -> S2 hand-off without letting the
+            // afterimages appear before the wordmark is readable.
+            var relayClock = titleHandoffPending
+                ? Mathf.Clamp01((logoMotionElapsed - LogoGlyphWipeCompleteSeconds) / LogoRelaySeconds)
+                : 0f;
+            var doorProgress = relayClock;
             var s1End = logoMotionVariation == LogoMotionVariation.FullLockup ? .66f : LogoS1SettleAt;
             var s2Start = logoMotionVariation == LogoMotionVariation.FullLockup ? .70f : LogoS2StartAt;
             var vectorS1T = Mathf.Clamp01(doorProgress / s1End);
@@ -777,12 +846,15 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             var vectorS2X = doorProgress < s2Start
                 ? vectorS1X
                 : Mathf.Lerp(vectorS2StartX, 880f, vectorS2T);
-            vectorLogoS1Image.style.left = new UiLength(vectorS1X, UiLengthUnit.Pixel);
-            vectorLogoS2Image.style.left = new UiLength(vectorS2X, UiLengthUnit.Pixel);
+            vectorLogoS1Image.style.left = new UiLength(vectorS1X - 880.895f, UiLengthUnit.Pixel);
+            vectorLogoS2Image.style.left = new UiLength(vectorS2X - 918.895f, UiLengthUnit.Pixel);
             // Keep the vector mark on the same fade-in clock as the title
             // corridor. It remains at full opacity after the reveal; only the
             // player handoff hides it.
-            var vectorAlpha = Mathf.Clamp01(titleLogoAlpha);
+            // Keep the mark fully visible for the complete trigger transition.
+            // The room stream may reach its handoff anchor first and begin its
+            // own exit fade; that fade must not cut the S relay short.
+            var vectorAlpha = titleHandoffPending ? 1f : Mathf.Clamp01(titleLogoAlpha);
             vectorLogoLeftImage.style.opacity = vectorAlpha;
             vectorLogoS1Image.style.opacity = vectorAlpha;
             vectorLogoS2Image.style.opacity = vectorAlpha;
@@ -1296,23 +1368,32 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
         vectorLogoLetterMasks.Clear();
         vectorLogoLetterWidths.Clear();
-        // The supplied left SVG contains FRONTROOMS. The final solid S is
-        // kept as the stationary base of the three-S depth mark, so only the
-        // preceding nine letters receive the independent wipe masks.
+        // The supplied left SVG contains FRONTROOMS. Each front glyph now
+        // uses its own cropped VectorImage so the local mask reveals the
+        // correct letter instead of repeating the source SVG's first F.
+        var glyphNames = new[] { "F", "R", "O1", "N", "T", "R2", "O2", "O3", "M" };
         var glyphStarts = new[] { 8f, 88f, 178f, 268f, 349f, 432f, 523f, 610f, 700f };
-        var glyphEnds = new[] { 74f, 170f, 257f, 343f, 427f, 514f, 602f, 689f, 790f };
-        for (var i = 0; i < glyphStarts.Length; i++)
+        var glyphEnds = new[] { 80f, 175f, 263f, 349f, 435f, 520f, 607f, 694f, 794f };
+        var glyphAssets = new UiVectorImage[glyphNames.Length];
+        for (var i = 0; i < glyphNames.Length; i++)
         {
-            var mask = MaskedVectorGlyph("SVG front glyph " + i.ToString("00"), leftAsset, glyphStarts[i], glyphEnds[i], out _);
+            glyphAssets[i] = Resources.Load<UiVectorImage>("Brand/FrontRoomsGlyph_" + glyphNames[i]);
+            if (glyphAssets[i] == null) return false;
+            var mask = MaskedVectorGlyph("SVG front glyph " + i.ToString("00"), glyphAssets[i], glyphStarts[i], glyphEnds[i], out _);
             vectorLogoLetterMasks.Add(mask);
             vectorLogoLetterWidths.Add(glyphEnds[i] - glyphStarts[i]);
             vectorLogoRoot.Add(mask);
         }
 
-        vectorLogoSolidSMask = MaskedVectorGlyph("SVG solid S mask", leftAsset, 798f, 877f, out vectorLogoLeftImage);
+        var solidSAsset = Resources.Load<UiVectorImage>("Brand/FrontRoomsGlyph_S");
+        if (solidSAsset == null) return false;
+        vectorLogoSolidSMask = MaskedVectorGlyph("SVG solid S mask", solidSAsset, 798f, 881f, out vectorLogoLeftImage);
         vectorLogoRoot.Add(vectorLogoSolidSMask);
-        vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 798f, 17.8f);
-        vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 798f, 17.8f);
+        // Keep the original full-width viewBox so each relay S retains its
+        // gradient. The painted paths start at these source x coordinates;
+        // subtract them so both visible glyphs begin on the solid S baseline.
+        vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 798f - 880.895f, 0f);
+        vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 798f - 918.895f, 0f);
         vectorLogoRoot.Add(vectorLogoS1Image);
         vectorLogoRoot.Add(vectorLogoS2Image);
         vectorLogoRoot.style.display = UiDisplayStyle.None;
@@ -1329,11 +1410,14 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         mask.style.height = 192f;
         mask.style.overflow = UiOverflow.Hidden;
         mask.pickingMode = UiPickingMode.Ignore;
-        // The mask lives at the glyph's global x position. Translate the
-        // complete stationary SVG back by that same amount so the mask
-        // reveals the requested glyph slice instead of repeating the first
-        // F-shaped slice in every box.
-        innerImage = VectorLogoImage(name + " / stationary glyph source", vectorImage, -glyphStart, 17.6f);
+        // The VectorImage is already cropped to this glyph's local viewBox.
+        // Keep it stationary at the mask origin; only the mask width changes.
+        innerImage = VectorLogoImage(name + " / stationary glyph source", vectorImage, 0f, 0f);
+        // The imported VectorImage reports painted bounds, which are slightly
+        // narrower than the original local viewBox. Use the source lockup box
+        // so the final M and solid S are never trimmed by their masks.
+        innerImage.style.width = glyphEnd - glyphStart;
+        innerImage.style.height = 192f;
         innerImage.style.opacity = 1f;
         mask.Add(innerImage);
         return mask;

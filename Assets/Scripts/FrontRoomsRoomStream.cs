@@ -96,6 +96,13 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     Material[] profileWallMaterials;
     Material[] profileFloorMaterials;
     Material[] profileCeilingMaterials;
+    Material officeDeskMaterial;
+    Material officeMetalMaterial;
+    Material officePaperMaterial;
+    Material officeGlassMaterial;
+    Material runMetalMaterial;
+    Material runCableMaterial;
+    Material runHazardMaterial;
     AudioClip doorCreakClip;
     AudioClip doorLatchClip;
     AudioClip doorTravelClip;
@@ -715,15 +722,44 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         switch (rule)
         {
             case RoomRule.Shift: return new Color(.73f, .74f, .65f);
-            case RoomRule.Office: return new Color(1f, .83f, .58f);
-            case RoomRule.Run: return new Color(1f, .17f, .11f);
+            case RoomRule.Office: return new Color(.94f, .87f, .76f);
+            case RoomRule.Run: return new Color(.84f, .75f, .64f);
             case RoomRule.Exit: return new Color(.45f, .88f, .82f);
             default: return new Color(1f, .93f, .74f);
         }
     }
 
+    Material PropMaterial(string name, Color color, bool emission = false)
+    {
+        var shader = Shader.Find("Standard");
+        if (shader == null) shader = Shader.Find("UI/Default");
+        var material = new Material(shader);
+        material.name = name;
+        material.color = color;
+        material.SetFloat("_Glossiness", .16f);
+        if (emission)
+        {
+            material.EnableKeyword("_EMISSION");
+            material.SetColor("_EmissionColor", color * .72f);
+        }
+        return material;
+    }
+
+    void EnsurePropMaterials()
+    {
+        if (officeDeskMaterial != null) return;
+        officeDeskMaterial = PropMaterial("Office / stained laminate", new Color(.30f, .29f, .27f));
+        officeMetalMaterial = PropMaterial("Office / oxidized steel", new Color(.40f, .39f, .36f));
+        officePaperMaterial = PropMaterial("Office / paper", new Color(.78f, .75f, .66f));
+        officeGlassMaterial = PropMaterial("Office / cooler bottle", new Color(.48f, .68f, .70f), true);
+        runMetalMaterial = PropMaterial("Run / galvanized cabinet", new Color(.36f, .35f, .33f));
+        runCableMaterial = PropMaterial("Run / rubber cable", new Color(.08f, .075f, .07f));
+        runHazardMaterial = PropMaterial("Run / emergency warning", new Color(.71f, .20f, .13f), true);
+    }
+
     void BuildProfileProps(RoomSlot room)
     {
+        EnsurePropMaterials();
         room.profileVariants = new GameObject[5];
         for (var ruleIndex = 0; ruleIndex < room.profileVariants.Length; ruleIndex++)
         {
@@ -735,17 +771,37 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             var roomWall = ProfileMaterial(profileWallMaterials, rule, wallMaterial);
             if (rule == RoomRule.Office)
             {
+                // Level 4: ordinary, low-density office objects. The centre
+                // lane remains open for threshold reading and pursuit.
                 for (var i = -1; i <= 1; i++)
                 {
-                    Box(props.transform, "office desk", new Vector3(i * 2.2f, .68f, 6.8f), new Vector3(1.55f, .12f, .72f), trimMaterial ?? roomWall);
-                    Box(props.transform, "office partition", new Vector3(i * 2.2f, 1.2f, 6.45f), new Vector3(1.35f, 1.0f, .08f), roomWall);
+                    var x = i * 2.45f + (i == 1 ? .22f : 0f);
+                    var z = 6.65f;
+                    Box(props.transform, "office desk surface", new Vector3(x, .72f, z), new Vector3(1.75f, .12f, .72f), officeDeskMaterial);
+                    Box(props.transform, "office desk leg left", new Vector3(x - .67f, .35f, z), new Vector3(.12f, .62f, .45f), officeMetalMaterial);
+                    Box(props.transform, "office desk leg right", new Vector3(x + .67f, .35f, z), new Vector3(.12f, .62f, .45f), officeMetalMaterial);
+                    Box(props.transform, "office CRT monitor", new Vector3(x, 1.08f, z + .18f), new Vector3(.48f, .34f, .08f), officeMetalMaterial);
+                    Box(props.transform, "office monitor stand", new Vector3(x, .88f, z + .1f), new Vector3(.08f, .18f, .08f), officeMetalMaterial);
+                    Box(props.transform, "office paper stack", new Vector3(x - .42f, .82f, z - .16f), new Vector3(.22f, .03f, .28f), officePaperMaterial);
+                    Box(props.transform, "office low partition", new Vector3(x, 1.2f, z + .82f), new Vector3(1.45f, 1.0f, .09f), roomWall);
                 }
+                Box(props.transform, "office water cooler body", new Vector3(4.25f, .9f, 3.8f), new Vector3(.48f, .9f, .48f), officeMetalMaterial);
+                Box(props.transform, "office water cooler bottle", new Vector3(4.25f, 1.58f, 3.8f), new Vector3(.31f, .42f, .31f), officeGlassMaterial);
+                Box(props.transform, "office filing cabinet", new Vector3(-4.25f, .78f, 8.15f), new Vector3(.56f, .78f, .52f), officeMetalMaterial);
+                Box(props.transform, "office cabinet handle", new Vector3(-4.25f, 1.02f, 7.87f), new Vector3(.22f, .035f, .035f), officePaperMaterial);
             }
             else if (rule == RoomRule.Run)
             {
-                Box(props.transform, "run warning stripe left", new Vector3(-RoomWidth * .5f + .3f, .9f, 5.2f), new Vector3(.12f, 1.5f, 2.6f), roomWall);
-                Box(props.transform, "run warning stripe right", new Vector3(RoomWidth * .5f - .3f, .9f, 5.2f), new Vector3(.12f, 1.5f, 2.6f), roomWall);
-                Box(props.transform, "run overhead bar", new Vector3(0f, 2.35f, 7.2f), new Vector3(2.9f, .08f, .12f), roomWall);
+                // Run: chalky utility walls, equipment silhouettes and a red
+                // warning layer concentrated near the next threshold.
+                Box(props.transform, "run utility cabinet left", new Vector3(-3.6f, 1.0f, 4.1f), new Vector3(.7f, 1.0f, 1.0f), runMetalMaterial);
+                Box(props.transform, "run utility cabinet right", new Vector3(3.1f, 1.0f, 7.7f), new Vector3(.7f, 1.0f, 1.0f), runMetalMaterial);
+                Box(props.transform, "run cable tray", new Vector3(0f, 2.48f, 7.0f), new Vector3(4.2f, .12f, .18f), runCableMaterial);
+                Box(props.transform, "run hazard marker left", new Vector3(-4.85f, 1.2f, 9.5f), new Vector3(.08f, 1.25f, 1.1f), runHazardMaterial);
+                Box(props.transform, "run hazard marker right", new Vector3(4.85f, 1.2f, 9.5f), new Vector3(.08f, 1.25f, 1.1f), runHazardMaterial);
+                Box(props.transform, "run service cart", new Vector3(3.15f, .52f, 3.8f), new Vector3(.72f, .12f, .48f), runMetalMaterial);
+                Box(props.transform, "run cart handle", new Vector3(3.15f, .95f, 4.12f), new Vector3(.62f, .08f, .08f), runCableMaterial);
+                Box(props.transform, "run red door cue", new Vector3(0f, 2.25f, 10.7f), new Vector3(2.1f, .12f, .08f), runHazardMaterial);
             }
             else if (rule == RoomRule.Exit)
             {
@@ -768,7 +824,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             var name = renderer.gameObject.name.ToLowerInvariant();
             if (name.Contains("floor") || name.Contains("carpet")) renderer.sharedMaterial = floor;
             else if (name.Contains("ceiling")) renderer.sharedMaterial = ceiling;
-            else if (name.Contains("wall") || name.Contains("seal") || name.Contains("partition") || name.Contains("warning stripe") || name.Contains("threshold marker") || name.Contains("overhead bar")) renderer.sharedMaterial = wall;
+            else if (name.Contains("wall") || name.Contains("seal") || name.Contains("partition") || name.Contains("threshold marker")) renderer.sharedMaterial = wall;
         }
         if (room.roomLights != null)
         {
