@@ -23,6 +23,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     const float TitleSpeed = 1.15f;
     const float TransitionSpeed = 2.25f;
     const float DoorOpenSeconds = .9f;
+    const float FirstTitleDoorTriggerDistance = 4f;
     const float RecycleDistance = 8f;
     const float RebaseThreshold = 256f;
     const float LogoDelay = .7f;
@@ -305,7 +306,19 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             var room = pool[i];
             if (room == null) continue;
             var distance = room.endZ - cameraZ;
-            if (!room.doorOpen && distance < 4f && distance > -1f)
+            // The first title door keeps its existing reveal timing so the
+            // logo's S motion stays locked to that opening. Once control is
+            // handed to the player, a room's door belongs to the current
+            // room and waits until the camera crosses that room's midpoint.
+            // This prevents a distant door from opening at the far wall while
+            // the player is still entering the room.
+            var isFirstTitleDoor = !startRequested && room.sequence == 0;
+            var isCurrentRoom = room.sequence == currentSequence;
+            var passedRoomCenter = cameraZ >= room.startZ + RoomLength * .5f;
+            var shouldOpen = isFirstTitleDoor
+                ? distance < FirstTitleDoorTriggerDistance && distance > -1f
+                : isCurrentRoom && passedRoomCenter;
+            if (!room.doorOpen && shouldOpen)
                 BeginDoorOpening(room);
             if (room.doorOpening && room.doorProgress < 1f)
             {
