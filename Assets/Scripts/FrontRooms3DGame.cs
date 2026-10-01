@@ -806,6 +806,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             logoImage.sprite = brandLogo;
             logoImage.preserveAspect = true;
             logoImage.color = Color.white;
+            var whiteLogoShader = Shader.Find("UI/FrontRooms White Logo");
+            if (whiteLogoShader != null)
+            {
+                var whiteLogoMaterial = new Material(whiteLogoShader);
+                whiteLogoMaterial.name = "FrontRooms logo white (runtime)";
+                logoImage.material = whiteLogoMaterial;
+            }
         }
     }
     GameObject TypographyGroup(Transform parent, string name, Vector2 anchor, Vector2 pos, Vector2 size)

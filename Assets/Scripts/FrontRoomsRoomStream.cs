@@ -421,6 +421,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     void BuildDoor(RoomSlot room)
     {
         var frameMaterial = trimMaterial ?? wallMaterial;
+        // The threshold is cut into the end wall. Filling the two side spans
+        // keeps the door connected to the room instead of reading as a free
+        // standing prop in the distance.
+        var sideWallWidth = (RoomWidth - DoorWidth) * .5f;
+        var sideWallOffset = DoorWidth * .5f + sideWallWidth * .5f;
+        Box(room.root.transform, "door wall return left", new Vector3(-sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), wallMaterial);
+        Box(room.root.transform, "door wall return right", new Vector3(sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), wallMaterial);
+        Box(room.root.transform, "door wall above", new Vector3(0f, RoomHeight - .12f, RoomLength), new Vector3(DoorWidth, .24f, WallThickness), wallMaterial);
         Box(room.root.transform, "door frame left", new Vector3(-1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
         Box(room.root.transform, "door frame right", new Vector3(1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
         Box(room.root.transform, "door frame header", new Vector3(0f, RoomHeight - .12f, RoomLength), new Vector3(3.12f, .24f, .22f), frameMaterial);
