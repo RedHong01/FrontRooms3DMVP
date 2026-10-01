@@ -42,12 +42,21 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Image overlayImage;
     Outline logoOutline;
     Transform titleWorld;
+    FrontRoomsRoomStream roomStream;
+    [SerializeField, Tooltip("Optional room prefab/template copied into each streamed title room.")]
+    GameObject streamedRoomTemplate;
     readonly List<TitleSegment> titleSegments = new List<TitleSegment>();
     float titleCameraZ, titleNextZ, titleElapsed, titleLogoAlpha;
+    bool titleHandoffPending;
+    bool streamedPlay;
+    float titleHandoffTargetZ;
     const float TitleCenterX = 256f;
     const float TitleSegmentLength = 12f;
     const float TitleLookAhead = 72f;
     const float TitleSpeed = 1.15f;
+    const float TitleDoorTriggerDistance = 4f;
+    const float TitleDoorOpenDuration = .9f;
+    const float TitleHandoffDepth = 2f;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
     string flash = "", actionIdentity = "";
     bool released, shiftWarning, journal;
@@ -65,6 +74,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         public GameObject root;
         public float start;
         public float end;
+        public float width;
+        public GameObject door;
+        public float doorClosedY;
+        public bool doorOpening;
+        public bool doorOpened;
+        public float doorTimer;
     }
 
     void OnEnable()
@@ -490,10 +505,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             if (floorMat == null && name.EndsWith(" / floor", StringComparison.Ordinal)) floorMat = material;
             if (ceilingMat == null && name.EndsWith(" / ceiling", StringComparison.Ordinal)) ceilingMat = material;
             if (trimMat == null && name.Contains("baseboard")) trimMat = material;
+            if (darkMat == null && (name == "Door" || name.Contains("Brass lock"))) darkMat = material;
         }
         if (wallMat == null) wallMat = Mat("Title wallpaper", C("D4C37B"));
         if (floorMat == null) floorMat = Mat("Title carpet", C("51472F"));
         if (ceilingMat == null) ceilingMat = Mat("Title ceiling", C("777266"));
+        if (darkMat == null) darkMat = Mat("Title door", C("252525"));
     }
 
     GameObject TitleBox(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
@@ -512,95 +529,40 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (titleWorld != null) return;
         titleWorld = new GameObject("Title sequence / recycled corridor").transform;
-        titleWorld.position = Vector3.zero;
-        titleSegments.Clear();
-        titleCameraZ = -18f;
-        titleNextZ = -30f;
-        titleElapsed = 0f;
-        titleLogoAlpha = 0f;
-        while (titleNextZ < titleCameraZ + TitleLookAhead) CreateTitleSegment();
-
-        // The title camera lives far outside the playable greybox. This keeps
-        // the editable game scene intact while the title presents an empty,
-        // endlessly repeating room with no props or HUD panels.
-        cam.transform.position = new Vector3(TitleCenterX, 1.62f, titleCameraZ);
-        cam.transform.rotation = Quaternion.identity;
-    }
-
-    void CreateTitleSegment()
-    {
-        var index = titleSegments.Count;
-        var length = TitleSegmentLength;
-        var width = 11.5f + ((index % 5 == 2) ? 1.5f : (index % 5 == 4 ? -1f : 0f));
-        var height = 2.9f + ((index % 6 == 3) ? .18f : 0f);
-        var start = titleNextZ;
-        var end = start + length;
-        var centerZ = (start + end) * .5f;
-        var root = new GameObject("Title room / " + index.ToString("000", CultureInfo.InvariantCulture));
-        root.transform.SetParent(titleWorld, false);
-
-        TitleBox(root.transform, "carpet floor", new Vector3(TitleCenterX, -.12f, centerZ), new Vector3(width, .24f, length + .04f), floorMat);
-        TitleBox(root.transform, "ceiling", new Vector3(TitleCenterX, height + .1f, centerZ), new Vector3(width, .2f, length + .04f), ceilingMat);
-        TitleBox(root.transform, "left wallpaper wall", new Vector3(TitleCenterX - width * .5f, height * .5f, centerZ), new Vector3(.26f, height, length), wallMat);
-        TitleBox(root.transform, "right wallpaper wall", new Vector3(TitleCenterX + width * .5f, height * .5f, centerZ), new Vector3(.26f, height, length), wallMat);
-        TitleBox(root.transform, "left baseboard", new Vector3(TitleCenterX - width * .5f + .16f, .18f, centerZ), new Vector3(.08f, .16f, length), trimMat ?? wallMat);
-        TitleBox(root.transform, "right baseboard", new Vector3(TitleCenterX + width * .5f - .16f, .18f, centerZ), new Vector3(.08f, .16f, length), trimMat ?? wallMat);
-
-        // A single fluorescent fixture per segment keeps the empty room legible
-        // and makes the forward motion readable without a costly global light.
-        TitleBox(root.transform, "fluorescent fixture", new Vector3(TitleCenterX, height - .08f, centerZ), new Vector3(2.05f, .1f, .38f), fixtureMat ?? ceilingMat);
-        var lightObject = new GameObject("title fluorescent light");
-        lightObject.transform.SetParent(root.transform, false);
-        lightObject.transform.position = new Vector3(TitleCenterX, height - .38f, centerZ);
-        var point = lightObject.AddComponent<Light>();
-        point.type = LightType.Point;
-        point.range = 7.5f;
-        point.intensity = index % 7 == 5 ? .52f : .9f;
-        point.color = index % 7 == 5 ? C("B9B694") : C("E6D5A7");
-        point.shadows = LightShadows.Soft;
-        point.shadowStrength = .45f;
-        point.shadowBias = .035f;
-        point.shadowNormalBias = .18f;
-
-        // Keep a small seam cadence so rooms read as physical construction even
-        // while the title remains an intentionally empty space.
-        for (var seam = 1; seam < 3; seam++)
+        // Keep the runtime title layer away from the authored gameplay greybox.
+        // The camera stays in the same generated room through handoff, then the
+        // separate StartGame path returns it to the serialized map for route
+        // verification and ordinary editor-authored play.
+        if (cam != null)
         {
-            var seamZ = start + length * seam / 3f;
-            TitleBox(root.transform, "wallpaper seam", new Vector3(TitleCenterX - width * .5f + .145f, height * .5f, seamZ), new Vector3(.012f, height * .82f, .025f), trimMat ?? wallMat);
-            TitleBox(root.transform, "wallpaper seam", new Vector3(TitleCenterX + width * .5f - .145f, height * .5f, seamZ), new Vector3(.012f, height * .82f, .025f), trimMat ?? wallMat);
+            var titlePosition = cam.transform.position;
+            titlePosition.x = TitleCenterX;
+            titlePosition.y = 1.62f;
+            cam.transform.position = titlePosition;
+            cam.transform.rotation = Quaternion.identity;
         }
-
-        titleSegments.Add(new TitleSegment { root = root, start = start, end = end });
-        titleNextZ = end;
+        roomStream = titleWorld.gameObject.AddComponent<FrontRoomsRoomStream>();
+        roomStream.roomTemplate = streamedRoomTemplate;
+        roomStream.Initialize(cam, wallMat, floorMat, ceilingMat, trimMat, fixtureMat, darkMat);
+        titleCameraZ = cam == null ? 0f : cam.transform.position.z;
+        titleLogoAlpha = 0f;
+        titleHandoffPending = false;
+        streamedPlay = false;
+        if (cam != null) cam.transform.rotation = Quaternion.identity;
     }
 
     void UpdateTitleSequence(float dt)
     {
-        if (titleWorld == null || cam == null) return;
-        titleElapsed += dt;
-        titleCameraZ += TitleSpeed * dt;
-        cam.transform.position = new Vector3(TitleCenterX, 1.62f, titleCameraZ);
-        cam.transform.rotation = Quaternion.identity;
-        while (titleNextZ < titleCameraZ + TitleLookAhead) CreateTitleSegment();
-
-        // Recycle every room that is safely behind the near clip. At any point
-        // only roughly 8–10 rooms exist, so the title can continue forever with
-        // bounded GameObject, mesh and light memory.
-        while (titleSegments.Count > 0 && titleSegments[0].end < titleCameraZ - 8f)
-        {
-            var old = titleSegments[0];
-            titleSegments.RemoveAt(0);
-            if (old.root != null) Destroy(old.root);
-        }
-
+        if (roomStream == null || cam == null) return;
+        roomStream.Tick(dt);
+        titleCameraZ = roomStream.CameraZ;
+        titleLogoAlpha = roomStream.LogoVisibility;
         if (logoImage != null)
         {
-            // Hold a beat in the empty room, then reveal the mark gently.
-            titleLogoAlpha = Mathf.Clamp01(Mathf.Max(0f, titleElapsed - .7f) / 2.2f);
             logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
             if (logoOutline != null) logoOutline.effectColor = new Color(1f, .86f, .34f, titleLogoAlpha * .42f);
         }
+        if (titleHandoffPending && roomStream.HasControl) EnterGameplayFromTitle();
     }
 
     void StopTitleCorridor()
@@ -611,7 +573,59 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             else DestroyImmediate(titleWorld.gameObject);
         }
         titleWorld = null;
+        roomStream = null;
         titleSegments.Clear();
+    }
+
+    void RequestTitleStart()
+    {
+        if (titleHandoffPending || streamedPlay) return;
+        if (roomStream == null) return;
+        roomStream.RequestStart();
+        titleHandoffPending = true;
+    }
+
+    void EnterGameplayFromTitle()
+    {
+        if (!titleHandoffPending || streamedPlay) return;
+        titleHandoffPending = false;
+        streamedPlay = true;
+        // The same camera remains in the same generated room. Only its input
+        // ownership changes, so the player never sees a reset to the authored
+        // five-room origin or a loading cut.
+        playerPos = new Vector2(cam.transform.position.x, cam.transform.position.z);
+        yaw = 0f;
+        pitch = 0f;
+        elapsed = 0f;
+        if (hunter != null) hunter.gameObject.SetActive(false);
+        SetPhase(Phase.Playing);
+        Event("start", "streamed-room");
+    }
+
+    void UpdateStreamedPlay(float dt)
+    {
+        yaw += Input.GetAxisRaw("Mouse X") * 2.1f;
+        pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * 2.1f, -75f, 75f);
+        var local = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        var forward = new Vector2(Mathf.Sin(yaw * Mathf.Deg2Rad), Mathf.Cos(yaw * Mathf.Deg2Rad));
+        var right = new Vector2(forward.y, -forward.x);
+        var sprint = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        var before = new Vector2(cam.transform.position.x, cam.transform.position.z);
+        var movement = (right * local.x + forward * local.y).normalized * (sprint ? Run : Walk) * dt;
+        var moved = roomStream == null ? cam.transform.position : roomStream.Move(movement);
+        var after = new Vector2(moved.x, moved.z);
+        cam.transform.position = new Vector3(after.x, 1.62f, after.y);
+        cam.transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
+        titleCameraZ = after.y;
+        if (Vector2.Distance(before, after) > .001f)
+        {
+            stepTime += dt;
+            if (stepTime > (sprint ? .3f : .5f))
+            {
+                stepTime = 0f;
+                Sound(sprint ? playerRunStepClip : playerStepClip, after, sprint ? .48f : .15f);
+            }
+        }
     }
 
     /// <summary>
@@ -889,6 +903,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     }
     void StartGame()
     {
+        streamedPlay = false;
+        titleHandoffPending = false;
         StopTitleCorridor();
         if (cam != null && world != null) cam.transform.SetParent(world, true);
         playerPos = FrontRoomsLevel.CenterOf(level.PlayerStart);
@@ -904,7 +920,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (!Application.isPlaying) return;
         if (testDir == null)
         {
-            if (phase == Phase.Title && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) StartGame();
+            if (phase == Phase.Title && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) RequestTitleStart();
             else if (Input.GetKeyDown(KeyCode.Escape) && (phase == Phase.Playing || phase == Phase.Paused)) SetPhase(phase == Phase.Playing ? Phase.Paused : Phase.Playing);
             if (Input.GetKeyDown(KeyCode.R) && phase != Phase.Playing && phase != Phase.Title) { restart = true; SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
             if (Input.GetKeyDown(KeyCode.Tab) && phase == Phase.Playing) journal = !journal;
@@ -912,6 +928,15 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (phase == Phase.Title)
         {
             UpdateTitleSequence(Mathf.Min(Time.deltaTime, .1f));
+            UpdateHud();
+            return;
+        }
+        if (phase == Phase.Playing && streamedPlay)
+        {
+            var dt = Mathf.Min(Time.deltaTime, .1f);
+            elapsed += dt;
+            UpdateTitleSequence(dt);
+            UpdateStreamedPlay(dt);
             UpdateHud();
             return;
         }
@@ -1131,6 +1156,21 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     void UpdateHud()
     {
         bool play = phase == Phase.Playing;
+        if (streamedPlay)
+        {
+            roomMetaText.text = play ? "ROOM STREAM  /  ACTIVE" : "";
+            roomText.text = play ? "CONTINUOUS ROOM" : "";
+            threatStateText.text = play ? "DOOR  /  LISTEN" : "";
+            distanceText.text = "";
+            crosshair.enabled = play;
+            contextText.text = "";
+            notebook.text = "";
+            if (journalPanel != null) journalPanel.SetActive(false);
+            if (roomPanel != null) roomPanel.SetActive(play);
+            if (threatPanel != null) threatPanel.SetActive(play);
+            if (contextPanel != null) contextPanel.SetActive(false);
+            return;
+        }
         roomMetaText.text = play ? "ROOM " + (room.Id + 1).ToString("00") + "  /  ACTIVE" : "";
         roomText.text = play ? Name(room).ToUpperInvariant() : "";
         var hunterDistance = Mathf.RoundToInt(Vector2.Distance(playerPos, hunterPos));

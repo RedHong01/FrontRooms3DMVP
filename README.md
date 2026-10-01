@@ -8,7 +8,7 @@ Open `Builds/Mac/FrontRooms3D.app` and press **Space**. The build was compiled w
 
 **WASD** moves, mouse looks, **Shift** runs, and **hold E** reads a note or breaks glass. Walk over the key, then hold E while aiming at the yellow door. **Esc** pauses; **Tab** opens the note journal; **R** retries after a result.
 
-The title opens on an empty corridor: the camera pushes forward, the brand mark fades in, and passed corridor segments are destroyed while new ones are generated ahead. Press **Space** or **Return** to enter the playable slice: Lobby → Level 0 → Level 4 / Office → Level ! / Run → Exit. The HUD only shows the current room, hunter distance, crosshair and one context prompt.
+The title opens on an empty corridor: the camera pushes forward, the brand mark fades in, and a fixed pool of room copies is recycled ahead of it. Press **Space** or **Return** and the camera continues to the next physical door; that door opens, the next copy connects, and control is handed to the player two metres inside that same room. The stream never creates more than three room copies and rebases its coordinates during long runs. The HUD only shows the current room, hunter distance, crosshair and one context prompt once play begins.
 
 ## Scope
 
@@ -18,7 +18,7 @@ The original design guidance is the [FrontRooms deck](https://www.figma.com/deck
 
 ## Edit the Unity project
 
-Open this folder in Unity Hub with Unity 6000.3.10f1 and open Assets/Scenes/FrontRooms3D.unity. The scene contains a bootstrap object and a serialized, editable greybox preview, so walls, lights and materials are visible in the Scene view. The title corridor is runtime-only and does not replace that playable layout. Edit Assets/Scripts/FrontRoomsLevel.cs to change rooms, openings, keys and exits, and edit Assets/Scripts/FrontRooms3DGame.cs to change the first-person geometry and title tuning. The assignment-folder copy contains the same source plus LEVEL_DESIGN_GUIDE.md.
+Open this folder in Unity Hub with Unity 6000.3.10f1 and open Assets/Scenes/FrontRooms3D.unity. The scene contains a bootstrap object and a serialized, editable greybox preview, so walls, lights and materials are visible in the Scene view. The title stream is runtime-only and does not replace that playable layout. Edit Assets/Scripts/FrontRoomsLevel.cs to change rooms, openings, keys and exits; edit Assets/Scripts/FrontRooms3DGame.cs for first-person/HUD behavior; and edit Assets/Scripts/FrontRoomsRoomStream.cs or assign its optional room template to tune the streamed title/arrival rooms. Build commands preserve an existing scene, so editor changes survive a build. The assignment-folder copy contains the same source plus LEVEL_DESIGN_GUIDE.md.
 
 ## WebGL build
 

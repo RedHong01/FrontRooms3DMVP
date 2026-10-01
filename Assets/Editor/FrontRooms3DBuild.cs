@@ -21,6 +21,18 @@ public static class FrontRooms3DBuild
         EditorSceneManager.SaveScene(scene, Scene);
         EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(Scene, true) };
     }
+
+    /// <summary>
+    /// Build entry points must not regenerate an existing scene. The scene is
+    /// the editable handoff between the runtime generator and the designer:
+    /// walls, lights, materials, and the entry room can be tuned in Unity and
+    /// then built without losing those edits. Use the explicit Create Scene
+    /// menu item when a fresh generated scene is actually wanted.
+    /// </summary>
+    static void EnsureSceneExists()
+    {
+        if (!File.Exists(Scene)) CreateScene();
+    }
     [MenuItem("FrontRooms 3D/Build macOS")]
     public static void BuildMac()
     {
@@ -34,7 +46,7 @@ public static class FrontRooms3DBuild
         PlayerSettings.defaultScreenWidth = 1920; PlayerSettings.defaultScreenHeight = 1080;
         PlayerSettings.resizableWindow = true; PlayerSettings.runInBackground = true;
         PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
-        CreateScene();
+        EnsureSceneExists();
         var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions { scenes = new[] {Scene}, locationPathName = "Builds/Mac/FrontRooms3D.app", target = BuildTarget.StandaloneOSX, options = BuildOptions.None });
         Debug.Log("[FrontRooms3DBuild] " + report.summary.result + " errors=" + report.summary.totalErrors + " bytes=" + report.summary.totalSize);
         if (report.summary.result != BuildResult.Succeeded) throw new Exception("3D build failed");
@@ -52,7 +64,7 @@ public static class FrontRooms3DBuild
         var webglGroup = BuildPipeline.GetBuildTargetGroup(BuildTarget.WebGL);
         EditorUserBuildSettings.SwitchActiveBuildTarget(webglGroup, BuildTarget.WebGL);
         ApplyWebGLSettings();
-        CreateScene();
+        EnsureSceneExists();
 
         const string output = "Builds/WebGL";
         Directory.CreateDirectory(output);
