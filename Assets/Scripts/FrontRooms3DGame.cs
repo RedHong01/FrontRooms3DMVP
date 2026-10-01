@@ -874,21 +874,71 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // same wallpaper/carpet language without generating a second set of
         // procedural textures.
         if (world == null) return;
+        // The preview contains one material family per room.  Do not use the
+        // first renderer as a generic fallback: the hierarchy is ordered with
+        // Lobby first, so that shortcut silently made every streamed profile
+        // look like Lobby even though the Office and Run props were present.
+        wallMats.Clear();
+        floorMats.Clear();
+        ceilingMats.Clear();
         foreach (var renderer in world.GetComponentsInChildren<Renderer>(true))
         {
             var material = renderer.sharedMaterial;
             if (material == null) continue;
             var name = renderer.gameObject.name;
+            var profile = SerializedProfileForName(name);
+            if (profile.HasValue)
+            {
+                if (name.IndexOf("floor", StringComparison.OrdinalIgnoreCase) >= 0)
+                    floorMats[profile.Value] = material;
+                else if (name.IndexOf("ceiling", StringComparison.OrdinalIgnoreCase) >= 0)
+                    ceilingMats[profile.Value] = material;
+                else if (name.IndexOf("wallpaper", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         name.IndexOf("continuous wall", StringComparison.OrdinalIgnoreCase) >= 0)
+                    wallMats[profile.Value] = material;
+            }
             if (wallMat == null && name.Contains("continuous wallpaper")) wallMat = material;
             if (floorMat == null && name.EndsWith(" / floor", StringComparison.Ordinal)) floorMat = material;
             if (ceilingMat == null && name.EndsWith(" / ceiling", StringComparison.Ordinal)) ceilingMat = material;
             if (trimMat == null && name.Contains("baseboard")) trimMat = material;
+            if (fixtureMat == null && name.IndexOf("fluorescent fixture", StringComparison.OrdinalIgnoreCase) >= 0) fixtureMat = material;
             if (darkMat == null && (name == "Door" || name.Contains("Brass lock"))) darkMat = material;
         }
         if (wallMat == null) wallMat = Mat("Title wallpaper", C("D4C37B"));
         if (floorMat == null) floorMat = Mat("Title carpet", C("51472F"));
         if (ceilingMat == null) ceilingMat = Mat("Title ceiling", C("777266"));
+        if (fixtureMat == null) fixtureMat = Mat("Fluorescent diffuser", C("F7F2D8"), true);
         if (darkMat == null) darkMat = Mat("Title door", C("252525"));
+
+        // Older serialized previews may not contain every room family. Fill
+        // only missing entries with the same low-cost procedural materials used
+        // by BuildWorld, keeping an authored material wherever it exists.
+        EnsureSerializedProfileMaterial(RoomRule.Lobby, C("BDB18C"), C("51472F"), C("777266"), 0);
+        EnsureSerializedProfileMaterial(RoomRule.Shift, C("A8A07D"), C("4B4330"), C("696355"), 1);
+        EnsureSerializedProfileMaterial(RoomRule.Office, C("B7AE94"), C("4A453C"), C("706D68"), 2);
+        EnsureSerializedProfileMaterial(RoomRule.Run, C("766B60"), C("3B3735"), C("2B2926"), 5);
+        EnsureSerializedProfileMaterial(RoomRule.Exit, C("5D7770"), C("283A38"), C("354846"), 4);
+    }
+
+    static RoomRule? SerializedProfileForName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        if (name.StartsWith("Level 0", StringComparison.OrdinalIgnoreCase)) return RoomRule.Shift;
+        if (name.StartsWith("Level 4", StringComparison.OrdinalIgnoreCase)) return RoomRule.Office;
+        if (name.StartsWith("Level !", StringComparison.OrdinalIgnoreCase)) return RoomRule.Run;
+        if (name.StartsWith("Exit", StringComparison.OrdinalIgnoreCase)) return RoomRule.Exit;
+        if (name.StartsWith("Lobby", StringComparison.OrdinalIgnoreCase)) return RoomRule.Lobby;
+        return null;
+    }
+
+    void EnsureSerializedProfileMaterial(RoomRule rule, Color wallColor, Color floorColor, Color ceilingColor, int style)
+    {
+        if (!wallMats.ContainsKey(rule))
+            wallMats[rule] = TexturedMat("Wallpaper / " + rule + " / generated", wallColor, WallpaperTexture(wallColor, wallColor * .72f, style), new Vector2(1.15f, 1.2f));
+        if (!floorMats.ContainsKey(rule))
+            floorMats[rule] = TexturedMat("Carpet / " + rule + " / generated", floorColor, CarpetTexture(floorColor, style), new Vector2(2.6f, 2.6f));
+        if (!ceilingMats.ContainsKey(rule))
+            ceilingMats[rule] = Mat("Ceiling / " + rule + " / generated", ceilingColor);
     }
 
     GameObject TitleBox(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
@@ -1085,6 +1135,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // authored sequence so subsequent doors become Shift → Office → Run → Exit.
         roomStream.BeginPlayableSequence();
         SetPhase(Phase.Playing);
+        Flash("WASD + MOUSE  /  WALK THE ROOMS\nNEXT  /  LEVEL 0 — SHIFT", 6f);
         Event("start", "streamed-room");
     }
 
@@ -1092,7 +1143,17 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         yaw += Input.GetAxisRaw("Mouse X") * 2.1f;
         pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * 2.1f, -75f, 75f);
-        var local = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        // Keep the authored InputManager axes, but also read the physical
+        // keys directly. This makes the standalone Mac/WebGL player robust
+        // when a platform starts with the new input backend while the project
+        // still exposes the legacy axes for the verification harness.
+        var horizontal = Input.GetAxisRaw("Horizontal");
+        var vertical = Input.GetAxisRaw("Vertical");
+        if (Mathf.Abs(horizontal) < .01f)
+            horizontal = (Input.GetKey(KeyCode.D) ? 1f : 0f) - (Input.GetKey(KeyCode.A) ? 1f : 0f);
+        if (Mathf.Abs(vertical) < .01f)
+            vertical = (Input.GetKey(KeyCode.W) ? 1f : 0f) - (Input.GetKey(KeyCode.S) ? 1f : 0f);
+        var local = new Vector2(horizontal, vertical);
         var forward = new Vector2(Mathf.Sin(yaw * Mathf.Deg2Rad), Mathf.Cos(yaw * Mathf.Deg2Rad));
         var right = new Vector2(forward.y, -forward.x);
         var sprint = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
@@ -1867,6 +1928,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         {
             var dt = Mathf.Min(Time.deltaTime, .1f);
             elapsed += dt;
+            flashTime = Mathf.Max(0f, flashTime - dt);
             UpdateTitleSequence(dt);
             UpdateStreamedPlay(dt);
             UpdateHud();
@@ -2111,12 +2173,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             threatStateText.text = play ? streamLabel : "";
             distanceText.text = play && streamThreatTriggered && streamThreatObject != null && streamThreatObject.activeSelf ? "RELAY  " + Mathf.RoundToInt(Vector2.Distance(new Vector2(cam.transform.position.x, cam.transform.position.z), streamThreatPos)) + " M" : "";
             crosshair.enabled = play;
-            contextText.text = "";
+            contextText.text = flashTime > 0f ? flash : "";
             notebook.text = "";
             if (journalPanel != null) journalPanel.SetActive(false);
             if (roomPanel != null) roomPanel.SetActive(play);
             if (threatPanel != null) threatPanel.SetActive(play);
-            if (contextPanel != null) contextPanel.SetActive(false);
+            if (contextPanel != null) contextPanel.SetActive(play && contextText.text != "");
             return;
         }
         roomMetaText.text = play ? "ROOM " + (room.Id + 1).ToString("00") + "  /  ACTIVE" : "";

@@ -2,14 +2,16 @@ using System;
 using UnityEngine;
 
 /// <summary>
-/// A bounded, first-person room stream for the FrontRooms title and arrival.
-/// The component owns three reusable room roots. It does not replace the
-/// authored gameplay map: a caller can keep the camera and use the stream as a
-/// title/arrival layer, then read HasControl and take over at PendingAnchorPosition.
+/// The bounded, first-person room stream: the title corridor and the whole
+/// playable level. The component owns four reusable room roots — the room
+/// behind the player, the current room and two furnished rooms waiting behind
+/// closed doors — and recycles the one behind as the player advances.
 /// </summary>
 public sealed class FrontRoomsRoomStream : MonoBehaviour
 {
-    public const int MaxRooms = 3;
+    // One room behind, the current room, and two prepared rooms ahead. A room
+    // only changes profile while it is out of sight behind two closed doors.
+    public const int MaxRooms = 4;
     public const float RoomWidth = 11.5f;
     public const float RoomHeight = 2.9f;
     public const float RoomLength = 12f;
@@ -51,6 +53,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     [SerializeField, Tooltip("Keep the title and arrival stream on authored Level 0 Lobby replicas. Player control is handed off separately after arrival.")]
     bool lobbyOnlyTitle = true;
 
+    [SerializeField, Tooltip("Optional empty Lobby rooms after the handoff room before the first furnished profile. Zero keeps the authored route readable immediately: Shift → Office → Run.")]
+    int emptyLeadRooms = 0;
+
     sealed class RoomSlot
     {
         public GameObject root;
@@ -65,6 +70,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         public float doorProgress;
         public bool doorOpening;
         public bool doorOpen;
+        // Broken by the Relay: the door stays open and never auto-closes.
+        public bool doorBroken;
         public bool connected;
         public bool doorSoundPlayed;
         public AudioSource doorAudio;
@@ -100,6 +107,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     Material officeMetalMaterial;
     Material officePaperMaterial;
     Material officeGlassMaterial;
+    Material officeDarkMaterial;
     Material runMetalMaterial;
     Material runCableMaterial;
     Material runHazardMaterial;
@@ -125,6 +133,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     bool startRequested;
     bool hasControl;
     bool isEntering;
+    int firstPlayableSequence = -1;
+
+    /// <summary>Raised once per door, when its latch first releases.</summary>
+    public event Action<int, Vector3> DoorOpeningStarted;
 
     public bool HasControl => hasControl;
     public bool IsEntering => isEntering;
@@ -153,6 +165,13 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     public float MaxExposure => maxExposure;
     public float MaxExposureDistance => RoomLength * MaxRooms;
     public int MaxExposedRooms => MaxRooms;
+    public float CenterX => centerX;
+    /// <summary>Sum of every floating-origin shift, so callers can move their own world positions with the rooms.</summary>
+    public float TotalRebaseShift { get; private set; }
+    public bool IsPlayable => !lobbyOnlyTitle && firstPlayableSequence >= 0;
+    /// <summary>Sequence of the first furnished room after the empty lead rooms, or -1 before the handoff.</summary>
+    public int FirstProfileSequence => IsPlayable ? firstPlayableSequence + LeadRooms + 1 : -1;
+    int LeadRooms => Mathf.Max(0, emptyLeadRooms);
 
     /// <summary>Build the fixed room pool around the camera's current position.</summary>
     public void Initialize(Camera camera, Material wall, Material floor, Material ceiling,
@@ -185,6 +204,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         maxExposure = 0f;
         logoVisibility = 0f;
         firstDoorMotionProgress = 0f;
+        lobbyOnlyTitle = true;
+        firstPlayableSequence = -1;
+        TotalRebaseShift = 0f;
 
         var cameraZ = streamCamera == null ? 0f : streamCamera.transform.position.z;
         centerX = streamCamera == null ? 0f : streamCamera.transform.position.x;
@@ -214,32 +236,72 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     }
 
     /// <summary>
-    /// The first cycle is authored so the prototype teaches the player in a
-    /// readable order. Later cycles repeat the same semantic beats while the
-    /// light profile, wallpaper phase and door timing continue to vary by
-    /// sequence number. This keeps the stream infinite without hiding the
-    /// three level identities behind a random first encounter.
+    /// Edit-mode reference: one room per profile laid end to end with doors
+    /// open and lights on, built by the same code as the runtime pool. It is
+    /// a view of the generator, not a pool — nothing here ticks or recycles.
     /// </summary>
-    public static RoomRule RuleForSequence(int sequence)
+    public void BuildEditorPreview(Material wall, Material floor, Material ceiling,
+        Material trim, Material fixture, Material door,
+        Material[] profileWalls, Material[] profileFloors, Material[] profileCeilings)
     {
-        if (sequence <= 0) return RoomRule.Lobby;
-        switch (sequence % 5)
+        wallMaterial = wall;
+        floorMaterial = floor;
+        ceilingMaterial = ceiling;
+        trimMaterial = trim;
+        fixtureMaterial = fixture;
+        doorMaterial = door;
+        profileWallMaterials = profileWalls;
+        profileFloorMaterials = profileFloors;
+        profileCeilingMaterials = profileCeilings;
+        centerX = 0f;
+        var profiles = (RoomRule[])Enum.GetValues(typeof(RoomRule));
+        for (var i = 0; i < profiles.Length; i++)
         {
-            case 1: return RoomRule.Shift;
-            case 2: return RoomRule.Office;
-            case 3: return RoomRule.Run;
-            case 4: return RoomRule.Exit;
+            var room = new RoomSlot { sequence = i, rule = profiles[i], startZ = i * RoomLength };
+            room.endZ = room.startZ + RoomLength;
+            room.root = new GameObject("Profile " + i + " / " + profiles[i]);
+            room.root.transform.SetParent(transform, false);
+            room.root.transform.localPosition = new Vector3(0f, 0f, room.startZ);
+            BuildRoom(room, i);
+            room.doorProgress = 1f;
+            ApplyDoorPose(room);
+            SetRoomLightIntensity(room, 1f, true);
+        }
+    }
+
+    /// <summary>
+    /// The playable cycle, counted from the first furnished room: Shift,
+    /// Office, Run, Exit, then a Lobby breather. Later cycles repeat the same
+    /// semantic beats while the light profile and door timing continue to vary
+    /// by sequence number.
+    /// </summary>
+    public static RoomRule RuleForProfileIndex(int profileIndex)
+    {
+        switch (((profileIndex % 5) + 5) % 5)
+        {
+            case 0: return RoomRule.Shift;
+            case 1: return RoomRule.Office;
+            case 2: return RoomRule.Run;
+            case 3: return RoomRule.Exit;
             default: return RoomRule.Lobby;
         }
     }
 
     RoomRule RuleForStreamSequence(int sequence)
     {
-        // The opening stream is a visual title/arrival space, not the first
-        // playable level. Recycled rooms therefore keep the Level 0 Lobby
-        // materials and prop language until FrontRooms3DGame hands control to
-        // the player.
-        return lobbyOnlyTitle ? RoomRule.Lobby : RuleForSequence(sequence);
+        // The title corridor and the first rooms after the handoff are empty
+        // Lobby replicas. Furnished profiles start only beyond the rooms that
+        // already exist at the handoff, so nothing is re-dressed in view.
+        if (!IsPlayable) return RoomRule.Lobby;
+        var profileIndex = sequence - FirstProfileSequence;
+        return profileIndex < 0 ? RoomRule.Lobby : RuleForProfileIndex(profileIndex);
+    }
+
+    /// <summary>The profile of any sequence, loaded or not.</summary>
+    public RoomRule RuleAt(int sequence)
+    {
+        var room = FindSequence(sequence);
+        return room == null ? RuleForStreamSequence(sequence) : room.rule;
     }
 
     /// <summary>
@@ -298,20 +360,23 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     }
 
     /// <summary>
-    /// Switch the pooled title corridor to the authored playable sequence at
-    /// the exact moment camera control is handed to the player. The first
-    /// door remains the Lobby → Shift handoff; only the rooms beyond it change
-    /// profile, so the title never flashes a gameplay material early.
+    /// Start counting the playable sequence from the room the player was just
+    /// handed. The handoff room and the empty lead rooms keep their Lobby
+    /// dressing; furnished profiles are only assigned when a room is recycled
+    /// behind two closed doors, so no room ever changes while it can be seen.
     /// </summary>
     public void BeginPlayableSequence()
     {
-        if (!initialized) return;
+        if (!initialized || IsPlayable) return;
         lobbyOnlyTitle = false;
+        firstPlayableSequence = currentSequence;
         for (var i = 0; i < MaxRooms; i++)
         {
             var room = pool[i];
-            if (room == null) continue;
-            room.rule = RuleForSequence(room.sequence);
+            if (room == null || room.connected || room.sequence <= currentSequence) continue;
+            var rule = RuleForStreamSequence(room.sequence);
+            if (rule == room.rule) continue;
+            room.rule = rule;
             RefreshRoomMaterials(room);
         }
     }
@@ -331,7 +396,31 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         candidate.x = Mathf.Clamp(candidate.x, centerX - half, centerX + half);
         var rear = room.startZ + BoundaryMargin;
         if (candidate.z < rear) candidate.z = rear;
-        if (candidate.z > room.endZ - BoundaryMargin && !room.doorOpen)
+        // Input can jump from well inside a room to the analytical boundary
+        // in one frame (especially in a standalone build). Start the same
+        // proximity cue here so the player never gets stranded at a closed
+        // threshold simply because the trigger frame was skipped.
+        if (candidate.z > room.endZ - 4f && !room.doorOpen)
+        {
+            BeginDoorOpening(room);
+            // The movement input itself is the player's commitment to this
+            // threshold. Complete the analytical gate here as a fallback for
+            // standalone builds that can skip the intermediate trigger frame;
+            // the normal title/proximity path still uses the .9 s animation.
+            room.doorProgress = 1f;
+            room.doorOpening = false;
+            room.doorOpen = true;
+            ApplyDoorPose(room);
+            var next = FindSequence(room.sequence + 1);
+            if (next != null)
+            {
+                next.connected = true;
+                if (next.rearSeal != null) next.rearSeal.SetActive(false);
+                ScheduleRoomLight(next);
+            }
+        }
+        var passable = room.doorOpen || (room.doorOpening && room.doorProgress > .65f);
+        if (candidate.z > room.endZ - BoundaryMargin && !passable)
             candidate.z = room.endZ - BoundaryMargin;
         streamCamera.transform.position = candidate;
         movementScratch[0] = candidate;
@@ -433,7 +522,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                     }
                 }
             }
-            if (room.doorOpen && distance < -4f && room.sequence < currentSequence)
+            if (room.doorOpen && !room.doorBroken && distance < -4f && room.sequence < currentSequence)
             {
                 room.doorOpen = false;
                 room.doorOpening = false;
@@ -535,7 +624,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         var oldest = FindOldestRoom();
         if (oldest == null || oldest.sequence >= currentSequence - 1) return;
         if (streamCamera.transform.position.z - oldest.endZ < RecycleDistance) return;
-        if (oldest.doorOpening || oldest.doorOpen) return;
+        // The room that becomes the last one behind the player gets its rear
+        // sealed below. Wait until the player can no longer look into it
+        // through the door they just used, unless the Relay broke that door.
+        var behind = FindSequence(oldest.sequence + 1);
+        if (behind != null && behind.doorOpen && !behind.doorBroken) return;
         var newest = FindNewestRoom();
         if (newest == null) return;
         var nextSequence = newest.sequence + 1;
@@ -547,10 +640,12 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         oldest.doorProgress = 0f;
         oldest.doorOpening = false;
         oldest.doorOpen = false;
+        oldest.doorBroken = false;
         oldest.connected = false;
         oldest.doorSoundPlayed = false;
         if (oldest.doorAudio != null) oldest.doorAudio.Stop();
         if (oldest.rearSeal != null) oldest.rearSeal.SetActive(true);
+        if (behind != null && behind.rearSeal != null) behind.rearSeal.SetActive(true);
         ResetRoomLights(oldest);
         RefreshRoomMaterials(oldest);
         ApplyDoorPose(oldest);
@@ -596,7 +691,56 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         PendingAnchorPosition = anchor;
         pendingTargetZ -= shift;
         transitionStartZ -= shift;
+        TotalRebaseShift += shift;
         rebaseCount++;
+    }
+
+    /// <summary>Start Z of any sequence; rooms are contiguous, so unloaded ones are extrapolated.</summary>
+    public float RoomStartZ(int sequence)
+    {
+        var reference = FindSequence(currentSequence) ?? pool[0];
+        return reference.startZ + (sequence - reference.sequence) * RoomLength;
+    }
+
+    public int SequenceAtZ(float z)
+    {
+        var reference = FindSequence(currentSequence) ?? pool[0];
+        return reference.sequence + Mathf.FloorToInt((z - reference.startZ) / RoomLength);
+    }
+
+    /// <summary>
+    /// Whether the door at the end of a room can be walked through. Doors of
+    /// rooms that are no longer loaded are behind the player and therefore shut.
+    /// </summary>
+    public bool IsDoorPassable(int sequence)
+    {
+        var room = FindSequence(sequence);
+        if (room == null) return false;
+        return room.doorBroken || room.doorOpen || (room.doorOpening && room.doorProgress > .65f);
+    }
+
+    /// <summary>
+    /// Force a door open from the hunter's side. Returns false when the room is
+    /// not loaded, so the caller can remember the breach itself.
+    /// </summary>
+    public bool BreakDoor(int sequence)
+    {
+        var room = FindSequence(sequence);
+        if (room == null) return false;
+        room.doorBroken = true;
+        room.doorOpening = false;
+        room.doorOpen = true;
+        room.doorProgress = 1f;
+        room.doorSoundPlayed = true;
+        ApplyDoorPose(room);
+        var next = FindSequence(sequence + 1);
+        if (next != null)
+        {
+            next.connected = true;
+            if (next.rearSeal != null) next.rearSeal.SetActive(false);
+            ScheduleRoomLight(next);
+        }
+        return true;
     }
 
     RoomSlot FindCurrentRoom()
@@ -657,19 +801,26 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             Box(room.root.transform, "right wallpaper wall", new Vector3(RoomWidth * .5f, RoomHeight * .5f, RoomLength * .5f), new Vector3(WallThickness, RoomHeight, RoomLength), roomWall);
             Box(room.root.transform, "left baseboard", new Vector3(-RoomWidth * .5f + .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? roomWall);
             Box(room.root.transform, "right baseboard", new Vector3(RoomWidth * .5f - .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? roomWall);
-            Box(room.root.transform, "fluorescent fixture", new Vector3(0f, RoomHeight - .08f, RoomLength * .5f), new Vector3(2.05f, .1f, .38f), fixtureMaterial ?? roomCeiling);
-            var lightObject = new GameObject("fluorescent light");
-            lightObject.transform.SetParent(room.root.transform, false);
-            lightObject.transform.localPosition = new Vector3(0f, RoomHeight - .38f, RoomLength * .5f);
-            var light = lightObject.AddComponent<Light>();
-            // Reach the side walls and the next threshold so the wallpaper and
-            // embedded doorway remain readable in the title and WebGL player.
-            light.type = LightType.Point; light.range = room.rule == RoomRule.Run ? 8.3f : room.rule == RoomRule.Office ? 9.5f : 9.2f;
-            light.intensity = room.rule == RoomRule.Run ? 1.5f : room.rule == RoomRule.Office ? 1.55f : 1.35f;
-            light.color = ProfileLightColor(room.rule);
-            light.shadows = LightShadows.Soft;
-            light.shadowStrength = .4f;
-            light.bounceIntensity = .35f;
+            // Two short fixtures create a believable falloff across the 12 m
+            // slice while staying inside the fixed four-room WebGL pool.
+            var fixtureZ = new[] { 3.35f, 8.65f };
+            for (var fixtureIndex = 0; fixtureIndex < fixtureZ.Length; fixtureIndex++)
+            {
+                Box(room.root.transform, "fluorescent fixture " + fixtureIndex, new Vector3(0f, RoomHeight - .08f, fixtureZ[fixtureIndex]), new Vector3(1.85f, .1f, .34f), fixtureMaterial ?? roomCeiling);
+                var lightObject = new GameObject("fluorescent light " + fixtureIndex);
+                lightObject.transform.SetParent(room.root.transform, false);
+                lightObject.transform.localPosition = new Vector3(0f, RoomHeight - .38f, fixtureZ[fixtureIndex]);
+                var light = lightObject.AddComponent<Light>();
+                // Reach the side walls and the next threshold so the wallpaper
+                // and embedded doorway remain readable without a large shadow
+                // atlas cost.
+                light.type = LightType.Point; light.range = room.rule == RoomRule.Run ? 7.3f : room.rule == RoomRule.Office ? 7.8f : 7.5f;
+                light.intensity = room.rule == RoomRule.Run ? .82f : room.rule == RoomRule.Office ? .90f : .78f;
+                light.color = ProfileLightColor(room.rule);
+                light.shadows = LightShadows.Soft;
+                light.shadowStrength = .35f;
+                light.bounceIntensity = .28f;
+            }
             room.entry = CreateEntry(room.root.transform);
         }
 
@@ -742,7 +893,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         {
             case RoomRule.Shift: return new Color(.73f, .74f, .65f);
             case RoomRule.Office: return new Color(.94f, .87f, .76f);
-            case RoomRule.Run: return new Color(.84f, .75f, .64f);
+            // The utility run is cooler and flatter; reserve red for the
+            // localized warning props instead of tinting the whole room.
+            case RoomRule.Run: return new Color(.76f, .80f, .78f);
             case RoomRule.Exit: return new Color(.45f, .88f, .82f);
             default: return new Color(1f, .93f, .74f);
         }
@@ -771,6 +924,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         officeMetalMaterial = PropMaterial("Office / oxidized steel", new Color(.40f, .39f, .36f));
         officePaperMaterial = PropMaterial("Office / paper", new Color(.78f, .75f, .66f));
         officeGlassMaterial = PropMaterial("Office / cooler bottle", new Color(.48f, .68f, .70f), true);
+        officeDarkMaterial = PropMaterial("Office / blacked-out glass", new Color(.018f, .021f, .022f));
         runMetalMaterial = PropMaterial("Run / galvanized cabinet", new Color(.36f, .35f, .33f));
         runCableMaterial = PropMaterial("Run / rubber cable", new Color(.08f, .075f, .07f));
         runHazardMaterial = PropMaterial("Run / emergency warning", new Color(.71f, .20f, .13f), true);
@@ -808,6 +962,17 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 Box(props.transform, "office water cooler bottle", new Vector3(4.25f, 1.58f, 3.8f), new Vector3(.31f, .42f, .31f), officeGlassMaterial);
                 Box(props.transform, "office filing cabinet", new Vector3(-4.25f, .78f, 8.15f), new Vector3(.56f, .78f, .52f), officeMetalMaterial);
                 Box(props.transform, "office cabinet handle", new Vector3(-4.25f, 1.02f, 7.87f), new Vector3(.22f, .035f, .035f), officePaperMaterial);
+                // Level 4's windows are usually blacked out. This shallow
+                // panel reads as a sealed window at the edge of the room,
+                // while the central sightline stays clear for pursuit.
+                Box(props.transform, "office blacked-out window", new Vector3(-5.28f, 1.68f, 3.15f), new Vector3(.06f, 1.42f, 2.15f), officeDarkMaterial);
+                Box(props.transform, "office window frame top", new Vector3(-5.22f, 2.42f, 3.15f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
+                Box(props.transform, "office window frame bottom", new Vector3(-5.22f, .94f, 3.15f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
+                // A dead vending machine is a recognizable 90s office relic;
+                // it is deliberately unlit so it cannot compete with the
+                // fluorescent room reveal.
+                Box(props.transform, "office vending machine", new Vector3(4.88f, 1.12f, 9.35f), new Vector3(.46f, 1.12f, .72f), officeMetalMaterial);
+                Box(props.transform, "office vending machine display", new Vector3(4.62f, 1.62f, 9.35f), new Vector3(.025f, .30f, .48f), officeDarkMaterial);
             }
             else if (rule == RoomRule.Run)
             {
@@ -816,6 +981,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 Box(props.transform, "run utility cabinet left", new Vector3(-3.6f, 1.0f, 4.1f), new Vector3(.7f, 1.0f, 1.0f), runMetalMaterial);
                 Box(props.transform, "run utility cabinet right", new Vector3(3.1f, 1.0f, 7.7f), new Vector3(.7f, 1.0f, 1.0f), runMetalMaterial);
                 Box(props.transform, "run cable tray", new Vector3(0f, 2.48f, 7.0f), new Vector3(4.2f, .12f, .18f), runCableMaterial);
+                // Utility Level 2 language: exposed conduits, junction boxes,
+                // and a low ceiling run that makes the room feel serviced
+                // rather than decorated. Cylinders are kept to four per room
+                // so the streamed pool remains inexpensive in WebGL.
+                Cylinder(props.transform, "run conduit left", new Vector3(-4.35f, 2.22f, 6.0f), new Vector3(.07f, 2.6f, .07f), runMetalMaterial, new Vector3(90f, 0f, 0f));
+                Cylinder(props.transform, "run conduit right", new Vector3(4.12f, 2.03f, 8.1f), new Vector3(.06f, 2.1f, .06f), runMetalMaterial, new Vector3(90f, 0f, 0f));
+                Box(props.transform, "run junction box left", new Vector3(-4.26f, 1.88f, 6.05f), new Vector3(.42f, .34f, .18f), runMetalMaterial);
+                Box(props.transform, "run junction box right", new Vector3(4.06f, 1.70f, 8.12f), new Vector3(.42f, .34f, .18f), runMetalMaterial);
                 Box(props.transform, "run hazard marker left", new Vector3(-4.85f, 1.2f, 9.5f), new Vector3(.08f, 1.25f, 1.1f), runHazardMaterial);
                 Box(props.transform, "run hazard marker right", new Vector3(4.85f, 1.2f, 9.5f), new Vector3(.08f, 1.25f, 1.1f), runHazardMaterial);
                 Box(props.transform, "run service cart", new Vector3(3.15f, .52f, 3.8f), new Vector3(.72f, .12f, .48f), runMetalMaterial);
@@ -854,8 +1027,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 light.color = ProfileLightColor(room.rule);
                 if (light.gameObject.name.Contains("fluorescent"))
                 {
-                    room.lightBaseIntensity[i] = room.rule == RoomRule.Run ? 1.5f : room.rule == RoomRule.Office ? 1.55f : 1.35f;
-                    light.range = room.rule == RoomRule.Run ? 8.3f : room.rule == RoomRule.Office ? 9.5f : 9.2f;
+                    room.lightBaseIntensity[i] = room.rule == RoomRule.Run ? .82f : room.rule == RoomRule.Office ? .90f : .78f;
+                    light.range = room.rule == RoomRule.Run ? 7.3f : room.rule == RoomRule.Office ? 7.8f : 7.5f;
                 }
             }
         }
@@ -974,6 +1147,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         room.doorOpening = true;
         if (room.doorSoundPlayed) return;
         room.doorSoundPlayed = true;
+        DoorOpeningStarted?.Invoke(room.sequence, new Vector3(centerX, RoomHeight * .42f, room.endZ));
         if (room.doorAudio == null || (doorCreakClip == null && doorLatchClip == null && doorTravelClip == null)) return;
         // A very small deterministic pitch variation keeps repeated streamed
         // doors from sounding phase-locked while preserving the same source.
@@ -1007,5 +1181,18 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         var renderer = box.GetComponent<Renderer>();
         if (renderer != null) renderer.sharedMaterial = material;
         return box;
+    }
+
+    GameObject Cylinder(Transform parent, string name, Vector3 localPosition, Vector3 scale, Material material, Vector3 eulerAngles)
+    {
+        var cylinder = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        cylinder.name = name;
+        cylinder.transform.SetParent(parent, false);
+        cylinder.transform.localPosition = localPosition;
+        cylinder.transform.localScale = scale;
+        cylinder.transform.localRotation = Quaternion.Euler(eulerAngles);
+        var renderer = cylinder.GetComponent<Renderer>();
+        if (renderer != null) renderer.sharedMaterial = material;
+        return cylinder;
     }
 }

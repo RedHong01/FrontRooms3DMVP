@@ -30,16 +30,18 @@ keeping the reference qualities in the room, light and sound behaviour.
 ## Route contract
 
 The streamed route is deterministic for its first pass, then repeats in an
-infinite five-room cycle. A pooled room changes its profile when it is recycled,
-so the loop does not run out of geometry or remain visually locked to Lobby.
+infinite five-profile cycle. The handoff room remains a Lobby threshold; the
+first authored profile is revealed immediately after it. A pooled room changes
+its profile when it is recycled, so the loop does not run out of geometry or
+remain visually locked to Lobby.
 
 | Stream sequence | Profile | Player-facing rule | Exit cue |
 | --- | --- | --- | --- |
-| 0 | Lobby / Threshold | Walk, watch the first door, learn that a door is the boundary | First door opens after Space/Enter start |
-| 1 | Shift / Level 0 | The room beyond the door waits one second, flickers, then rises into light; keep a threshold in view when possible | The next door exposes the office colour temperature |
-| 2 | Office / Level 4 | Desks and partitions narrow the readable lanes; the threat is only a listening silhouette | Cross the office threshold; sprinting or time in the room wakes it |
-| 3 | Run / Level ! | Red wall, concrete step texture, warning bars; movement is the decision, not a search puzzle | Reach the next door while the Relay is closing distance |
-| 4 | Exit / Cold threshold | Cyan/metal contrast reads as an apparent exit and briefly releases pressure | Passing the threshold returns to Lobby in the next cycle |
+| 2 | Lobby / Threshold | Walk, watch the first door, learn that a door is the boundary | First door opens after Space/Enter start |
+| 3 | Shift / Level 0 | The room beyond the door waits one second, flickers, then rises into light; keep a threshold in view when possible | The next door exposes the office colour temperature |
+| 4 | Office / Level 4 | Sparse desks, CRTs, partitions, blackout window and dead vending machine narrow the readable lanes; the threat is only a listening silhouette | Cross the office threshold; sprinting or time in the room wakes it |
+| 5 | Run / Level ! | Utility pipes, junction boxes, warning bars and a red service cue turn movement into the decision | Reach the next door while the Relay is closing distance |
+| 6 | Exit / Cold threshold | Cyan/metal contrast reads as an apparent exit and briefly releases pressure | Passing the threshold returns to Lobby in the next cycle |
 
 The title uses the same Lobby room pool. Press **Space** or **Enter** to open
 the first door; once the camera reaches the next room, **WASD + mouse** takes
@@ -59,9 +61,9 @@ high-cost skin shader. It is not a copied Backrooms entity model.
 
 1. **Dormant** — no entity in Lobby or Shift. This keeps the opening readable.
 2. **Listening** — when the player enters the first Office sequence (stream
-   sequence 2), the Relay appears behind the player, holds for 3.2 seconds,
+   sequence 4), the Relay appears behind the player, holds for 3.2 seconds,
    and follows a small idle sway. A sprint immediately wakes it.
-3. **Chase** — entering Run (sequence 3) always wakes the Relay. Its speed is
+3. **Chase** — entering Run (sequence 5) always wakes the Relay. Its speed is
    3.72 m/s while the player walks and 4.35 m/s while the player sprints. This
    makes walking unsafe but gives a committed sprint a chance to create space.
 4. **Lost** — reaching the player ends the run. The object is disabled before
@@ -85,7 +87,7 @@ replace the primitives without changing encounter design.
   `BuildTitleCorridor`, so changing a material in the serialized editor preview
   changes the streamed profile on the next Play Mode run.
 - Recycled rooms are refreshed by rule instead of instantiating new meshes.
-  This keeps the first-person WebGL prototype bounded to three room roots.
+  This keeps the first-person WebGL prototype bounded to four room roots.
 
 ## Sources
 
