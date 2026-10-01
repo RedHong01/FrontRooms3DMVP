@@ -6,6 +6,19 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UiDocument = UnityEngine.UIElements.UIDocument;
+using UiImage = UnityEngine.UIElements.Image;
+using UiVectorImage = UnityEngine.UIElements.VectorImage;
+using UiVisualElement = UnityEngine.UIElements.VisualElement;
+using UiPanelSettings = UnityEngine.UIElements.PanelSettings;
+using UiPanelScaleMode = UnityEngine.UIElements.PanelScaleMode;
+using UiPanelScreenMatchMode = UnityEngine.UIElements.PanelScreenMatchMode;
+using UiDisplayStyle = UnityEngine.UIElements.DisplayStyle;
+using UiPosition = UnityEngine.UIElements.Position;
+using UiOverflow = UnityEngine.UIElements.Overflow;
+using UiPickingMode = UnityEngine.UIElements.PickingMode;
+using UiLength = UnityEngine.UIElements.Length;
+using UiLengthUnit = UnityEngine.UIElements.LengthUnit;
 
 [ExecuteAlways]
 // A separate first-person experiment. World X/Z uses the same authored five-cell topology as 2D.
@@ -38,6 +51,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Image logoImage;
     Image logoLeftImage, logoSlideImage;
     Transform logoMotionRoot;
+    UiDocument vectorLogoDocument;
+    UiVisualElement vectorLogoRoot;
+    UiImage vectorLogoLeftImage, vectorLogoS1Image, vectorLogoS2Image;
+    UiVectorImage vectorLogoLeftAsset, vectorLogoS1Asset, vectorLogoS2Asset;
+    bool vectorLogoActive;
     Material whiteLogoMaterial;
     Sprite brandLogo;
     enum LogoMotionVariation { SlideThenFade, FullLockup }
@@ -215,9 +233,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
     Texture2D WallpaperTexture(Color baseColor, Color patternColor, int style)
     {
-        // Keep the procedural source large enough to survive the close first-person
-        // view.  The old 64px texture was magnified across an entire wall slab,
-        // which made seams and the diamond weave look like a soft colour wash.
+        // The film's wall is a printed, slightly warm beige under fluorescent
+        // light, not a saturated yellow bitmap. A single 256px tile keeps this
+        // material cheap for WebGL while the world-size repeat prevents wide
+        // wall slabs from stretching the pattern.
         const int size = 256;
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, true, false);
         tex.name = "Procedural wallpaper";
@@ -229,14 +248,40 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         for (var y = 0; y < size; y++)
             for (var x = 0; x < size; x++)
             {
-                var v = 0.97f + 0.025f * Mathf.Sin((x + style * 20) * 0.14f) + 0.012f * Mathf.Sin(y * 0.24f);
+                var fiber = Mathf.Sin((x + style * 23) * .19f + Mathf.Sin(y * .07f)) * .012f
+                    + Mathf.Sin((y + style * 17) * .11f) * .008f;
+                var v = 0.965f + fiber;
                 var c = baseColor * v;
-                // Repeating vertical seams and a restrained diamond motif make the
-                // walls read as wallpaper instead of untextured yellow blocks.
-                var seam = (x + style * 12) % 64 == 0 || (x + style * 12 + 1) % 64 == 0;
-                var diamond = ((x + y + style * 28) % 96 == 0) || ((x - y + style * 28 + 384) % 96 == 0);
-                if (seam) c = Color.Lerp(c, patternColor, .28f);
-                else if (diamond) c = Color.Lerp(c, patternColor, .13f);
+                var shiftedX = x + style * 19;
+                var seam = shiftedX % 112 == 0 || shiftedX % 112 == 1;
+                var pattern = 0f;
+                var variant = ((style % 3) + 3) % 3;
+                if (variant == 0)
+                {
+                    // A low-contrast southwestern chevron, derived from the
+                    // reference pattern without copying a film frame.
+                    var diagonal = Mathf.Abs(Mathf.Repeat(x + y, 72f) - 36f);
+                    var diagonal2 = Mathf.Abs(Mathf.Repeat(x - y + 72f, 72f) - 36f);
+                    pattern = Mathf.Max(0f, 1f - Mathf.Min(diagonal, diagonal2) / 5f) * .075f;
+                }
+                else if (variant == 1)
+                {
+                    // Sparse floral medallions: readable only in near light,
+                    // like a second print run in the practical set.
+                    var cx = Mathf.Repeat(x + 22f, 96f) - 48f;
+                    var cy = Mathf.Repeat(y + 34f, 96f) - 48f;
+                    var radial = Mathf.Sqrt(cx * cx + cy * cy);
+                    pattern = Mathf.Clamp01(1f - Mathf.Abs(radial - 19f) / 3.5f) * .055f;
+                    pattern += Mathf.Clamp01(1f - radial / 6f) * .035f;
+                }
+                else
+                {
+                    var diamond = Mathf.Abs(Mathf.Repeat(x + y, 88f) - 44f) < 2.3f
+                        || Mathf.Abs(Mathf.Repeat(x - y + 88f, 88f) - 44f) < 2.3f;
+                    pattern = diamond ? .05f : 0f;
+                }
+                if (seam) c = Color.Lerp(c, patternColor, .22f);
+                else if (pattern > 0f) c = Color.Lerp(c, patternColor, pattern);
                 pixels[y * size + x] = new Color(c.r, c.g, c.b, 1f);
             }
         tex.SetPixels(pixels); tex.Apply(true, true);
@@ -297,9 +342,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // The visual grammar follows the deck: yellowed repeating wallpaper,
         // low-sheen carpet, and room-specific temperature/contrast changes.
         // Each room gets a material instance so the transition itself is legible.
-        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("D4C37B"), WallpaperTexture(C("D4C37B"), C("9C8C55"), 0), new Vector2(.8f, 1.9f));
-        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("B8A86F"), WallpaperTexture(C("B8A86F"), C("7F754D"), 1), new Vector2(.72f, 2.1f));
-        wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office", C("C9BA82"), WallpaperTexture(C("C9BA82"), C("92855D"), 2), new Vector2(.82f, 1.8f));
+        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("BDB18C"), WallpaperTexture(C("BDB18C"), C("958B6A"), 0), new Vector2(1.15f, 1.15f));
+        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("A8A07D"), WallpaperTexture(C("A8A07D"), C("81785F"), 1), new Vector2(1.05f, 1.2f));
+        wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office", C("C4B995"), WallpaperTexture(C("C4B995"), C("978D70"), 2), new Vector2(1.1f, 1.15f));
         wallMats[RoomRule.Run] = TexturedMat("Wallpaper / red run", C("6F272E"), WallpaperTexture(C("6F272E"), C("3C151B"), 3), new Vector2(.9f, 2.2f));
         wallMats[RoomRule.Exit] = TexturedMat("Wallpaper / exit", C("5D7770"), WallpaperTexture(C("5D7770"), C("334B46"), 4), new Vector2(.9f, 2f));
 
@@ -552,7 +597,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
         roomStream = titleWorld.gameObject.AddComponent<FrontRoomsRoomStream>();
         roomStream.roomTemplate = streamedRoomTemplate;
-        roomStream.Initialize(cam, wallMat, floorMat, ceilingMat, trimMat, fixtureMat, darkMat);
+        roomStream.Initialize(cam, WallMaterial(RoomRule.Lobby), FloorMaterial(RoomRule.Lobby), CeilingMaterial(RoomRule.Lobby), trimMat, fixtureMat, darkMat);
         titleCameraZ = cam == null ? 0f : cam.transform.position.z;
         titleLogoAlpha = 0f;
         logoMotionElapsed = 0f;
@@ -575,25 +620,46 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
     void UpdateLogoMotion()
     {
+        if (vectorLogoActive)
+        {
+            var vectorVisible = phase == Phase.Title;
+            if (vectorLogoRoot != null) vectorLogoRoot.style.display = vectorVisible ? UiDisplayStyle.Flex : UiDisplayStyle.None;
+            if (!vectorVisible || vectorLogoLeftImage == null || vectorLogoS1Image == null || vectorLogoS2Image == null) return;
+
+            // Door progress is the motion clock. The afterimage S forms begin
+            // exactly on top of the solid final S, then peel away one at a time
+            // as the first physical door opens. The full title stays visible
+            // after the movement completes while the corridor keeps looping.
+            var doorProgress = roomStream == null ? 0f : roomStream.FirstDoorProgress;
+            var vectorSlideT = doorProgress;
+            vectorSlideT = vectorSlideT * vectorSlideT * (3f - 2f * vectorSlideT);
+            var s2Start = logoMotionVariation == LogoMotionVariation.FullLockup ? .08f : .12f;
+            var vectorS2T = Mathf.Clamp01((doorProgress - s2Start) / (1f - s2Start));
+            vectorS2T = vectorS2T * vectorS2T * (3f - 2f * vectorS2T);
+            vectorLogoS1Image.style.left = new UiLength(Mathf.Lerp(798f, 842f, vectorSlideT), UiLengthUnit.Pixel);
+            vectorLogoS2Image.style.left = new UiLength(Mathf.Lerp(798f, 880f, vectorS2T), UiLengthUnit.Pixel);
+            // Keep the vector mark on the same fade-in clock as the title
+            // corridor. It remains at full opacity after the reveal; only the
+            // player handoff hides it.
+            var vectorAlpha = Mathf.Clamp01(titleLogoAlpha);
+            vectorLogoLeftImage.style.opacity = vectorAlpha;
+            vectorLogoS1Image.style.opacity = vectorAlpha;
+            vectorLogoS2Image.style.opacity = vectorAlpha;
+            return;
+        }
         if (logoMotionRoot == null || logoLeftImage == null || logoSlideImage == null) return;
         var visible = phase == Phase.Title;
         logoLeftImage.enabled = visible;
         logoSlideImage.enabled = visible;
         if (!visible) return;
-
-        var slideT = Mathf.Clamp01((logoMotionElapsed - .78f) / 1.25f);
+        var doorProgressFallback = roomStream == null ? 0f : roomStream.FirstDoorProgress;
+        var slideT = doorProgressFallback;
         slideT = slideT * slideT * (3f - 2f * slideT);
-        var fadeT = Mathf.Clamp01((logoMotionElapsed - 1.62f) / .72f);
-        fadeT = fadeT * fadeT * (3f - 2f * fadeT);
         var slideRect = logoSlideImage.rectTransform;
-        // Start the SS forms left of their final lockup, then settle them on
-        // the right edge. The second variation keeps the left lockup visible
-        // so the class can compare a complete brand read to the reductive mark.
         var restX = -75f;
         var startX = restX - 118f;
         slideRect.anchoredPosition = new Vector2(Mathf.Lerp(startX, restX, slideT), 0f);
-        var leftAlpha = logoMotionVariation == LogoMotionVariation.SlideThenFade ? 1f - fadeT : 1f;
-        logoLeftImage.color = new Color(1f, 1f, 1f, titleLogoAlpha * leftAlpha);
+        logoLeftImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
         logoSlideImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
     }
 
@@ -827,6 +893,16 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     }
     void LoadBrandLogo()
     {
+        vectorLogoLeftAsset = Resources.Load<UiVectorImage>("Brand/FrontRoomsLogo_Left");
+        vectorLogoS1Asset = Resources.Load<UiVectorImage>("Brand/FrontRoomsLogo_S1");
+        vectorLogoS2Asset = Resources.Load<UiVectorImage>("Brand/FrontRoomsLogo_S2");
+        if (vectorLogoLeftAsset != null && vectorLogoS1Asset != null && vectorLogoS2Asset != null
+            && BuildVectorLogo(vectorLogoLeftAsset, vectorLogoS1Asset, vectorLogoS2Asset))
+        {
+            vectorLogoActive = true;
+            if (logoImage != null) logoImage.enabled = false;
+            return;
+        }
         var texture = Resources.Load<Texture2D>("Brand/FrontRoomsLogo");
         if (texture == null) return;
         brandLogo = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(.5f, .5f), 100f);
@@ -845,6 +921,63 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             }
             ConfigureLogoMotion(texture);
         }
+    }
+
+    bool BuildVectorLogo(UiVectorImage leftAsset, UiVectorImage s1Asset, UiVectorImage s2Asset)
+    {
+        if (leftAsset == null || s1Asset == null || s2Asset == null) return false;
+        var host = new GameObject("FrontRooms vector logo");
+        vectorLogoDocument = host.AddComponent<UiDocument>();
+        var settings = ScriptableObject.CreateInstance<UiPanelSettings>();
+        settings.clearColor = false;
+        settings.clearDepthStencil = false;
+        settings.scaleMode = UiPanelScaleMode.ScaleWithScreenSize;
+        settings.referenceResolution = new Vector2Int(1920, 1080);
+        settings.screenMatchMode = UiPanelScreenMatchMode.MatchWidthOrHeight;
+        settings.match = .5f;
+        settings.sortingOrder = 100;
+        vectorLogoDocument.panelSettings = settings;
+        var panel = vectorLogoDocument.rootVisualElement;
+        if (panel == null) return false;
+        panel.pickingMode = UiPickingMode.Ignore;
+        panel.style.position = UiPosition.Absolute;
+        panel.style.left = 0f; panel.style.top = 0f;
+        panel.style.width = UiLength.Percent(100); panel.style.height = UiLength.Percent(100);
+
+        vectorLogoRoot = new UiVisualElement { name = "FrontRooms SVG lockup" };
+        vectorLogoRoot.style.position = UiPosition.Absolute;
+        vectorLogoRoot.style.left = UiLength.Percent(50);
+        vectorLogoRoot.style.top = UiLength.Percent(50);
+        vectorLogoRoot.style.width = 965f; vectorLogoRoot.style.height = 192f;
+        vectorLogoRoot.style.marginLeft = -482.5f; vectorLogoRoot.style.marginTop = -96f;
+        vectorLogoRoot.style.overflow = UiOverflow.Hidden;
+        vectorLogoRoot.pickingMode = UiPickingMode.Ignore;
+        panel.Add(vectorLogoRoot);
+
+        vectorLogoLeftImage = VectorLogoImage("SVG complete wordmark", leftAsset, 8f, 17.6f);
+        vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 798f, 17.8f);
+        vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 798f, 17.8f);
+        vectorLogoRoot.Add(vectorLogoLeftImage);
+        vectorLogoRoot.Add(vectorLogoS1Image);
+        vectorLogoRoot.Add(vectorLogoS2Image);
+        vectorLogoRoot.style.display = UiDisplayStyle.None;
+        return vectorLogoLeftImage != null && vectorLogoS1Image != null && vectorLogoS2Image != null;
+    }
+
+    UiImage VectorLogoImage(string name, UiVectorImage vectorImage, float left, float top)
+    {
+        var image = new UiImage { name = name, vectorImage = vectorImage };
+        image.scaleMode = UnityEngine.ScaleMode.StretchToFill;
+        image.tintColor = Color.white;
+        image.style.position = UiPosition.Absolute;
+        image.style.left = left; image.style.top = top;
+        // VectorImage bounds are the painted path bounds. Stretching the small
+        // S asset to the full 965px viewBox turns it into a ribbon, so preserve
+        // each imported asset's native size and place it in the shared lockup.
+        image.style.width = vectorImage.width; image.style.height = vectorImage.height;
+        image.style.opacity = 0f;
+        image.pickingMode = UiPickingMode.Ignore;
+        return image;
     }
 
     void ConfigureLogoMotion(Texture2D texture)
@@ -982,9 +1115,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (overlayImage != null) overlayImage.color = p == Phase.Title ? new Color(0f, 0f, 0f, 0f) : new Color(.93f, .92f, .88f, .98f);
         if (logoImage != null)
         {
-            logoImage.enabled = p == Phase.Title && logoMotionRoot == null;
+            logoImage.enabled = p == Phase.Title && logoMotionRoot == null && !vectorLogoActive;
             if (p == Phase.Title && logoMotionRoot == null) logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
         }
+        if (vectorLogoRoot != null) vectorLogoRoot.style.display = p == Phase.Title ? UiDisplayStyle.Flex : UiDisplayStyle.None;
         if (logoMotionRoot != null)
         {
             if (logoLeftImage != null) logoLeftImage.enabled = p == Phase.Title;

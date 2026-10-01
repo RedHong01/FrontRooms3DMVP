@@ -62,6 +62,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     float transitionStartZ;
     float pendingTargetZ;
     float logoVisibility;
+    float firstDoorMotionProgress;
     int recycledCount;
     int rebaseCount;
     float maxExposure;
@@ -73,6 +74,12 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     public bool HasControl => hasControl;
     public bool IsEntering => isEntering;
     public float LogoVisibility => logoVisibility;
+    /// <summary>
+    /// Progress of the first visible door. The title mark uses this as its
+    /// motion clock, so the two trailing S forms move only when the physical
+    /// door begins to open instead of after an arbitrary title delay.
+    /// </summary>
+    public float FirstDoorProgress => firstDoorMotionProgress;
     public int RoomCount => initialized ? MaxRooms : 0;
     public int RecycledCount => recycledCount;
     public int RebaseCount => rebaseCount;
@@ -105,6 +112,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         rebaseCount = 0;
         maxExposure = 0f;
         logoVisibility = 0f;
+        firstDoorMotionProgress = 0f;
 
         var cameraZ = streamCamera == null ? 0f : streamCamera.transform.position.z;
         centerX = streamCamera == null ? 0f : streamCamera.transform.position.x;
@@ -147,6 +155,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             TickArrival(dt);
         }
         TickNearbyDoors(dt);
+        var firstDoor = FindSequence(0);
+        if (firstDoor != null) firstDoorMotionProgress = Mathf.Max(firstDoorMotionProgress, firstDoor.doorProgress);
+        else firstDoorMotionProgress = 1f;
         MaintainPool();
         RebaseIfNeeded();
     }
@@ -288,12 +299,16 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
     void MaintainPool()
     {
-        var room = FindCurrentRoom();
-        if (room != null && streamCamera.transform.position.z >= room.endZ)
-        {
-            var next = FindSequence(room.sequence + 1);
-            if (next != null && next.connected) currentSequence = next.sequence;
-        }
+        // The camera is allowed to move more than one floating-point frame
+        // across a threshold. Looking only at FindCurrentRoom() here can skip
+        // the exact endZ sample (for example 5.98 -> 6.10), leaving
+        // currentSequence one room behind forever. Once that happens the pool
+        // refuses to recycle and the title eventually runs past its last room.
+        // Advance through every already-connected room whose boundary has been
+        // crossed; the loop is bounded by the fixed pool size and performs no
+        // allocation.
+        AdvanceCurrentSequence();
+
         var oldest = FindOldestRoom();
         if (oldest == null || oldest.sequence >= currentSequence - 1) return;
         if (streamCamera.transform.position.z - oldest.endZ < RecycleDistance) return;
@@ -312,6 +327,21 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         if (oldest.rearSeal != null) oldest.rearSeal.SetActive(true);
         ApplyDoorPose(oldest);
         recycledCount++;
+    }
+
+    void AdvanceCurrentSequence()
+    {
+        var room = FindSequence(currentSequence);
+        if (room == null) return;
+
+        var cameraZ = streamCamera.transform.position.z;
+        while (cameraZ >= room.endZ)
+        {
+            var next = FindSequence(room.sequence + 1);
+            if (next == null || !next.connected) break;
+            room = next;
+            currentSequence = room.sequence;
+        }
     }
 
     void RebaseIfNeeded()

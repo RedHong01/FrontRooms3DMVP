@@ -14,3 +14,11 @@ The procedural colors and room-specific palettes remain unchanged.
 
 The generated scene stores each slab's material instance, so designers can select a
 wall in `Assets/Scenes/FrontRooms3D.unity` and tune its texture scale/offset directly.
+
+The palette now starts from a desaturated beige/grey and lets the fluorescent
+fixtures create the sickly yellow cast. The shared 256px source rotates through a
+low-contrast chevron, sparse floral medallion, and plain diamond variant; each
+variant changes only about 5–8% of the albedo. This keeps the familiar 80% of the
+room stable while giving long slabs a physical paper scale and a small readable
+anomaly. The title's recycled rooms use the Lobby material, so the opening corridor
+also reads as wallpaper rather than a flat yellow cube.
