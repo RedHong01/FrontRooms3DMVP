@@ -1,0 +1,1594 @@
+{
+    "seed": 20261001,
+    "width": 9,
+    "height": 7,
+    "requestedLoopRatio": 0.18000000715255738,
+    "start": {
+        "x": 0,
+        "y": 3
+    },
+    "exit": {
+        "x": 8,
+        "y": 3
+    },
+    "cells": [
+        {
+            "id": 0,
+            "coord": {
+                "x": 0,
+                "y": 0
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 15,
+            "distanceToExit": 11,
+            "seedRoll": 842973472,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 1,
+            "coord": {
+                "x": 1,
+                "y": 0
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 14,
+            "distanceToExit": 10,
+            "seedRoll": 1521800056,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 2,
+            "coord": {
+                "x": 2,
+                "y": 0
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 13,
+            "distanceToExit": 9,
+            "seedRoll": 1914899566,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 3,
+            "coord": {
+                "x": 3,
+                "y": 0
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 14,
+            "distanceToExit": 8,
+            "seedRoll": 1500456503,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 4,
+            "coord": {
+                "x": 4,
+                "y": 0
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 13,
+            "distanceToExit": 7,
+            "seedRoll": 1135306051,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 5,
+            "coord": {
+                "x": 5,
+                "y": 0
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 14,
+            "distanceToExit": 6,
+            "seedRoll": 1803284528,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 6,
+            "coord": {
+                "x": 6,
+                "y": 0
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 15,
+            "distanceToExit": 5,
+            "seedRoll": 1841997408,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 7,
+            "coord": {
+                "x": 7,
+                "y": 0
+            },
+            "type": 3,
+            "isMainRoute": false,
+            "distanceFromStart": 16,
+            "distanceToExit": 6,
+            "seedRoll": 274722876,
+            "read": "wider room / sightline break"
+        },
+        {
+            "id": 8,
+            "coord": {
+                "x": 8,
+                "y": 0
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 17,
+            "distanceToExit": 5,
+            "seedRoll": 2074824763,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 9,
+            "coord": {
+                "x": 0,
+                "y": 1
+            },
+            "type": 2,
+            "isMainRoute": true,
+            "distanceFromStart": 2,
+            "distanceToExit": 12,
+            "seedRoll": 1356203148,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 10,
+            "coord": {
+                "x": 1,
+                "y": 1
+            },
+            "type": 1,
+            "isMainRoute": true,
+            "distanceFromStart": 3,
+            "distanceToExit": 11,
+            "seedRoll": 1036803702,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 11,
+            "coord": {
+                "x": 2,
+                "y": 1
+            },
+            "type": 3,
+            "isMainRoute": false,
+            "distanceFromStart": 12,
+            "distanceToExit": 8,
+            "seedRoll": 547421776,
+            "read": "wider room / sightline break"
+        },
+        {
+            "id": 12,
+            "coord": {
+                "x": 3,
+                "y": 1
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 11,
+            "distanceToExit": 7,
+            "seedRoll": 2051550382,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 13,
+            "coord": {
+                "x": 4,
+                "y": 1
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 12,
+            "distanceToExit": 6,
+            "seedRoll": 1590858170,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 14,
+            "coord": {
+                "x": 5,
+                "y": 1
+            },
+            "type": 3,
+            "isMainRoute": false,
+            "distanceFromStart": 13,
+            "distanceToExit": 5,
+            "seedRoll": 4410423,
+            "read": "wider room / sightline break"
+        },
+        {
+            "id": 15,
+            "coord": {
+                "x": 6,
+                "y": 1
+            },
+            "type": 3,
+            "isMainRoute": false,
+            "distanceFromStart": 14,
+            "distanceToExit": 4,
+            "seedRoll": 409791183,
+            "read": "wider room / sightline break"
+        },
+        {
+            "id": 16,
+            "coord": {
+                "x": 7,
+                "y": 1
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 17,
+            "distanceToExit": 3,
+            "seedRoll": 2113526247,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 17,
+            "coord": {
+                "x": 8,
+                "y": 1
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 18,
+            "distanceToExit": 4,
+            "seedRoll": 1578909370,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 18,
+            "coord": {
+                "x": 0,
+                "y": 2
+            },
+            "type": 1,
+            "isMainRoute": true,
+            "distanceFromStart": 1,
+            "distanceToExit": 13,
+            "seedRoll": 944067184,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 19,
+            "coord": {
+                "x": 1,
+                "y": 2
+            },
+            "type": 1,
+            "isMainRoute": true,
+            "distanceFromStart": 4,
+            "distanceToExit": 10,
+            "seedRoll": 1959077213,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 20,
+            "coord": {
+                "x": 2,
+                "y": 2
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 5,
+            "distanceToExit": 11,
+            "seedRoll": 1972932650,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 21,
+            "coord": {
+                "x": 3,
+                "y": 2
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 10,
+            "distanceToExit": 6,
+            "seedRoll": 2053323196,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 22,
+            "coord": {
+                "x": 4,
+                "y": 2
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 11,
+            "distanceToExit": 5,
+            "seedRoll": 917919802,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 23,
+            "coord": {
+                "x": 5,
+                "y": 2
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 12,
+            "distanceToExit": 4,
+            "seedRoll": 601315634,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 24,
+            "coord": {
+                "x": 6,
+                "y": 2
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 13,
+            "distanceToExit": 3,
+            "seedRoll": 315649883,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 25,
+            "coord": {
+                "x": 7,
+                "y": 2
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 16,
+            "distanceToExit": 2,
+            "seedRoll": 2024026619,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 26,
+            "coord": {
+                "x": 8,
+                "y": 2
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 15,
+            "distanceToExit": 1,
+            "seedRoll": 374253110,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 27,
+            "coord": {
+                "x": 0,
+                "y": 3
+            },
+            "type": 0,
+            "isMainRoute": true,
+            "distanceFromStart": 0,
+            "distanceToExit": 14,
+            "seedRoll": 327739698,
+            "read": "entry / stable fluorescent"
+        },
+        {
+            "id": 28,
+            "coord": {
+                "x": 1,
+                "y": 3
+            },
+            "type": 1,
+            "isMainRoute": true,
+            "distanceFromStart": 5,
+            "distanceToExit": 9,
+            "seedRoll": 1257863209,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 29,
+            "coord": {
+                "x": 2,
+                "y": 3
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 6,
+            "distanceToExit": 10,
+            "seedRoll": 1359869589,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 30,
+            "coord": {
+                "x": 3,
+                "y": 3
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 9,
+            "distanceToExit": 5,
+            "seedRoll": 1110413777,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 31,
+            "coord": {
+                "x": 4,
+                "y": 3
+            },
+            "type": 2,
+            "isMainRoute": true,
+            "distanceFromStart": 10,
+            "distanceToExit": 4,
+            "seedRoll": 1663062857,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 32,
+            "coord": {
+                "x": 5,
+                "y": 3
+            },
+            "type": 2,
+            "isMainRoute": true,
+            "distanceFromStart": 11,
+            "distanceToExit": 3,
+            "seedRoll": 1058372160,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 33,
+            "coord": {
+                "x": 6,
+                "y": 3
+            },
+            "type": 1,
+            "isMainRoute": true,
+            "distanceFromStart": 12,
+            "distanceToExit": 2,
+            "seedRoll": 1976987785,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 34,
+            "coord": {
+                "x": 7,
+                "y": 3
+            },
+            "type": 2,
+            "isMainRoute": true,
+            "distanceFromStart": 13,
+            "distanceToExit": 1,
+            "seedRoll": 1935580379,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 35,
+            "coord": {
+                "x": 8,
+                "y": 3
+            },
+            "type": 6,
+            "isMainRoute": true,
+            "distanceFromStart": 14,
+            "distanceToExit": 0,
+            "seedRoll": 947420057,
+            "read": "cold contrast / route completion"
+        },
+        {
+            "id": 36,
+            "coord": {
+                "x": 0,
+                "y": 4
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 7,
+            "distanceToExit": 9,
+            "seedRoll": 636591732,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 37,
+            "coord": {
+                "x": 1,
+                "y": 4
+            },
+            "type": 3,
+            "isMainRoute": true,
+            "distanceFromStart": 6,
+            "distanceToExit": 8,
+            "seedRoll": 268698481,
+            "read": "wider room / sightline break"
+        },
+        {
+            "id": 38,
+            "coord": {
+                "x": 2,
+                "y": 4
+            },
+            "type": 1,
+            "isMainRoute": true,
+            "distanceFromStart": 7,
+            "distanceToExit": 7,
+            "seedRoll": 1796935927,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 39,
+            "coord": {
+                "x": 3,
+                "y": 4
+            },
+            "type": 1,
+            "isMainRoute": true,
+            "distanceFromStart": 8,
+            "distanceToExit": 6,
+            "seedRoll": 103193266,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 40,
+            "coord": {
+                "x": 4,
+                "y": 4
+            },
+            "type": 1,
+            "isMainRoute": true,
+            "distanceFromStart": 9,
+            "distanceToExit": 5,
+            "seedRoll": 993671804,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 41,
+            "coord": {
+                "x": 5,
+                "y": 4
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 14,
+            "distanceToExit": 4,
+            "seedRoll": 778420754,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 42,
+            "coord": {
+                "x": 6,
+                "y": 4
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 13,
+            "distanceToExit": 3,
+            "seedRoll": 1511773148,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 43,
+            "coord": {
+                "x": 7,
+                "y": 4
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 14,
+            "distanceToExit": 2,
+            "seedRoll": 1467545617,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 44,
+            "coord": {
+                "x": 8,
+                "y": 4
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 15,
+            "distanceToExit": 1,
+            "seedRoll": 1125083198,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 45,
+            "coord": {
+                "x": 0,
+                "y": 5
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 8,
+            "distanceToExit": 10,
+            "seedRoll": 2117676408,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 46,
+            "coord": {
+                "x": 1,
+                "y": 5
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 7,
+            "distanceToExit": 9,
+            "seedRoll": 1365483432,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 47,
+            "coord": {
+                "x": 2,
+                "y": 5
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 8,
+            "distanceToExit": 8,
+            "seedRoll": 1183181012,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 48,
+            "coord": {
+                "x": 3,
+                "y": 5
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 9,
+            "distanceToExit": 7,
+            "seedRoll": 1035673569,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 49,
+            "coord": {
+                "x": 4,
+                "y": 5
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 10,
+            "distanceToExit": 8,
+            "seedRoll": 1687240978,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 50,
+            "coord": {
+                "x": 5,
+                "y": 5
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 15,
+            "distanceToExit": 5,
+            "seedRoll": 1166524790,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 51,
+            "coord": {
+                "x": 6,
+                "y": 5
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 16,
+            "distanceToExit": 4,
+            "seedRoll": 1892411749,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 52,
+            "coord": {
+                "x": 7,
+                "y": 5
+            },
+            "type": 5,
+            "isMainRoute": false,
+            "distanceFromStart": 15,
+            "distanceToExit": 3,
+            "seedRoll": 992283136,
+            "read": "rare landmark / reset orientation"
+        },
+        {
+            "id": 53,
+            "coord": {
+                "x": 8,
+                "y": 5
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 16,
+            "distanceToExit": 2,
+            "seedRoll": 371455753,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 54,
+            "coord": {
+                "x": 0,
+                "y": 6
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 9,
+            "distanceToExit": 11,
+            "seedRoll": 1609122099,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 55,
+            "coord": {
+                "x": 1,
+                "y": 6
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 10,
+            "distanceToExit": 10,
+            "seedRoll": 1724009506,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 56,
+            "coord": {
+                "x": 2,
+                "y": 6
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 11,
+            "distanceToExit": 9,
+            "seedRoll": 1187909025,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 57,
+            "coord": {
+                "x": 3,
+                "y": 6
+            },
+            "type": 2,
+            "isMainRoute": false,
+            "distanceFromStart": 10,
+            "distanceToExit": 8,
+            "seedRoll": 794823923,
+            "read": "familiar geometry with one shifted seam"
+        },
+        {
+            "id": 58,
+            "coord": {
+                "x": 4,
+                "y": 6
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 11,
+            "distanceToExit": 7,
+            "seedRoll": 1059813793,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 59,
+            "coord": {
+                "x": 5,
+                "y": 6
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 12,
+            "distanceToExit": 6,
+            "seedRoll": 1547092944,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 60,
+            "coord": {
+                "x": 6,
+                "y": 6
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 13,
+            "distanceToExit": 5,
+            "seedRoll": 556986017,
+            "read": "80% familiar / 20% wrong"
+        },
+        {
+            "id": 61,
+            "coord": {
+                "x": 7,
+                "y": 6
+            },
+            "type": 3,
+            "isMainRoute": false,
+            "distanceFromStart": 14,
+            "distanceToExit": 4,
+            "seedRoll": 523970483,
+            "read": "wider room / sightline break"
+        },
+        {
+            "id": 62,
+            "coord": {
+                "x": 8,
+                "y": 6
+            },
+            "type": 1,
+            "isMainRoute": false,
+            "distanceFromStart": 15,
+            "distanceToExit": 3,
+            "seedRoll": 1164434532,
+            "read": "80% familiar / 20% wrong"
+        }
+    ],
+    "connections": [
+        {
+            "id": 0,
+            "from": 18,
+            "to": 27,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 1,
+            "from": 9,
+            "to": 18,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 2,
+            "from": 9,
+            "to": 10,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 3,
+            "from": 10,
+            "to": 19,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 4,
+            "from": 19,
+            "to": 20,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 5,
+            "from": 20,
+            "to": 29,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 6,
+            "from": 28,
+            "to": 29,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 7,
+            "from": 28,
+            "to": 37,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 8,
+            "from": 37,
+            "to": 46,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 9,
+            "from": 46,
+            "to": 47,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 10,
+            "from": 38,
+            "to": 47,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 11,
+            "from": 38,
+            "to": 39,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 12,
+            "from": 39,
+            "to": 40,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 13,
+            "from": 31,
+            "to": 40,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 14,
+            "from": 31,
+            "to": 32,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 15,
+            "from": 32,
+            "to": 33,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 16,
+            "from": 33,
+            "to": 42,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 17,
+            "from": 41,
+            "to": 42,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 18,
+            "from": 41,
+            "to": 50,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 19,
+            "from": 50,
+            "to": 51,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 20,
+            "from": 51,
+            "to": 52,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 21,
+            "from": 43,
+            "to": 52,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 22,
+            "from": 34,
+            "to": 43,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 23,
+            "from": 34,
+            "to": 35,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 24,
+            "from": 26,
+            "to": 35,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 25,
+            "from": 25,
+            "to": 26,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 26,
+            "from": 16,
+            "to": 25,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 27,
+            "from": 16,
+            "to": 17,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 28,
+            "from": 8,
+            "to": 17,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 29,
+            "from": 7,
+            "to": 8,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 30,
+            "from": 6,
+            "to": 7,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 31,
+            "from": 5,
+            "to": 6,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 32,
+            "from": 4,
+            "to": 5,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 33,
+            "from": 4,
+            "to": 13,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 34,
+            "from": 13,
+            "to": 22,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 35,
+            "from": 22,
+            "to": 23,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 36,
+            "from": 23,
+            "to": 24,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 37,
+            "from": 15,
+            "to": 24,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 38,
+            "from": 14,
+            "to": 15,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 39,
+            "from": 21,
+            "to": 22,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 40,
+            "from": 21,
+            "to": 30,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 41,
+            "from": 12,
+            "to": 21,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 42,
+            "from": 11,
+            "to": 12,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 43,
+            "from": 2,
+            "to": 11,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 44,
+            "from": 1,
+            "to": 2,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 45,
+            "from": 0,
+            "to": 1,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 46,
+            "from": 2,
+            "to": 3,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 47,
+            "from": 35,
+            "to": 44,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 48,
+            "from": 44,
+            "to": 53,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 49,
+            "from": 53,
+            "to": 62,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 50,
+            "from": 61,
+            "to": 62,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 51,
+            "from": 60,
+            "to": 61,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 52,
+            "from": 59,
+            "to": 60,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 53,
+            "from": 58,
+            "to": 59,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 54,
+            "from": 57,
+            "to": 58,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 55,
+            "from": 48,
+            "to": 57,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 56,
+            "from": 48,
+            "to": 49,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 57,
+            "from": 56,
+            "to": 57,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 58,
+            "from": 55,
+            "to": 56,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 59,
+            "from": 54,
+            "to": 55,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 60,
+            "from": 45,
+            "to": 54,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 61,
+            "from": 36,
+            "to": 45,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 62,
+            "from": 37,
+            "to": 38,
+            "kind": 1,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": true,
+            "traversalSeconds": 4.199999809265137
+        },
+        {
+            "id": 63,
+            "from": 30,
+            "to": 39,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 64,
+            "from": 13,
+            "to": 14,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 65,
+            "from": 24,
+            "to": 33,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 66,
+            "from": 3,
+            "to": 4,
+            "kind": 3,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 2.799999952316284
+        },
+        {
+            "id": 67,
+            "from": 33,
+            "to": 34,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 68,
+            "from": 39,
+            "to": 48,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 69,
+            "from": 19,
+            "to": 28,
+            "kind": 0,
+            "open": true,
+            "isMainRoute": true,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 70,
+            "from": 36,
+            "to": 37,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 71,
+            "from": 6,
+            "to": 15,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        },
+        {
+            "id": 72,
+            "from": 30,
+            "to": 31,
+            "kind": 2,
+            "open": true,
+            "isMainRoute": false,
+            "requiresKey": false,
+            "traversalSeconds": 1.7000000476837159
+        }
+    ],
+    "mainRoute": [
+        27,
+        18,
+        9,
+        10,
+        19,
+        28,
+        37,
+        38,
+        39,
+        40,
+        31,
+        32,
+        33,
+        34,
+        35
+    ],
+    "validation": {
+        "passed": true,
+        "reachableCells": 63,
+        "totalCells": 63,
+        "mainPathLength": 15,
+        "openConnections": 73,
+        "loopConnections": 11,
+        "loopRatio": 0.17741934955120088,
+        "errors": []
+    }
+}

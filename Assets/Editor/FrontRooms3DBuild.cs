@@ -40,6 +40,24 @@ public static class FrontRooms3DBuild
         Debug.Log("[FrontRooms3DBuild] Repaired serialized door and lintel heights");
     }
 
+    [MenuItem("FrontRooms 3D/Ensure Relay rig")]
+    public static void EnsureRelayRig()
+    {
+        if (!File.Exists(Scene))
+        {
+            CreateScene();
+            return;
+        }
+        var scene = EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
+        var root = GameObject.Find("FrontRooms 3D");
+        var game = root == null ? null : root.GetComponent<FrontRooms3DGame>();
+        if (game == null) throw new Exception("FrontRooms 3D scene root is missing");
+        game.EnsureEditorPreview();
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene, Scene);
+        Debug.Log("[FrontRooms3DBuild] Ensured editable Relay rig in serialized scene");
+    }
+
     /// <summary>
     /// Build entry points must not regenerate an existing scene. The scene is
     /// the editable handoff between the runtime generator and the designer:

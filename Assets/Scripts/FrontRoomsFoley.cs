@@ -122,6 +122,15 @@ public sealed class FrontRoomsFoley
     {
         if (count <= 1) return 0;
         var previous = lastChoices.TryGetValue(key, out var last) ? last : -1;
+        // Keep the first pass eligible for every take. The old sentinel path
+        // always skipped index 0, which quietly reduced the variation bank
+        // after the first footstep.
+        if (previous < 0)
+        {
+            var first = random.Next(count);
+            lastChoices[key] = first;
+            return first;
+        }
         var next = random.Next(count - 1);
         if (next >= previous) next++;
         lastChoices[key] = next;
@@ -153,36 +162,46 @@ public sealed class FrontRoomsFoley
     AudioClip StepImpact(FrontRoomsFoleyActor actor, FrontRoomsFoleySurface surface, bool running, int seed)
     {
         var hunter = actor == FrontRoomsFoleyActor.Hunter;
-        var seconds = hunter ? .22f : (running ? .12f : .15f);
-        var bodyHz = hunter ? 62f : (running ? 116f : 142f);
+        var carpet = surface == FrontRoomsFoleySurface.Carpet;
+        var seconds = hunter ? (carpet ? .30f : .22f) : (running ? .12f : .15f);
+        // A carpeted store floor suppresses the bright heel click and leaves a
+        // rounded low body. The hunter keeps more sub energy because its mass
+        // is the threat cue the player should hear through the maze.
+        var bodyHz = carpet ? (hunter ? 54f : (running ? 108f : 126f)) : (hunter ? 62f : (running ? 116f : 142f));
         var amplitude = (hunter ? .50f : (running ? .31f : .23f)) * SurfaceBody(surface);
         var ring = SurfaceRing(surface);
         var noise = NoiseBuffer(seconds, seed);
         var phase = (seed % 29) * .17f;
         return Make("foley-" + actor + "-" + surface + (running ? "-run" : "-walk") + "-impact-" + seed, seconds, t =>
         {
-            var attack = Mathf.Exp(-t * (running ? 78f : 62f));
+            var attack = Mathf.Exp(-t * (carpet ? (hunter ? 32f : 44f) : (running ? 78f : 62f)));
             var body = Mathf.Sin(2f * Mathf.PI * bodyHz * t + phase) * attack;
             var heel = Mathf.Sin(2f * Mathf.PI * (bodyHz * 1.93f) * t + phase * .7f) * Mathf.Exp(-t * 94f);
-            var texture = noise[SampleIndex(t, noise.Length)] * Mathf.Exp(-t * (hunter ? 14f : 38f));
+            var texture = noise[SampleIndex(t, noise.Length)] * Mathf.Exp(-t * (carpet ? (hunter ? 9f : 22f) : (hunter ? 14f : 38f)));
             var resonance = ring * Mathf.Sin(2f * Mathf.PI * (bodyHz * 4.2f) * t) * Mathf.Exp(-t * 20f);
-            return amplitude * (.70f * body + .18f * heel + .18f * texture) + resonance;
+            var dampedCompression = carpet ? .12f * Mathf.Sin(2f * Mathf.PI * (hunter ? 71f : 84f) * t) * Mathf.Exp(-t * (hunter ? 8f : 14f)) : 0f;
+            return amplitude * (.70f * body + (carpet ? .08f : .18f) * heel + .18f * texture) + resonance + dampedCompression;
         });
     }
 
     AudioClip StepTexture(FrontRoomsFoleyActor actor, FrontRoomsFoleySurface surface, bool running, int seed)
     {
         var hunter = actor == FrontRoomsFoleyActor.Hunter;
-        var seconds = hunter ? .25f : .18f;
+        var carpet = surface == FrontRoomsFoleySurface.Carpet;
+        var seconds = hunter ? (carpet ? .38f : .25f) : (carpet ? .27f : .18f);
         var noise = NoiseBuffer(seconds, seed);
-        var high = surface == FrontRoomsFoleySurface.Carpet ? 0f : surface == FrontRoomsFoleySurface.Metal ? .16f : .08f;
-        var amount = hunter ? .16f : (running ? .12f : .09f);
+        var high = carpet ? .018f : surface == FrontRoomsFoleySurface.Metal ? .16f : .08f;
+        var amount = carpet ? (hunter ? .24f : (running ? .15f : .12f)) : (hunter ? .16f : (running ? .12f : .09f));
         return Make("foley-" + actor + "-" + surface + "-texture-" + seed, seconds, t =>
         {
-            var env = Mathf.Exp(-t * (hunter ? 13f : 28f));
+            // Carpet is a short, damp fibre release rather than a generic
+            // white-noise burst. Its longer tail distinguishes the hunter's
+            // heavy shoe without adding another imported voice.
+            var env = Mathf.Exp(-t * (carpet ? (hunter ? 8f : 17f) : (hunter ? 13f : 28f)));
             var grit = noise[SampleIndex(t, noise.Length)] * env;
-            var scrape = Mathf.Sin(2f * Mathf.PI * (180f + seed % 80) * t) * Mathf.Exp(-t * 22f);
-            return amount * (grit + high * scrape);
+            var scrape = Mathf.Sin(2f * Mathf.PI * (carpet ? 72f + seed % 24 : 180f + seed % 80) * t) * Mathf.Exp(-t * (carpet ? 10f : 22f));
+            var fibre = carpet ? noise[SampleIndex(Mathf.Max(0f, t - .018f), noise.Length)] * Mathf.Exp(-Mathf.Max(0f, t - .018f) * 24f) : 0f;
+            return amount * (grit + high * scrape + (carpet ? .22f * fibre : 0f));
         });
     }
 

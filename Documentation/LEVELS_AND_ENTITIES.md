@@ -38,7 +38,7 @@ so the loop does not run out of geometry or remain visually locked to Lobby.
 | 0 | Lobby / Threshold | Walk, watch the first door, learn that a door is the boundary | First door opens after Space/Enter start |
 | 1 | Shift / Level 0 | The room beyond the door waits one second, flickers, then rises into light; keep a threshold in view when possible | The next door exposes the office colour temperature |
 | 2 | Office / Level 4 | Desks and partitions narrow the readable lanes; the threat is only a listening silhouette | Cross the office threshold; sprinting or time in the room wakes it |
-| 3 | Run / Level ! | Chalky utility walls, service cabinets, overhead cable tray and a localized red warning cue; movement is the decision, not a search puzzle | Reach the next door while the Relay is closing distance |
+| 3 | Run / Level ! | Red wall, concrete step texture, warning bars; movement is the decision, not a search puzzle | Reach the next door while the Relay is closing distance |
 | 4 | Exit / Cold threshold | Cyan/metal contrast reads as an apparent exit and briefly releases pressure | Passing the threshold returns to Lobby in the next cycle |
 
 The title uses the same Lobby room pool. Press **Space** or **Enter** to open
@@ -46,21 +46,6 @@ the first door; once the camera reaches the next room, **WASD + mouse** takes
 control. **Shift** changes to sprint. The room name and threat state are shown
 as typography overlays so the player can read the level transition without a
 large panel covering the environment.
-
-## Visual implementation pass: Office and Run
-
-The room pass follows the public Backrooms references while keeping the prototype's geometry original and WebGL-friendly. The Backrooms Wiki describes Level 4 as an almost empty office building with blacked-out windows, sparse entities, water coolers, vending machines and Almond Water supplies. The generated Office therefore uses a low-density 90s office language: three desk islands with CRT silhouettes, paper stacks, low modular partitions, one filing cabinet and one water cooler. The centre lane remains clear for the threshold read and the Relay encounter. One partition and the right desk are offset by a few centimetres as the room's readable 20% wrongness.
-
-The Run profile is an original FrontRooms transition inspired by the Wiki's Level 2 utility tunnels. That reference emphasizes tight concrete or brick corridors, chalky wall surfaces, arbitrary machinery, pipes, trolleys, boxes, scraps, exposed wiring and fluorescent lights that can fail in a series. Run now keeps a neutral stained wall and dirty floor as the base, then adds side-lane utility cabinets, a service cart, an overhead cable tray and red emergency markers near the next door. The main fixture stays warm-neutral; red is a localized warning source so the player can still read the room geometry and choose to keep moving.
-
-The implementation uses only Unity primitives, small procedural materials and the existing pooled room roots. No film frame, character model or texture is copied. The source of truth is `FrontRooms3DGame.BuildWorld` for the serialized Editor preview and `FrontRoomsRoomStream.BuildProfileProps` for recycled title/gameplay rooms. Recycled rooms toggle the complete profile variant and rebind the wall/floor/ceiling materials, so Office and Run remain consistent after the infinite stream wraps.
-
-Research references:
-
-- [The Backrooms Wiki — Level 4, “Abandoned Office”](https://backrooms-wiki.wikidot.com/level-4)
-- [The Backrooms Wiki — Level 2, maintenance tunnels and lighting failures](https://backrooms-wiki.wikidot.com/level-2)
-- [Associated Press review of the Backrooms film](https://apnews.com/article/c7481eab3d0f46436730e88a6ccb9b89)
-- [SURFACE — A24 Backrooms production design](https://www.surfacemag.com/articles/a24-backrooms-production-design/)
 
 ## Entity contract: The Relay
 
