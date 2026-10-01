@@ -50,7 +50,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     const float TitleSpeed = 1.15f;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
     string flash = "", actionIdentity = "";
-    bool released, shiftWarning, journal, manualStarted;
+    bool released, shiftWarning, journal;
     int notesRead, windowsBroken, doorsBroken, shifts, transitions;
     const float Radius = .27f;
     const float Walk = 3.2f, Run = 5.5f;
@@ -896,7 +896,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         hunterTarget = hunterPos;
         room = level.Rooms[0];
         if (hunter != null) hunter.gameObject.SetActive(true);
-        elapsed = 0; manualStarted = true; SetPhase(Phase.Playing); PositionView(); Event("start", "first-person");
+        elapsed = 0; SetPhase(Phase.Playing); PositionView(); Event("start", "first-person");
     }
     void OnApplicationFocus(bool focused) { if (!focused && phase == Phase.Playing && testDir == null) SetPhase(Phase.Paused); }
     void Update()
