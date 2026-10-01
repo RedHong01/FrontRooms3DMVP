@@ -4,7 +4,7 @@ The reproducible browser build is exposed in Unity under **FrontRooms 3D → Bui
 
 ```sh
 /Applications/Unity/Hub/Editor/6000.3.10f1/Unity.app/Contents/MacOS/Unity \
-  -projectPath /Users/redwang/Developer/FrontRooms3DMVP \
+  -projectPath /Users/redwang/Developer/Frontrooms3D \
   -executeMethod FrontRooms3DBuild.BuildWebGL -quit -batchmode
 ```
 

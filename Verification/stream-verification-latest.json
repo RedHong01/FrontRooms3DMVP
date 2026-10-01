@@ -1,0 +1,35 @@
+{
+    "suite": "FrontRooms room stream and Relay",
+    "timestampUtc": "2026-10-01T23:40:05.5838160Z",
+    "unityVersion": "6000.3.10f1",
+    "scope": "Room pool, profile order and Relay state machine with a scripted player. Rendering, audio and human playability are separate.",
+    "passed": 5,
+    "failed": 0,
+    "checks": [
+        {
+            "name": "Handoff keeps every visible room and leads with empty Lobby rooms",
+            "passed": true,
+            "detail": "handoff room 3; first furnished room +3; cycle Shift, Office, Run, Exit, Lobby"
+        },
+        {
+            "name": "Two dressed rooms always wait ahead and no loaded room changes profile",
+            "passed": true,
+            "detail": "walked 24 rooms; at least 2 rooms ready ahead every frame; 24 recycles"
+        },
+        {
+            "name": "A walking player is hunted but not caught; the Relay is released out of sight",
+            "passed": true,
+            "detail": "released 13.4 s after the handoff in room +3; closest 4.4 m; 15 doors broken; 8 Run alarms; 1 rebases; final state Hunt"
+        },
+        {
+            "name": "A player who stops after the release is caught",
+            "passed": true,
+            "detail": "stopped 13.5 s after the handoff; caught 22.7 s later after 2 door breaks"
+        },
+        {
+            "name": "A sprinting player escapes",
+            "passed": true,
+            "detail": "sprinted 55 rooms in 120 s; Relay state BreakDoor; 43 relays"
+        }
+    ]
+}

@@ -3,15 +3,16 @@ using UnityEngine;
 
 /// <summary>
 /// The bounded, first-person room stream: the title corridor and the whole
-/// playable level. The component owns four reusable room roots — the room
-/// behind the player, the current room and two furnished rooms waiting behind
-/// closed doors — and recycles the one behind as the player advances.
+/// playable level. The component owns five reusable room roots: the rooms
+/// behind the player, the current room and at least two dressed rooms waiting
+/// behind closed doors. The oldest room is recycled to the front only once the
+/// door behind the player has shut.
 /// </summary>
 public sealed class FrontRoomsRoomStream : MonoBehaviour
 {
-    // One room behind, the current room, and two prepared rooms ahead. A room
-    // only changes profile while it is out of sight behind two closed doors.
-    public const int MaxRooms = 4;
+    // Up to two rooms behind, the current room, and two or three prepared
+    // rooms ahead. A room only changes profile while it is out of sight.
+    public const int MaxRooms = 5;
     public const float RoomWidth = 11.5f;
     public const float RoomHeight = 2.9f;
     public const float RoomLength = 12f;
@@ -53,8 +54,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     [SerializeField, Tooltip("Keep the title and arrival stream on authored Level 0 Lobby replicas. Player control is handed off separately after arrival.")]
     bool lobbyOnlyTitle = true;
 
-    [SerializeField, Tooltip("Optional empty Lobby rooms after the handoff room before the first furnished profile. Zero keeps the authored route readable immediately: Shift → Office → Run.")]
-    int emptyLeadRooms = 0;
+    [SerializeField, Tooltip("Empty Lobby rooms after the handoff room before the first furnished profile.")]
+    int emptyLeadRooms = 2;
 
     sealed class RoomSlot
     {
@@ -86,6 +87,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         public int lightFlickerCount;
         public float lightFlickerPeriod;
         public float lightFlickerOnFraction;
+        public int[] lightFixtureFlickerCount;
+        public float[] lightFixtureFlickerElapsed;
+        public float[] lightFixtureFlickerPeriod;
+        public float[] lightFixtureFlickerOnFraction;
+        public float[] lightFixtureFlickerPhase;
         public float lightRevealSeconds;
         public bool lightNeverSettles;
         public float lightUnstableElapsed;
@@ -362,8 +368,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     /// <summary>
     /// Start counting the playable sequence from the room the player was just
     /// handed. The handoff room and the empty lead rooms keep their Lobby
-    /// dressing; furnished profiles are only assigned when a room is recycled
-    /// behind two closed doors, so no room ever changes while it can be seen.
+    /// dressing. Rooms already prepared ahead are re-dressed only while they
+    /// are still sealed behind the handoff room's closed door, so no room ever
+    /// changes while it can be seen.
     /// </summary>
     public void BeginPlayableSequence()
     {
@@ -396,29 +403,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         candidate.x = Mathf.Clamp(candidate.x, centerX - half, centerX + half);
         var rear = room.startZ + BoundaryMargin;
         if (candidate.z < rear) candidate.z = rear;
-        // Input can jump from well inside a room to the analytical boundary
-        // in one frame (especially in a standalone build). Start the same
-        // proximity cue here so the player never gets stranded at a closed
-        // threshold simply because the trigger frame was skipped.
-        if (candidate.z > room.endZ - 4f && !room.doorOpen)
-        {
-            BeginDoorOpening(room);
-            // The movement input itself is the player's commitment to this
-            // threshold. Complete the analytical gate here as a fallback for
-            // standalone builds that can skip the intermediate trigger frame;
-            // the normal title/proximity path still uses the .9 s animation.
-            room.doorProgress = 1f;
-            room.doorOpening = false;
-            room.doorOpen = true;
-            ApplyDoorPose(room);
-            var next = FindSequence(room.sequence + 1);
-            if (next != null)
-            {
-                next.connected = true;
-                if (next.rearSeal != null) next.rearSeal.SetActive(false);
-                ScheduleRoomLight(next);
-            }
-        }
+        // Tick opens a door whenever the camera is within 4 m of it, and a frame
+        // step is at most 0.55 m, so the hinge always animates. Let the player
+        // through once the leaves are most of the way open.
         var passable = room.doorOpen || (room.doorOpening && room.doorProgress > .65f);
         if (candidate.z > room.endZ - BoundaryMargin && !passable)
             candidate.z = room.endZ - BoundaryMargin;
@@ -557,18 +544,35 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             {
                 room.lightDelayRemaining -= dt;
                 if (room.lightDelayRemaining > 0f) continue;
-                if (room.lightFlickerCount > 0)
+                room.lightFlickerElapsed += dt;
+                var anyFixtureFlickering = false;
+                for (var lightIndex = 0; lightIndex < room.roomLights.Length; lightIndex++)
                 {
-                    room.lightFlickerElapsed += dt;
-                    var totalFlickerSeconds = room.lightFlickerCount * room.lightFlickerPeriod;
-                    if (room.lightFlickerElapsed < totalFlickerSeconds)
+                    if (!room.lightWasEnabled[lightIndex]) continue;
+                    var fixtureCount = room.lightFixtureFlickerCount == null ? 0 : room.lightFixtureFlickerCount[lightIndex];
+                    if (fixtureCount <= 0)
                     {
-                        var pulseTime = room.lightFlickerElapsed % room.lightFlickerPeriod;
-                        var flickerLevel = pulseTime < room.lightFlickerPeriod * room.lightFlickerOnFraction ? .92f : .035f;
-                        SetRoomLightIntensity(room, flickerLevel, true);
+                        room.roomLights[lightIndex].enabled = true;
+                        room.roomLights[lightIndex].intensity = room.lightBaseIntensity[lightIndex] * .92f;
                         continue;
                     }
+                    room.lightFixtureFlickerElapsed[lightIndex] += dt;
+                    var totalFlickerSeconds = fixtureCount * room.lightFixtureFlickerPeriod[lightIndex];
+                    if (room.lightFixtureFlickerElapsed[lightIndex] < totalFlickerSeconds)
+                    {
+                        anyFixtureFlickering = true;
+                        var pulseTime = (room.lightFixtureFlickerElapsed[lightIndex] + room.lightFixtureFlickerPhase[lightIndex]) % room.lightFixtureFlickerPeriod[lightIndex];
+                        var flickerLevel = pulseTime < room.lightFixtureFlickerPeriod[lightIndex] * room.lightFixtureFlickerOnFraction[lightIndex] ? .92f : .035f;
+                        room.roomLights[lightIndex].enabled = true;
+                        room.roomLights[lightIndex].intensity = room.lightBaseIntensity[lightIndex] * flickerLevel;
+                    }
+                    else
+                    {
+                        room.roomLights[lightIndex].enabled = true;
+                        room.roomLights[lightIndex].intensity = room.lightBaseIntensity[lightIndex] * .92f;
+                    }
                 }
+                if (anyFixtureFlickering) continue;
                 room.lightTriggerScheduled = false;
                 room.lightRevealStarted = true;
                 room.lightRevealProgress = 0f;
@@ -601,12 +605,21 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     {
         room.lightUnstableElapsed += dt;
         var t = room.lightUnstableElapsed + room.lightNoisePhase;
-        // Two incommensurate waves create a slow ballast sway with occasional
-        // dropouts. The ceiling never reaches the normal steady-state level.
-        var wave = .5f + .5f * Mathf.Sin(t * 3.7f) * (.68f + .32f * Mathf.Sin(t * 1.13f));
-        var dropout = Mathf.PerlinNoise(t * .92f, room.lightNoisePhase) > .77f ? .06f : 1f;
-        var level = (.12f + .28f * Mathf.Clamp01(wave)) * dropout;
-        SetRoomLightIntensity(room, level, true);
+        // Two incommensurate waves create an independent ballast sway for each
+        // fixture. The ceiling never reaches the normal steady-state level, but
+        // no two lamps share the same dropout frame or phase.
+        for (var lightIndex = 0; lightIndex < room.roomLights.Length; lightIndex++)
+        {
+            var phase = room.lightFixtureFlickerPhase == null ? 0f : room.lightFixtureFlickerPhase[lightIndex];
+            var lampT = t + phase;
+            var wave = .5f + .5f * Mathf.Sin(lampT * 3.7f) * (.68f + .32f * Mathf.Sin(lampT * 1.13f));
+            var dropout = Mathf.PerlinNoise(lampT * .92f, room.lightNoisePhase + lightIndex * 1.73f) > .77f ? .06f : 1f;
+            var level = (.12f + .28f * Mathf.Clamp01(wave)) * dropout;
+            var light = room.roomLights[lightIndex];
+            if (light == null || !room.lightWasEnabled[lightIndex]) continue;
+            light.enabled = true;
+            light.intensity = room.lightBaseIntensity[lightIndex] * level;
+        }
     }
 
     void MaintainPool()
@@ -708,6 +721,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         return reference.sequence + Mathf.FloorToInt((z - reference.startZ) / RoomLength);
     }
 
+    public bool IsLoaded(int sequence) => FindSequence(sequence) != null;
+
     /// <summary>
     /// Whether the door at the end of a room can be walked through. Doors of
     /// rooms that are no longer loaded are behind the player and therefore shut.
@@ -801,12 +816,32 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             Box(room.root.transform, "right wallpaper wall", new Vector3(RoomWidth * .5f, RoomHeight * .5f, RoomLength * .5f), new Vector3(WallThickness, RoomHeight, RoomLength), roomWall);
             Box(room.root.transform, "left baseboard", new Vector3(-RoomWidth * .5f + .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? roomWall);
             Box(room.root.transform, "right baseboard", new Vector3(RoomWidth * .5f - .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? roomWall);
+            // Real paper is installed in drops. These narrow shadow seams are
+            // deliberately shallow and shared across the room pool; they give
+            // the long walls a believable installation rhythm without adding a
+            // high-frequency decal or another texture sample.
+            for (var seam = 1; seam < 6; seam++)
+            {
+                var seamZ = seam * 2.25f;
+                Box(room.root.transform, "wallpaper drop seam " + seam + " left", new Vector3(-RoomWidth * .5f + .006f, RoomHeight * .5f, seamZ), new Vector3(.012f, RoomHeight - .12f, .018f), trimMaterial ?? roomWall);
+                Box(room.root.transform, "wallpaper drop seam " + seam + " right", new Vector3(RoomWidth * .5f - .006f, RoomHeight * .5f, seamZ), new Vector3(.012f, RoomHeight - .12f, .018f), trimMaterial ?? roomWall);
+            }
+            // A recessed acoustic-tile grid catches the fluorescent spill and
+            // makes the ceiling read as a built room rather than one slab.
+            for (var tile = 1; tile < 10; tile++)
+                Box(room.root.transform, "ceiling tile joint Z " + tile, new Vector3(0f, RoomHeight + .003f, tile * 1.2f), new Vector3(RoomWidth - .24f, .012f, .014f), trimMaterial ?? roomCeiling);
+            for (var tile = -2; tile <= 2; tile++)
+                Box(room.root.transform, "ceiling tile joint X " + tile, new Vector3(tile * 2.3f, RoomHeight + .004f, RoomLength * .5f), new Vector3(.014f, .012f, RoomLength - .24f), trimMaterial ?? roomCeiling);
             // Two short fixtures create a believable falloff across the 12 m
             // slice while staying inside the fixed four-room WebGL pool.
-            var fixtureZ = new[] { 3.35f, 8.65f };
+            var fixtureZ = new[] { 1.7f, 4.55f, 7.4f, 10.25f };
             for (var fixtureIndex = 0; fixtureIndex < fixtureZ.Length; fixtureIndex++)
             {
-                Box(room.root.transform, "fluorescent fixture " + fixtureIndex, new Vector3(0f, RoomHeight - .08f, fixtureZ[fixtureIndex]), new Vector3(1.85f, .1f, .34f), fixtureMaterial ?? roomCeiling);
+                var fixtureZPosition = fixtureZ[fixtureIndex];
+                Box(room.root.transform, "fluorescent housing " + fixtureIndex, new Vector3(0f, RoomHeight - .075f, fixtureZPosition), new Vector3(1.98f, .13f, .44f), darkMatOr(roomCeiling));
+                Box(room.root.transform, "fluorescent diffuser " + fixtureIndex, new Vector3(0f, RoomHeight - .145f, fixtureZPosition), new Vector3(1.73f, .045f, .27f), fixtureMaterial ?? roomCeiling);
+                Box(room.root.transform, "fluorescent end cap L " + fixtureIndex, new Vector3(-.94f, RoomHeight - .08f, fixtureZPosition), new Vector3(.06f, .16f, .48f), trimMaterial ?? roomCeiling);
+                Box(room.root.transform, "fluorescent end cap R " + fixtureIndex, new Vector3(.94f, RoomHeight - .08f, fixtureZPosition), new Vector3(.06f, .16f, .48f), trimMaterial ?? roomCeiling);
                 var lightObject = new GameObject("fluorescent light " + fixtureIndex);
                 lightObject.transform.SetParent(room.root.transform, false);
                 lightObject.transform.localPosition = new Vector3(0f, RoomHeight - .38f, fixtureZ[fixtureIndex]);
@@ -814,11 +849,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 // Reach the side walls and the next threshold so the wallpaper
                 // and embedded doorway remain readable without a large shadow
                 // atlas cost.
-                light.type = LightType.Point; light.range = room.rule == RoomRule.Run ? 7.3f : room.rule == RoomRule.Office ? 7.8f : 7.5f;
-                light.intensity = room.rule == RoomRule.Run ? .82f : room.rule == RoomRule.Office ? .90f : .78f;
+                light.type = LightType.Point; light.range = room.rule == RoomRule.Run ? 7.1f : room.rule == RoomRule.Office ? 8.4f : 8.2f;
+                light.intensity = room.rule == RoomRule.Run ? .56f : room.rule == RoomRule.Office ? .68f : .64f;
                 light.color = ProfileLightColor(room.rule);
-                light.shadows = LightShadows.Soft;
-                light.shadowStrength = .35f;
+                // Only the two near fixtures receive dynamic shadows. The
+                // other practicals still contribute through their emissive
+                // diffusers and point falloff, keeping WebGL shadow cost low.
+                light.shadows = fixtureIndex % 2 == 0 ? LightShadows.Soft : LightShadows.None;
+                light.shadowStrength = .24f;
                 light.bounceIntensity = .28f;
             }
             room.entry = CreateEntry(room.root.transform);
@@ -856,12 +894,21 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         Box(room.root.transform, "door frame left", new Vector3(-1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
         Box(room.root.transform, "door frame right", new Vector3(1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
         Box(room.root.transform, "door frame header", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, RoomLength), new Vector3(3.12f, DoorHeaderHeight, .22f), frameMaterial);
+        // The frame has a reveal and a threshold so the doorway owns a real
+        // thickness in the light, instead of reading as a flat black card.
+        Box(room.root.transform, "door jamb reveal left", new Vector3(-1.34f, 1.32f, RoomLength - .12f), new Vector3(.10f, 2.52f, .34f), doorMaterial ?? frameMaterial);
+        Box(room.root.transform, "door jamb reveal right", new Vector3(1.34f, 1.32f, RoomLength - .12f), new Vector3(.10f, 2.52f, .34f), doorMaterial ?? frameMaterial);
+        Box(room.root.transform, "door threshold", new Vector3(0f, .055f, RoomLength - .13f), new Vector3(2.72f, .11f, .38f), frameMaterial);
         var leftPivot = new GameObject("double door left hinge").transform;
         leftPivot.SetParent(room.root.transform, false); leftPivot.localPosition = new Vector3(-1.2f, 0f, RoomLength);
         var rightPivot = new GameObject("double door right hinge").transform;
         rightPivot.SetParent(room.root.transform, false); rightPivot.localPosition = new Vector3(1.2f, 0f, RoomLength);
         var left = Box(leftPivot, "double door left", new Vector3(.6f, DoorLeafHeight * .5f, 0f), new Vector3(1.2f, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
         var right = Box(rightPivot, "double door right", new Vector3(-.6f, DoorLeafHeight * .5f, 0f), new Vector3(1.2f, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
+        Box(leftPivot, "left door handle", new Vector3(1.02f, 1.22f, -.10f), new Vector3(.055f, .18f, .08f), frameMaterial);
+        Box(rightPivot, "right door handle", new Vector3(-1.02f, 1.22f, -.10f), new Vector3(.055f, .18f, .08f), frameMaterial);
+        Box(leftPivot, "left door gasket", new Vector3(.60f, DoorLeafHeight * .5f, -.085f), new Vector3(1.04f, DoorLeafHeight - .16f, .025f), trimMaterial ?? frameMaterial);
+        Box(rightPivot, "right door gasket", new Vector3(-.60f, DoorLeafHeight * .5f, -.085f), new Vector3(1.04f, DoorLeafHeight - .16f, .025f), trimMaterial ?? frameMaterial);
         room.leftDoor = leftPivot; room.rightDoor = rightPivot;
         var audioObject = new GameObject("door creak / spatial");
         audioObject.transform.SetParent(room.root.transform, false);
@@ -1027,8 +1074,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 light.color = ProfileLightColor(room.rule);
                 if (light.gameObject.name.Contains("fluorescent"))
                 {
-                    room.lightBaseIntensity[i] = room.rule == RoomRule.Run ? .82f : room.rule == RoomRule.Office ? .90f : .78f;
-                    light.range = room.rule == RoomRule.Run ? 7.3f : room.rule == RoomRule.Office ? 7.8f : 7.5f;
+                    room.lightBaseIntensity[i] = room.rule == RoomRule.Run ? .56f : room.rule == RoomRule.Office ? .68f : .64f;
+                    light.range = room.rule == RoomRule.Run ? 7.1f : room.rule == RoomRule.Office ? 8.4f : 8.2f;
                 }
             }
         }
@@ -1103,6 +1150,20 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         room.lightFlickerOnFraction = Mathf.Lerp(.23f, .48f, Hash01(sequence, 41));
         room.lightRevealSeconds = Mathf.Lerp(1.35f, 2.35f, Hash01(sequence, 47));
         room.lightNoisePhase = Hash01(sequence, 53) * 19f;
+        var lampCount = room.roomLights == null ? 4 : room.roomLights.Length;
+        room.lightFixtureFlickerCount = new int[lampCount];
+        room.lightFixtureFlickerElapsed = new float[lampCount];
+        room.lightFixtureFlickerPeriod = new float[lampCount];
+        room.lightFixtureFlickerOnFraction = new float[lampCount];
+        room.lightFixtureFlickerPhase = new float[lampCount];
+        for (var i = 0; i < lampCount; i++)
+        {
+            var lampSeed = Hash01(sequence + i * 17, 61);
+            room.lightFixtureFlickerCount[i] = room.lightFlickerCount <= 0 ? 0 : Mathf.Max(1, room.lightFlickerCount + Mathf.RoundToInt(Mathf.Lerp(-1f, 1f, lampSeed)));
+            room.lightFixtureFlickerPeriod[i] = room.lightFlickerPeriod * Mathf.Lerp(.78f, 1.22f, Hash01(sequence + i * 23, 67));
+            room.lightFixtureFlickerOnFraction[i] = Mathf.Clamp01(room.lightFlickerOnFraction + Mathf.Lerp(-.08f, .08f, Hash01(sequence + i * 29, 71)));
+            room.lightFixtureFlickerPhase[i] = Hash01(sequence + i * 31, 73) * room.lightFixtureFlickerPeriod[i];
+        }
     }
 
     static float Hash01(int sequence, int salt)
@@ -1173,14 +1234,25 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
     GameObject Box(Transform parent, string name, Vector3 localPosition, Vector3 scale, Material material)
     {
-        var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        var box = new GameObject(name);
         box.name = name;
         box.transform.SetParent(parent, false);
         box.transform.localPosition = localPosition;
-        box.transform.localScale = scale;
-        var renderer = box.GetComponent<Renderer>();
-        if (renderer != null) renderer.sharedMaterial = material;
+        box.transform.localScale = Vector3.one;
+        var meshFilter = box.AddComponent<MeshFilter>();
+        var meshRenderer = box.AddComponent<MeshRenderer>();
+        meshFilter.sharedMesh = FrontRoomsFilmMesh.GetBeveledBox(scale, Mathf.Min(.035f, Mathf.Min(scale.x, Mathf.Min(scale.y, scale.z)) * .16f));
+        meshRenderer.sharedMaterial = material;
+        var collider = box.AddComponent<BoxCollider>();
+        collider.size = scale;
         return box;
+    }
+
+    Material darkMatOr(Material fallback)
+    {
+        // The dark door/furniture material is the fixture housing when one is
+        // supplied by the game; fallback keeps editor previews self-contained.
+        return doorMaterial != null ? doorMaterial : (trimMaterial != null ? trimMaterial : fallback);
     }
 
     GameObject Cylinder(Transform parent, string name, Vector3 localPosition, Vector3 scale, Material material, Vector3 eulerAngles)

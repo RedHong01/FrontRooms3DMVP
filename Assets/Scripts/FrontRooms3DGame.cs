@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -21,43 +20,34 @@ using UiLength = UnityEngine.UIElements.Length;
 using UiLengthUnit = UnityEngine.UIElements.LengthUnit;
 
 [ExecuteAlways]
-// A separate first-person experiment. World X/Z uses the same authored five-cell topology as 2D.
+// First-person FrontRooms. The title corridor and the playable level are the
+// same infinite room stream; the camera is handed to the player in place and
+// the serialized Relay hunts them through it.
 public sealed class FrontRooms3DGame : MonoBehaviour
 {
-    enum Phase { Title, Playing, Paused, Escaped, Caught }
-    enum HunterState { Listen, Hunt, Search, Chase, BreakDoor }
-    FrontRoomsLevel level;
+    enum Phase { Title, Playing, Paused, Caught }
     Phase phase;
-    HunterState state;
     Camera cam;
-    Transform world, hunter;
-    FrontRoomsRelayRig hunterRig, streamThreatRig;
-    Vector2 playerPos, hunterPos, hunterTarget, lastSeen;
-    FrontRoom room;
-    FrontOpening breakingDoor;
-    List<Vector2Int> path = new List<Vector2Int>();
-    readonly HashSet<int> keys = new HashSet<int>();
-    readonly Dictionary<int, GameObject> openingObjects = new Dictionary<int, GameObject>();
-    readonly Dictionary<int, GameObject> openingLintels = new Dictionary<int, GameObject>();
-    readonly Dictionary<int, GameObject> keyObjects = new Dictionary<int, GameObject>();
-    readonly Dictionary<int, Renderer> noteObjects = new Dictionary<int, Renderer>();
+    [SerializeField, Tooltip("The Relay rig serialized in this scene. It stays hidden until the hunter is released.")]
+    Transform hunter;
+    [SerializeField, Tooltip("When the Relay is released, how it listens, hunts, searches, chases and breaks doors.")]
+    FrontRoomsHunterTuning hunterTuning = new FrontRoomsHunterTuning();
+    FrontRoomsRelayRig hunterRig;
+    FrontRoomsHunterBrain hunterBrain;
+    Vector2 playerPos;
     readonly List<string> events = new List<string>();
-    Material wallMat, floorMat, redMat, darkMat, glassMat, yellowMat, whiteMat, ceilingMat;
+    Material wallMat, floorMat, darkMat, ceilingMat;
     readonly Dictionary<RoomRule, Material> wallMats = new Dictionary<RoomRule, Material>();
     readonly Dictionary<RoomRule, Material> floorMats = new Dictionary<RoomRule, Material>();
     readonly Dictionary<RoomRule, Material> ceilingMats = new Dictionary<RoomRule, Material>();
-    Material trimMat, seamMat, fixtureMat;
-    // Door materials are kept separate from the generic dark furniture
-    // material so serialized editor doors can be repaired without losing the
-    // authored laminate, gasket and brushed-hardware treatment.
-    Material doorMat, doorTrimMat, doorHardwareMat, doorHandleHighlightMat;
-    readonly Dictionary<int, List<DoorHandleVisual>> doorHandleVisuals = new Dictionary<int, List<DoorHandleVisual>>();
-    int highlightedDoorId = -1;
-    float doorHandlePulse;
+    Material trimMat, fixtureMat;
+    // Procedural materials and textures made for the edit-mode preview, so
+    // they can be released with it instead of leaking on every reload.
+    readonly List<UnityEngine.Object> previewAssets = new List<UnityEngine.Object>();
     AudioSource hum;
-    AudioClip playerStepClip, playerRunStepClip, hunterStepClip, glassClip, keyClip, doorClip, slamClip, bangClip, caughtClip, escapeClip;
+    AudioClip playerStepClip, playerRunStepClip, hunterStepClip, doorClip, bangClip, caughtClip;
     FrontRoomsFoley foley;
-    Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, crosshair, notebook, displaySettingsText;
+    Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, crosshair, displaySettingsText;
     Image logoImage;
     Image logoLeftImage, logoSlideImage;
     Transform logoMotionRoot;
@@ -80,36 +70,22 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     bool hdrEnabled;
     bool displaySettingsOpen;
     Font monoFont, bayonFont, serifFont;
-    GameObject overlay, roomPanel, threatPanel, contextPanel, journalPanel, displaySettingsPanel;
+    GameObject overlay, roomPanel, threatPanel, contextPanel, displaySettingsPanel;
     CanvasGroup roomHudGroup, threatHudGroup, contextHudGroup, crosshairHudGroup;
     Image overlayImage;
     Outline logoOutline;
     Transform titleWorld;
     FrontRoomsRoomStream roomStream;
-    enum StreamThreatState { Dormant, Listening, Chase, Lost }
-    StreamThreatState streamThreatState;
-    GameObject streamThreatObject;
-    Transform streamThreatBody, streamThreatHead, streamThreatArmLeft, streamThreatArmRight, streamThreatLegLeft, streamThreatLegRight;
-    Vector2 streamThreatPos;
-    float streamThreatStateTime, streamThreatStepTime, streamThreatGrace;
-    bool streamThreatTriggered;
     [SerializeField, Tooltip("Optional room prefab/template copied into each streamed title room.")]
     GameObject streamedRoomTemplate;
-    readonly List<TitleSegment> titleSegments = new List<TitleSegment>();
-    float titleCameraZ, titleNextZ, titleElapsed, titleLogoAlpha;
+    float titleLogoAlpha;
     float logoMotionElapsed;
     bool titleHandoffPending;
     bool streamedPlay;
-    float titleHandoffTargetZ;
-    // Keep the runtime title layer away from the authored gameplay greybox.
-    // FrontRoomsRoomStream uses the camera's initial X as its room centerline.
-    const float TitleCenterX = 256f;
-    const float TitleSegmentLength = 12f;
-    const float TitleLookAhead = 72f;
-    const float TitleSpeed = 1.15f;
-    const float TitleDoorTriggerDistance = 4f;
-    const float TitleDoorOpenDuration = .9f;
-    const float TitleHandoffDepth = 2f;
+    // The runtime stream runs on its own centerline, clear of the edit-mode
+    // profile preview at X = 0.
+    public const float TitleCenterX = 256f;
+    const string EditorPreviewName = "EDITOR_PREVIEW / Room profiles (generated)";
     const float LogoScale = .75f;
     // The trailing S forms are deliberately sequenced instead of sharing the
     // same reveal clock: the near afterimage settles first, then the far one
@@ -121,132 +97,137 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     const float LogoS2StartAt = .50f;
     const float GameplayHudFadeSeconds = .9f;
     float gameplayHudAlpha;
-    float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
-    string flash = "", actionIdentity = "";
-    bool released, shiftWarning, journal;
-    int notesRead, windowsBroken, doorsBroken, shifts, transitions;
-    const float Radius = .27f;
+    float yaw, pitch, elapsed, stepTime, hunterStepTime, flashTime;
+    string flash = "";
+    int startRoom;
     const float Walk = 3.2f, Run = 5.5f;
-    Vector2 testMove;
-    bool testRun, testInteract;
-    string testDir, testRoute = "door";
-    bool testFailed;
     static bool restart;
-
-    sealed class TitleSegment
-    {
-        public GameObject root;
-        public float start;
-        public float end;
-        public float width;
-        public GameObject door;
-        public float doorClosedY;
-        public bool doorOpening;
-        public bool doorOpened;
-        public float doorTimer;
-    }
-
-    sealed class DoorHandleVisual
-    {
-        public Renderer renderer;
-        public Material baseMaterial;
-    }
 
     void OnEnable()
     {
-        // The editor preview is kept inactive while Play Mode owns the runtime
-        // world. Re-enable the serialized preview when the scene returns to edit
-        // mode so the hierarchy and Scene view remain useful after a test run.
-        if (!Application.isPlaying)
+        // Edit mode shows the generator itself: one room per profile, built by
+        // the same code as the runtime pool. Play Mode builds the live stream
+        // instead, so the preview is never saved into the scene or a build.
+        if (!Application.isPlaying) BuildEditorPreview();
+    }
+
+    void OnDisable()
+    {
+        if (!Application.isPlaying) DestroyEditorPreview();
+    }
+
+    void BuildEditorPreview()
+    {
+        DestroyEditorPreview();
+        BuildMaterials();
+        var preview = new GameObject(EditorPreviewName);
+        preview.transform.SetParent(transform, false);
+        var stream = preview.AddComponent<FrontRoomsRoomStream>();
+        stream.roomTemplate = streamedRoomTemplate;
+        stream.BuildEditorPreview(WallMaterial(RoomRule.Lobby), FloorMaterial(RoomRule.Lobby), CeilingMaterial(RoomRule.Lobby), trimMat, fixtureMat, darkMat,
+            ProfileMaterials(wallMats), ProfileMaterials(floorMats), ProfileMaterials(ceilingMats));
+        foreach (var child in preview.GetComponentsInChildren<Transform>(true))
+            child.gameObject.hideFlags = HideFlags.DontSave;
+    }
+
+    void DestroyEditorPreview()
+    {
+        for (var i = transform.childCount - 1; i >= 0; i--)
         {
-            var preview = EditorPreviewTransform();
-            if (preview != null) preview.gameObject.SetActive(true);
+            var child = transform.GetChild(i).gameObject;
+            if (child.name != EditorPreviewName) continue;
+            if (Application.isPlaying) Destroy(child);
+            else DestroyImmediate(child);
         }
+        foreach (var asset in previewAssets)
+            if (asset != null) DestroyImmediate(asset);
+        previewAssets.Clear();
     }
 
-    Transform EditorPreviewTransform()
+    static Material[] ProfileMaterials(Dictionary<RoomRule, Material> materials)
     {
-        // Transform.Find treats '/' as a hierarchy separator. The slash is part
-        // of the readable object name, so inspect direct children instead.
-        for (var i = 0; i < transform.childCount; i++)
-            if (transform.GetChild(i).name == "EDITOR_PREVIEW / FrontRooms3D") return transform.GetChild(i);
-        return null;
+        var profiles = (RoomRule[])Enum.GetValues(typeof(RoomRule));
+        var result = new Material[profiles.Length];
+        for (var i = 0; i < profiles.Length; i++) materials.TryGetValue(profiles[i], out result[i]);
+        return result;
     }
 
-    void InitializeLevel()
+    void InitializeFonts()
     {
-        if (level != null) return;
         var fallback = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         monoFont = Resources.Load<Font>("Fonts/IBMPlexMono-Regular") ?? fallback;
         bayonFont = Resources.Load<Font>("Fonts/Bayon-Regular") ?? fallback;
         serifFont = Resources.Load<Font>("Fonts/SourceSerif4-Variable") ?? fallback;
-        level = new FrontRoomsLevel();
-        level.Openings[3].Sealed = true;
-        playerPos = FrontRoomsLevel.CenterOf(level.PlayerStart);
-        hunterPos = FrontRoomsLevel.CenterOf(level.HunterStart);
-        hunterTarget = hunterPos;
-        room = level.Rooms[0];
+    }
+
+    /// <summary>The scene's first-person camera, used by Create Scene and as a runtime fallback.</summary>
+    public static Camera CreateCamera(Transform parent)
+    {
+        var camera = new GameObject("First-person camera").AddComponent<Camera>();
+        camera.transform.SetParent(parent, false);
+        camera.transform.localPosition = new Vector3(TitleCenterX, 1.62f, 0f);
+        camera.fieldOfView = 76f; camera.nearClipPlane = .06f; camera.farClipPlane = 80f;
+        camera.allowHDR = true;
+        camera.allowMSAA = true;
+        camera.useOcclusionCulling = true;
+        camera.clearFlags = CameraClearFlags.SolidColor; camera.backgroundColor = C("22231C"); camera.gameObject.AddComponent<AudioListener>();
+        return camera;
+    }
+
+    /// <summary>The serialized Relay: an editable rig that the hunter brain drives at runtime.</summary>
+    public static Transform CreateHunter(Transform parent)
+    {
+        var relay = new GameObject("Hunter").transform;
+        relay.SetParent(parent, false);
+        relay.gameObject.AddComponent<FrontRoomsRelayRig>().Configure(Mat("Relay / body", C("2B2928")), Mat("Relay / blank head", C("D8D4C8")), Mat("Relay / detail", C("A99E78")));
+        return relay;
     }
 
     /// <summary>
-    /// Builds the authored first-person greybox into the scene asset while the
-    /// editor is idle. This is deliberately public so the scene builder can
-    /// finish serialization deterministically instead of relying on a later
-    /// Play Mode frame.
+    /// Scene lighting for a fresh scene. Kept out of Awake so lighting tuned in
+    /// the editor's Lighting window survives into Play Mode and builds.
     /// </summary>
-    public void EnsureEditorPreview()
+    public static void ApplySceneLighting(Transform parent)
     {
-        if (Application.isPlaying) return;
-        InitializeLevel();
-        var existing = EditorPreviewTransform();
-        if (existing != null)
-        {
-            existing.gameObject.SetActive(true);
-            world = existing;
-            cam = existing.GetComponentInChildren<Camera>(true);
-            hunter = existing.Find("Hunter");
-            openingObjects.Clear();
-            openingLintels.Clear();
-            RebindSerializedWorld();
-            RepairSerializedOpeningHeights();
-            EnsureSerializedHunterRig();
-            return;
-        }
-
-        BuildWorld();
-        if (world == null) return;
-        world.name = "EDITOR_PREVIEW / FrontRooms3D";
-        world.SetParent(transform, true);
-        if (cam != null) cam.transform.SetParent(world, true);
+        // Keep the room readable through local fixtures rather than flooding the
+        // whole map with a flat grey/yellow ambient wash.  Trilight gives the
+        // unlit side of the walls a cool ceiling bounce and a much darker floor
+        // bounce, which is closer to a real fluorescent room and keeps doorways
+        // and corners from looking like unlit solid-colour blocks.
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+        // Set ambientLight first: in Unity's built-in renderer this property is
+        // an alias for the sky colour and would otherwise overwrite it.
+        RenderSettings.ambientLight = new Color(.16f, .15f, .12f);
+        RenderSettings.ambientSkyColor = C("8D8E78");
+        RenderSettings.ambientEquatorColor = C("4A4231");
+        RenderSettings.ambientGroundColor = C("252016");
+        RenderSettings.reflectionIntensity = .3f;
+        RenderSettings.fog = true; RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogColor = C("29271E"); RenderSettings.fogDensity = .012f;
+        QualitySettings.shadowDistance = 48f;
+        QualitySettings.shadowCascades = 4;
+        var fill = new GameObject("Soft ambient direction").AddComponent<Light>();
+        fill.transform.SetParent(parent);
+        fill.type = LightType.Directional; fill.intensity = .22f; fill.color = C("D6D3B4");
+        fill.shadows = LightShadows.Soft;
+        fill.shadowStrength = .18f;
+        fill.shadowBias = .045f;
+        fill.shadowNormalBias = .28f;
+        fill.shadowNearPlane = .1f;
+        fill.transform.rotation = Quaternion.Euler(70f, -30f, 0f);
     }
 
-    void EnsureSerializedHunterRig()
+    void BindHunter()
     {
-        if (hunter == null) return;
-        if (darkMat == null) darkMat = Mat("Relay / body", C("2B2928"));
-        if (whiteMat == null) whiteMat = Mat("Relay / blank head", C("D8D4C8"));
-        if (yellowMat == null) yellowMat = Mat("Relay / detail", C("A99E78"));
-        if (!Application.isPlaying)
-        {
-            for (var i = hunter.childCount - 1; i >= 0; i--)
-            {
-                var child = hunter.GetChild(i);
-                if (child.name == "Capsule" || child.name == "Sphere") DestroyImmediate(child.gameObject);
-            }
-        }
+        if (hunter == null) hunter = transform.Find("Hunter");
+        if (hunter == null) hunter = CreateHunter(transform);
         hunterRig = hunter.GetComponent<FrontRoomsRelayRig>();
-        if (hunterRig == null) hunterRig = hunter.gameObject.AddComponent<FrontRoomsRelayRig>();
-        hunterRig.Configure(darkMat, whiteMat, yellowMat);
+        hunter.gameObject.SetActive(false);
     }
 
     void Awake()
     {
-        InitializeLevel();
-        if (!Application.isPlaying)
-        {
-            EnsureEditorPreview();
-            return;
-        }
+        if (!Application.isPlaying) return;
 
         Application.targetFrameRate = 60;
         // Keep the first-person image and overlay text at native resolution.
@@ -256,50 +237,29 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         QualitySettings.antiAliasing = 4;
         QualitySettings.globalTextureMipmapLimit = 0;
         Time.timeScale = 1f;
-        var args = Environment.GetCommandLineArgs();
-        for (int i = 0; i < args.Length; i++)
-        {
-            if (args[i] == "-verify3d" && i + 1 < args.Length) testDir = args[i + 1];
-            if (args[i] == "-route" && i + 1 < args.Length) testRoute = args[i + 1];
-        }
-        // Use the serialized scene world in Play Mode as well. That makes a
-        // material, light, camera or wall adjustment made in the editor survive
-        // into a test run instead of being replaced by a second generated copy.
-        var preview = EditorPreviewTransform();
-        world = preview;
-        cam = preview == null ? null : preview.GetComponentInChildren<Camera>(true);
-        hunter = preview == null ? null : preview.Find("Hunter");
-        openingObjects.Clear(); openingLintels.Clear(); keyObjects.Clear(); noteObjects.Clear();
-        wallMats.Clear(); floorMats.Clear(); ceilingMats.Clear();
-        if (world == null) BuildWorld();
-        else { RebindSerializedWorld(); RepairSerializedOpeningHeights(); }
-        // The serialized Hunter belongs to the legacy authored-grid verifier.
-        // Player-facing runs use the single streamed Relay rig created by the
-        // title corridor, so the two enemy implementations cannot overlap.
-        if (hunter != null) hunter.gameObject.SetActive(false);
-        ResolveSerializedMaterials();
+        DestroyEditorPreview();
+        InitializeFonts();
+        cam = GetComponentInChildren<Camera>(true);
+        if (cam == null) cam = CreateCamera(transform);
+        BindHunter();
+        BuildMaterials();
         hdrEnabled = PlayerPrefs.GetInt(HdrPreferenceKey, defaultHdr ? 1 : 0) != 0;
         ApplyHdrMode(hdrEnabled, false);
         BuildHud();
         BuildSound();
         BuildTitleCorridor();
         SetPhase(Phase.Title);
-        if (testDir != null) { Directory.CreateDirectory(testDir); StartCoroutine(VerifyRoute()); }
-        else if (restart)
+        if (restart)
         {
-            // A normal retry must return to the same streamed route used by
-            // the title handoff. The old authored-map StartGame path is kept
-            // only for explicit -verify3d automation below.
             restart = false;
             StartCanonicalStreamedRestart();
         }
-        Log("READY · manual title, first-person · " + (testDir == null ? "no automation" : "explicit verification"));
+        Log("READY · manual title, first-person");
     }
 
     static Color C(string hex) { ColorUtility.TryParseHtmlString("#" + hex, out var c); return c; }
     static Vector3 V(Vector2 p, float y = 0f) => new Vector3(p.x, y, p.y);
-    static Vector2 P(Vector3 p) => new Vector2(p.x, p.z);
-    Material Mat(string name, Color color, bool emission = false)
+    static Material Mat(string name, Color color, bool emission = false)
     {
         var shader = Shader.Find("Standard");
         if (shader == null) shader = Shader.Find("UI/Default");
@@ -338,11 +298,18 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                 var variant = ((style % 3) + 3) % 3;
                 if (variant == 0)
                 {
-                    // A low-contrast southwestern chevron, derived from the
-                    // reference pattern without copying a film frame.
-                    var diagonal = Mathf.Abs(Mathf.Repeat(x + y, 72f) - 36f);
-                    var diagonal2 = Mathf.Abs(Mathf.Repeat(x - y + 72f, 72f) - 36f);
-                    pattern = Mathf.Max(0f, 1f - Mathf.Min(diagonal, diagonal2) / 5f) * .075f;
+                    // The classic Level 0 wallpaper is a narrow, vertical
+                    // arrow/chevron print. Draw it explicitly instead of a
+                    // generic diamond so the motif survives mipmapping and is
+                    // recognisable from the first-person distance.
+                    var cellX = Mathf.Repeat(x + style * 11f, 48f);
+                    var cellY = Mathf.Repeat(y + style * 17f, 64f);
+                    var arrowCenter = 24f;
+                    var leftArrow = cellY > 8f && cellY < 54f && Mathf.Abs(cellX - (arrowCenter - cellY * .22f)) < 1.7f;
+                    var rightArrow = cellY > 8f && cellY < 54f && Mathf.Abs(cellX - (arrowCenter + cellY * .22f)) < 1.7f;
+                    var arrowTip = cellY > 3f && cellY < 15f && Mathf.Abs(cellX - arrowCenter) < 1.55f;
+                    var pin = cellY > 52f && Mathf.Abs(cellX - arrowCenter) < 1.2f;
+                    pattern = (leftArrow || rightArrow || arrowTip ? .46f : 0f) + (pin ? .18f : 0f);
                 }
                 else if (variant == 1)
                 {
@@ -351,20 +318,24 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                     var cx = Mathf.Repeat(x + 22f, 96f) - 48f;
                     var cy = Mathf.Repeat(y + 34f, 96f) - 48f;
                     var radial = Mathf.Sqrt(cx * cx + cy * cy);
-                    pattern = Mathf.Clamp01(1f - Mathf.Abs(radial - 19f) / 3.5f) * .055f;
-                    pattern += Mathf.Clamp01(1f - radial / 6f) * .035f;
+                    pattern = Mathf.Clamp01(1f - Mathf.Abs(radial - 19f) / 3.5f) * .075f;
+                    pattern += Mathf.Clamp01(1f - radial / 6f) * .05f;
                 }
                 else
                 {
                     var diamond = Mathf.Abs(Mathf.Repeat(x + y, 88f) - 44f) < 2.3f
                         || Mathf.Abs(Mathf.Repeat(x - y + 88f, 88f) - 44f) < 2.3f;
-                    pattern = diamond ? .05f : 0f;
+                    pattern = diamond ? .08f : 0f;
                 }
-                if (seam) c = Color.Lerp(c, patternColor, .22f);
+                if (seam) c = Color.Lerp(c, patternColor, .34f);
                 else if (pattern > 0f) c = Color.Lerp(c, patternColor, pattern);
                 pixels[y * size + x] = new Color(c.r, c.g, c.b, 1f);
             }
-        tex.SetPixels(pixels); tex.Apply(true, true);
+        // Keep this generated source readable until the paired micro-normal is
+        // derived in TexturedMat. It is still mipmapped and reused by every
+        // streamed room; dropping CPU readability here would make runtime
+        // builds fail before the first frame.
+        tex.SetPixels(pixels); tex.Apply(true, false);
         return tex;
     }
 
@@ -380,13 +351,52 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         for (var y = 0; y < size; y++)
             for (var x = 0; x < size; x++)
             {
-                var weave = ((x + y + style * 44) % 16 == 0 ? .07f : -.025f);
+                // Two crossing pile directions plus a broad, low-contrast wear
+                // field read as carpet under a soft fluorescent source. The
+                // broad field prevents the old single checker repeat from
+                // looking like a tiled procedural texture.
+                var strandA = Mathf.Sin((x + style * 17) * .92f + Mathf.Sin(y * .08f)) * .028f;
+                var strandB = Mathf.Sin((y - style * 11) * 1.07f + Mathf.Sin(x * .06f)) * .024f;
+                var broadWear = Mathf.Sin(x * .035f + style * .7f) * Mathf.Sin(y * .027f + 1.2f) * .055f;
+                var weave = strandA + strandB + broadWear;
                 var c = baseColor * (1f + weave);
-                if ((x + style * 20) % 96 == 0) c *= .86f;
+                if ((x + style * 20) % 96 == 0 || (y + style * 9) % 121 == 0) c *= .89f;
                 pixels[y * size + x] = new Color(c.r, c.g, c.b, 1f);
             }
-        tex.SetPixels(pixels); tex.Apply(true, true);
+        tex.SetPixels(pixels); tex.Apply(true, false);
         return tex;
+    }
+
+    Texture2D NormalFromAlbedo(Texture2D source, float strength)
+    {
+        if (source == null) return null;
+        var width = source.width;
+        var height = source.height;
+        var sourcePixels = source.GetPixels();
+        var normalPixels = new Color[sourcePixels.Length];
+        float HeightAt(int x, int y)
+        {
+            x = (x % width + width) % width;
+            y = (y % height + height) % height;
+            return sourcePixels[y * width + x].grayscale;
+        }
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+            {
+                var dx = (HeightAt(x + 1, y) - HeightAt(x - 1, y)) * strength;
+                var dy = (HeightAt(x, y + 1) - HeightAt(x, y - 1)) * strength;
+                var n = new Vector3(-dx, -dy, 1f).normalized;
+                normalPixels[y * width + x] = new Color(n.x * .5f + .5f, n.y * .5f + .5f, n.z * .5f + .5f, 1f);
+            }
+        var normal = new Texture2D(width, height, TextureFormat.RGBA32, true, true);
+        normal.name = source.name + " / micro normal";
+        normal.wrapMode = TextureWrapMode.Repeat;
+        normal.filterMode = FilterMode.Trilinear;
+        normal.anisoLevel = 4;
+        normal.SetPixels(normalPixels);
+        normal.Apply(true, true);
+        if (!Application.isPlaying) previewAssets.Add(normal);
+        return normal;
     }
 
     Material TexturedMat(string name, Color baseColor, Texture2D texture, Vector2 scale, bool emission = false)
@@ -394,6 +404,17 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         var m = Mat(name, baseColor, emission);
         m.mainTexture = texture;
         m.mainTextureScale = scale;
+        var carpet = name.IndexOf("Carpet", StringComparison.OrdinalIgnoreCase) >= 0;
+        var normal = NormalFromAlbedo(texture, carpet ? 9.5f : 5.5f);
+        if (normal != null && m.HasProperty("_BumpMap"))
+        {
+            m.EnableKeyword("_NORMALMAP");
+            m.SetTexture("_BumpMap", normal);
+            m.SetFloat("_BumpScale", carpet ? .34f : .17f);
+        }
+        m.SetFloat("_Metallic", 0f);
+        m.SetFloat("_Glossiness", carpet ? .18f : .09f);
+        m.SetFloat("_OcclusionStrength", carpet ? .72f : .62f);
         return m;
     }
 
@@ -401,228 +422,28 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Material FloorMaterial(RoomRule rule) => floorMats.TryGetValue(rule, out var m) ? m : floorMat;
     Material CeilingMaterial(RoomRule rule) => ceilingMats.TryGetValue(rule, out var m) ? m : ceilingMat;
 
-    static float HeightFor(FrontRoom room)
-    {
-        if (room == null) return 2.9f;
-        switch (room.Rule)
-        {
-            case RoomRule.Run: return 4.8f;
-            case RoomRule.Office: return 3.5f;
-            default: return 2.9f;
-        }
-    }
-
-    static float OpeningHeight(FrontOpening opening)
-    {
-        return Mathf.Max(HeightFor(opening == null ? null : opening.Owner), HeightFor(opening == null ? null : opening.Other));
-    }
-
-    static void SetOpeningHeight(GameObject opening, float height)
-    {
-        if (opening == null) return;
-        var position = opening.transform.localPosition;
-        position.y = height * .5f;
-        opening.transform.localPosition = position;
-        var scale = opening.transform.localScale;
-        scale.y = height;
-        opening.transform.localScale = scale;
-    }
-
     /// <summary>
-    /// Repairs an already serialized greybox after the procedural opening
-    /// dimensions change, so an old preview cannot reintroduce a door-height
-    /// slit when the scene is opened or built.
+    /// The room profile palette. The visual grammar follows the deck: yellowed
+    /// repeating wallpaper, low-sheen carpet, and room-specific temperature and
+    /// contrast changes, one material per profile so a transition is legible.
     /// </summary>
-    public void RepairSerializedOpeningHeights()
+    void BuildMaterials()
     {
-        InitializeLevel();
-        if (world == null) return;
-        if (openingObjects.Count == 0 || openingLintels.Count == 0)
-        {
-            openingObjects.Clear();
-            openingLintels.Clear();
-            RebindSerializedWorld();
-        }
+        wallMats.Clear(); floorMats.Clear(); ceilingMats.Clear();
+        // FilmSurface meshes expose metre-space UVs. Keep the printed motif at
+        // roughly 2 m wide and the carpet weave at a few centimetres instead of
+        // stretching a default Cube's 0..1 UVs across the whole slab.
+        var paperRepeat = new Vector2(.48f, .42f);
+        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("C5BB7B"), WallpaperTexture(C("C5BB7B"), C("898348"), 0), paperRepeat);
+        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("C2B875"), WallpaperTexture(C("C2B875"), C("878047"), 0), paperRepeat);
+        wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office / woven beige", C("B7AE94"), WallpaperTexture(C("B7AE94"), C("87806E"), 2), paperRepeat);
+        wallMats[RoomRule.Run] = TexturedMat("Wall / run / chalky utility", C("766B60"), WallpaperTexture(C("766B60"), C("554B45"), 5), paperRepeat);
+        wallMats[RoomRule.Exit] = TexturedMat("Wallpaper / exit", C("5D7770"), WallpaperTexture(C("5D7770"), C("334B46"), 4), paperRepeat);
 
-        const float headerHeight = .24f;
-        foreach (var opening in level.Openings)
-        {
-            var height = OpeningHeight(opening);
-            var leafHeight = Mathf.Max(.1f, height - .04f);
-            if (openingObjects.TryGetValue(opening.Id, out var slab)) SetOpeningHeight(slab, leafHeight);
-            if (openingLintels.TryGetValue(opening.Id, out var lintel))
-            {
-                var position = lintel.transform.localPosition;
-                position.y = height - headerHeight * .5f;
-                lintel.transform.localPosition = position;
-                var scale = lintel.transform.localScale;
-                scale.y = headerHeight;
-                lintel.transform.localScale = scale;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Rebuilds the non-colliding door face details on serialized editor doors.
-    /// This is intentionally separate from the height repair menu item so an
-    /// authored scene can be repaired without regenerating the whole preview.
-    /// </summary>
-    public void RepairSerializedDoorDetails()
-    {
-        InitializeLevel();
-        if (world == null) return;
-        EnsureDoorMaterials();
-        if (openingObjects.Count == 0) RebindSerializedWorld();
-        foreach (var opening in level.Openings)
-        {
-            if (opening == null || opening.Kind != OpeningKind.Door) continue;
-            if (!openingObjects.TryGetValue(opening.Id, out var slab) || slab == null) continue;
-            var height = OpeningHeight(opening);
-            SetOpeningHeight(slab, height);
-            BuildAuthoredDoorDetails(opening, slab, height);
-            var renderer = slab.GetComponent<Renderer>();
-            if (renderer != null) renderer.sharedMaterial = doorMat;
-        }
-    }
-
-    void EnsureDoorMaterials()
-    {
-        if (doorMat == null) doorMat = darkMat;
-        if (doorMat == null) doorMat = Mat("Door / painted laminate", C("625A4B"));
-        if (doorTrimMat == null) doorTrimMat = Mat("Door / shadow gasket", C("292722"));
-        if (doorHardwareMat == null)
-        {
-            doorHardwareMat = Mat("Door / brushed hardware", C("A6A093"));
-            doorHardwareMat.SetFloat("_Glossiness", .38f);
-            doorHardwareMat.SetFloat("_Metallic", .12f);
-        }
-        if (doorHandleHighlightMat == null)
-        {
-            doorHandleHighlightMat = Mat("Door / handle highlight", C("F4DF3B"), true);
-            doorHandleHighlightMat.SetFloat("_Glossiness", .52f);
-            doorHandleHighlightMat.SetFloat("_Metallic", .08f);
-            doorHandleHighlightMat.SetColor("_EmissionColor", C("F4DF3B") * 1.35f);
-        }
-    }
-
-    GameObject DoorDetailBox(Transform parent, string name, Vector3 localPosition, Vector3 size, Material material)
-    {
-        var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        box.name = name;
-        box.transform.SetParent(parent, false);
-        box.transform.localPosition = localPosition;
-        box.transform.localScale = size;
-        var renderer = box.GetComponent<Renderer>();
-        if (renderer != null) renderer.sharedMaterial = material;
-        var collider = box.GetComponent<Collider>();
-        if (collider != null)
-        {
-            if (Application.isPlaying) Destroy(collider);
-            else DestroyImmediate(collider);
-        }
-        return box;
-    }
-
-    void BuildAuthoredDoorDetails(FrontOpening opening, GameObject slab, float height)
-    {
-        if (opening == null || slab == null) return;
-        EnsureDoorMaterials();
-        var old = slab.transform.Find("Door detail assembly");
-        if (old != null)
-        {
-            if (Application.isPlaying) Destroy(old.gameObject);
-            else DestroyImmediate(old.gameObject);
-        }
-        doorHandleVisuals.Remove(opening.Id);
-        var assembly = new GameObject("Door detail assembly").transform;
-        assembly.SetParent(slab.transform, false);
-        var slabScale = slab.transform.localScale;
-        assembly.localScale = new Vector3(
-            Mathf.Abs(slabScale.x) < .0001f ? 1f : 1f / slabScale.x,
-            Mathf.Abs(slabScale.y) < .0001f ? 1f : 1f / slabScale.y,
-            Mathf.Abs(slabScale.z) < .0001f ? 1f : 1f / slabScale.z);
-        var width = Mathf.Max(.8f, opening.Tiles == null ? 1f : opening.Tiles.Count);
-        var panelWidth = Mathf.Max(.48f, width - .34f);
-        var panelHeight = Mathf.Max(.8f, height - .34f);
-        foreach (var face in new[] { -1f, 1f })
-        {
-            DoorDetailBox(assembly, "door panel border", new Vector3(face * .155f, 0f, 0f), new Vector3(.035f, panelHeight, panelWidth), doorTrimMat);
-            DoorDetailBox(assembly, "door recessed panel", new Vector3(face * .178f, -.02f, 0f), new Vector3(.018f, panelHeight - .12f, panelWidth - .12f), doorMat);
-            DoorDetailBox(assembly, "door kick plate", new Vector3(face * .184f, -height * .5f + .16f, 0f), new Vector3(.022f, .20f, panelWidth), doorHardwareMat);
-            DoorDetailBox(assembly, "door closer", new Vector3(face * .19f, height * .5f - .12f, 0f), new Vector3(.08f, .08f, .58f), doorHardwareMat);
-            DoorDetailBox(assembly, "door lever plate", new Vector3(face * .195f, .06f, width * .27f), new Vector3(.025f, .24f, .07f), doorHardwareMat);
-            var handle = DoorDetailBox(assembly, "door lever", new Vector3(face * .23f, .06f, width * .27f - .10f), new Vector3(.09f, .045f, .20f), doorHardwareMat);
-            var handleRenderer = handle.GetComponent<Renderer>();
-            if (handleRenderer != null)
-            {
-                if (!doorHandleVisuals.TryGetValue(opening.Id, out var handles)) doorHandleVisuals[opening.Id] = handles = new List<DoorHandleVisual>();
-                handles.Add(new DoorHandleVisual { renderer = handleRenderer, baseMaterial = doorHardwareMat });
-            }
-            for (var hinge = -1; hinge <= 1; hinge++)
-                DoorDetailBox(assembly, "door hinge knuckle " + (hinge + 2), new Vector3(face * .195f, hinge * height * .28f, -width * .39f), new Vector3(.07f, .16f, .07f), doorHardwareMat);
-        }
-    }
-
-    void ClearDoorHandleHighlight()
-    {
-        if (highlightedDoorId < 0) return;
-        if (doorHandleVisuals.TryGetValue(highlightedDoorId, out var handles))
-            foreach (var handle in handles)
-                if (handle != null && handle.renderer != null) handle.renderer.sharedMaterial = handle.baseMaterial;
-        highlightedDoorId = -1;
-    }
-
-    void UpdateDoorHandleHighlight()
-    {
-        if (phase != Phase.Playing || streamedPlay || level == null || room == null) { ClearDoorHandleHighlight(); return; }
-        var opening = NearOpening();
-        if (opening == null || opening.Kind != OpeningKind.Door || opening.Open) { ClearDoorHandleHighlight(); return; }
-        if (highlightedDoorId != opening.Id)
-        {
-            ClearDoorHandleHighlight();
-            if (doorHandleVisuals.TryGetValue(opening.Id, out var handles))
-            {
-                foreach (var handle in handles)
-                    if (handle != null && handle.renderer != null) handle.renderer.sharedMaterial = doorHandleHighlightMat;
-                highlightedDoorId = opening.Id;
-            }
-        }
-        doorHandlePulse += Time.deltaTime;
-        if (doorHandleHighlightMat != null) doorHandleHighlightMat.SetColor("_EmissionColor", C("F4DF3B") * (.92f + Mathf.Sin(doorHandlePulse * 4.2f) * .18f));
-    }
-
-    GameObject Box(string name, Vector3 pos, Vector3 scale, Material mat)
-    {
-        var g = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        g.name = name; g.transform.SetParent(world); g.transform.position = pos; g.transform.localScale = scale;
-        g.GetComponent<Renderer>().sharedMaterial = mat;
-        return g;
-    }
-    void BuildWorld()
-    {
-        world = new GameObject("Five rooms / first-person").transform;
-        wallMat = Mat("Warm wallpaper", C("B5A66A"));
-        floorMat = Mat("Carpet", C("51472F"));
-        redMat = Mat("Red corridor", C("571E21"));
-        darkMat = Mat("Door and furniture", C("252525"));
-        glassMat = Mat("Frosted blue glass", C("8DBAC2"), true);
-        yellowMat = Mat("Brass", C("EACB37"), true);
-        whiteMat = Mat("Paper", C("EBE6CF"));
-        ceilingMat = Mat("Ceiling", C("797467"));
-
-        // The visual grammar follows the deck: yellowed repeating wallpaper,
-        // low-sheen carpet, and room-specific temperature/contrast changes.
-        // Each room gets a material instance so the transition itself is legible.
-        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("BDB18C"), WallpaperTexture(C("BDB18C"), C("958B6A"), 0), new Vector2(1.15f, 1.15f));
-        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("A8A07D"), WallpaperTexture(C("A8A07D"), C("81785F"), 1), new Vector2(1.05f, 1.2f));
-        wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office / woven beige", C("B7AE94"), WallpaperTexture(C("B7AE94"), C("87806E"), 2), new Vector2(1.35f, 1.18f));
-        wallMats[RoomRule.Run] = TexturedMat("Wall / run / chalky utility", C("766B60"), WallpaperTexture(C("766B60"), C("554B45"), 5), new Vector2(1.05f, 1.35f));
-        wallMats[RoomRule.Exit] = TexturedMat("Wallpaper / exit", C("5D7770"), WallpaperTexture(C("5D7770"), C("334B46"), 4), new Vector2(.9f, 2f));
-
-        floorMats[RoomRule.Lobby] = TexturedMat("Carpet / lobby", C("51472F"), CarpetTexture(C("51472F"), 0), new Vector2(2.8f, 2.8f));
-        floorMats[RoomRule.Shift] = TexturedMat("Carpet / level 0", C("4B4330"), CarpetTexture(C("4B4330"), 1), new Vector2(2.8f, 2.8f));
-        floorMats[RoomRule.Office] = TexturedMat("Carpet / office / worn grey brown", C("4A453C"), CarpetTexture(C("4A453C"), 2), new Vector2(2.35f, 2.35f));
-        floorMats[RoomRule.Run] = TexturedMat("Floor / run / dirty concrete", C("3B3735"), CarpetTexture(C("3B3735"), 5), new Vector2(2.8f, 2.8f));
+        floorMats[RoomRule.Lobby] = TexturedMat("Carpet / lobby", C("9A8554"), CarpetTexture(C("9A8554"), 0), new Vector2(2.8f, 2.8f));
+        floorMats[RoomRule.Shift] = TexturedMat("Carpet / level 0", C("8E7A4E"), CarpetTexture(C("8E7A4E"), 1), new Vector2(2.8f, 2.8f));
+        floorMats[RoomRule.Office] = TexturedMat("Carpet / office / worn grey brown", C("6E665A"), CarpetTexture(C("6E665A"), 2), new Vector2(2.8f, 2.8f));
+        floorMats[RoomRule.Run] = TexturedMat("Floor / run / dirty concrete", C("55504A"), CarpetTexture(C("55504A"), 5), new Vector2(1.75f, 1.75f));
         floorMats[RoomRule.Exit] = TexturedMat("Carpet / exit", C("283A38"), CarpetTexture(C("283A38"), 4), new Vector2(2.8f, 2.8f));
 
         ceilingMats[RoomRule.Lobby] = Mat("Ceiling / lobby", C("777266"));
@@ -630,327 +451,20 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         ceilingMats[RoomRule.Office] = Mat("Ceiling / office / acoustic tile", C("706D68"));
         ceilingMats[RoomRule.Run] = Mat("Ceiling / run / exposed service", C("2B2926"));
         ceilingMats[RoomRule.Exit] = Mat("Ceiling / exit", C("354846"));
+        wallMat = wallMats[RoomRule.Lobby];
+        floorMat = floorMats[RoomRule.Lobby];
+        ceilingMat = ceilingMats[RoomRule.Lobby];
         trimMat = Mat("Aged wall trim", C("716440"));
-        seamMat = Mat("Wallpaper seam", C("81744A"));
         fixtureMat = Mat("Fluorescent diffuser", C("F7F2D8"), true);
-
-        // Keep the room readable through local fixtures rather than flooding the
-        // whole map with a flat grey/yellow ambient wash.  Trilight gives the
-        // unlit side of the walls a cool ceiling bounce and a much darker floor
-        // bounce, which is closer to a real fluorescent room and keeps doorways
-        // and corners from looking like unlit solid-colour blocks.
-        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-        // Set ambientLight first: in Unity's built-in renderer this property is
-        // an alias for the sky colour and would otherwise overwrite it.
-        RenderSettings.ambientLight = new Color(.16f, .15f, .12f);
-        RenderSettings.ambientSkyColor = C("74776D");
-        RenderSettings.ambientEquatorColor = C("393329");
-        RenderSettings.ambientGroundColor = C("1B1813");
-        RenderSettings.reflectionIntensity = .3f;
-        RenderSettings.fog = true; RenderSettings.fogMode = FogMode.ExponentialSquared;
-        RenderSettings.fogColor = C("1B1A17"); RenderSettings.fogDensity = .024f;
-        QualitySettings.shadowDistance = 48f;
-        QualitySettings.shadowCascades = 4;
-        var fill = new GameObject("Soft ambient direction").AddComponent<Light>();
-        fill.transform.SetParent(world);
-        fill.type = LightType.Directional; fill.intensity = .16f; fill.color = C("C4D0CC");
-        fill.shadows = LightShadows.Soft;
-        fill.shadowStrength = .18f;
-        fill.shadowBias = .045f;
-        fill.shadowNormalBias = .28f;
-        fill.shadowNearPlane = .1f;
-        fill.transform.rotation = Quaternion.Euler(70f, -30f, 0f);
-        foreach (var r in level.Rooms)
-        {
-            float height = HeightFor(r);
-            var center = V(r.Center);
-            Box(r.Name + " / floor", center + Vector3.down * .12f, new Vector3(12f, .24f, 10f), FloorMaterial(r.Rule));
-            Box(r.Name + " / ceiling", center + Vector3.up * (height + .1f), new Vector3(12f, .2f, 10f), CeilingMaterial(r.Rule));
-            BuildRoomTrim(r, height);
-            for (int i = 0; i < 3; i++)
+        darkMat = Mat("Door and furniture", C("252525"));
+        if (Application.isPlaying) return;
+        foreach (var material in new[] { trimMat, fixtureMat, darkMat }) previewAssets.Add(material);
+        foreach (var set in new[] { wallMats, floorMats, ceilingMats })
+            foreach (var material in set.Values)
             {
-                var lampPos = new Vector3(r.Interior.xMin + 2f + i * 3.3f, height - .08f, 5f);
-                var fixture = Box(r.Name + " / fluorescent fixture", lampPos, new Vector3(1.7f, .1f, .36f), r.Rule == RoomRule.Run ? yellowMat : fixtureMat);
-                var light = new GameObject("Room light").AddComponent<Light>();
-                light.transform.SetParent(world); light.transform.position = lampPos - Vector3.up * .28f;
-                light.type = LightType.Point;
-                // Point lights naturally fall off with distance.  The lower
-                // ranges and intensities make each fluorescent fixture read as
-                // a small pool of light, leaving the seams, trim and corners in
-                // believable shade instead of evenly lighting the whole room.
-                light.range = r.Rule == RoomRule.Shift ? 6.8f : r.Rule == RoomRule.Run ? 7.2f : r.Rule == RoomRule.Office ? 8f : 7.6f;
-                light.intensity = r.Rule == RoomRule.Shift ? 1.05f : r.Rule == RoomRule.Run ? 1.35f : r.Rule == RoomRule.Office ? 1.45f : 1.2f;
-                light.color = r.Rule == RoomRule.Run ? C("D7C2A4") : r.Rule == RoomRule.Shift ? C("B9B694") : r.Rule == RoomRule.Office ? C("F1DFC5") : r.Rule == RoomRule.Exit ? C("A9D7D0") : C("E6D5A7");
-                light.shadows = LightShadows.Soft;
-                light.shadowStrength = r.Rule == RoomRule.Run ? .82f : .67f;
-                light.shadowBias = .035f;
-                light.shadowNormalBias = .18f;
-                light.shadowNearPlane = .06f;
-                light.bounceIntensity = .18f;
-                var flicker = light.gameObject.AddComponent<FrontRoomsLightFlicker>();
-                flicker.baseIntensity = light.intensity;
-                flicker.rule = r.Rule;
-                flicker.seed = r.Id * 17 + i * 31;
+                previewAssets.Add(material);
+                if (material.mainTexture != null) previewAssets.Add(material.mainTexture);
             }
-            if (r.Rule != RoomRule.Run && r.Rule != RoomRule.Exit)
-            {
-                var notePos = V(FrontRoomsLevel.CenterOf(r.TellTile), 1.15f);
-                var stand = Box("Note stand", notePos + Vector3.down * .57f, new Vector3(.1f, 1.1f, .1f), darkMat);
-                var board = Box("Readable note", notePos, new Vector3(.09f, .72f, .62f), whiteMat);
-                noteObjects[r.Id] = board.GetComponent<Renderer>();
-                for (int n = 0; n < 3; n++) Box("Ink on note", notePos + new Vector3(-.052f, .18f - n * .14f, 0f), new Vector3(.008f, .025f, .4f), darkMat);
-            }
-            if (r.HasKey)
-            {
-                var g = new GameObject("Office key"); g.transform.SetParent(world); g.transform.position = V(FrontRoomsLevel.CenterOf(r.KeyTile), .85f);
-                var key = Box("Key shaft", g.transform.position, new Vector3(.6f, .07f, .07f), yellowMat); key.transform.SetParent(g.transform);
-                var tooth = Box("Key tooth", g.transform.position + new Vector3(.22f, -.08f, 0f), new Vector3(.08f, .2f, .07f), yellowMat); tooth.transform.SetParent(g.transform);
-                var bow = GameObject.CreatePrimitive(PrimitiveType.Sphere); bow.name = "Key bow"; bow.transform.SetParent(g.transform); bow.transform.localPosition = new Vector3(-.35f, 0f, 0f); bow.transform.localScale = Vector3.one * .25f; bow.GetComponent<Renderer>().sharedMaterial = yellowMat;
-                keyObjects[r.Id] = g;
-            }
-            if (r.Rule == RoomRule.Office)
-            {
-                // Level 4 reads as an abandoned office building: low modular
-                // partitions, empty desk islands and a few ordinary supplies.
-                // The centre lane stays clear so the player can still read the
-                // threshold and the Relay silhouette. One partition is offset
-                // by design: a small architectural error is more unsettling
-                // than a room filled with random props.
-                var officeDesk = Mat("Office / stained laminate", C("4D4A43"));
-                var officeMetal = Mat("Office / oxidized steel", C("66635D"));
-                var officePaper = Mat("Office / paper", C("D7D0BB"));
-                for (int i = -1; i <= 1; i++)
-                {
-                    var x = 29f + i * 2.45f + (i == 1 ? .22f : 0f);
-                    var z = 6.65f;
-                    Box("Office desk surface", new Vector3(x, .72f, z), new Vector3(1.75f, .12f, .72f), officeDesk);
-                    Box("Office desk leg left", new Vector3(x - .67f, .35f, z), new Vector3(.12f, .62f, .45f), officeMetal);
-                    Box("Office desk leg right", new Vector3(x + .67f, .35f, z), new Vector3(.12f, .62f, .45f), officeMetal);
-                    Box("Office CRT monitor", new Vector3(x, 1.08f, z + .18f), new Vector3(.48f, .34f, .08f), officeMetal);
-                    Box("Office monitor stand", new Vector3(x, .88f, z + .1f), new Vector3(.08f, .18f, .08f), officeMetal);
-                    Box("Office paper stack", new Vector3(x - .42f, .82f, z - .16f), new Vector3(.22f, .03f, .28f), officePaper);
-                    Box("Office low partition", new Vector3(x, 1.2f, z + .82f), new Vector3(1.45f, 1.0f, .09f), WallMaterial(r.Rule));
-                }
-                // A cooler and a filing cabinet make the office legible without
-                // turning the room into a prop museum.
-                Box("Office water cooler body", new Vector3(32.9f, .9f, 3.8f), new Vector3(.48f, .9f, .48f), officeMetal);
-                Box("Office water cooler bottle", new Vector3(32.9f, 1.58f, 3.8f), new Vector3(.31f, .42f, .31f), glassMat);
-                Box("Office filing cabinet", new Vector3(25.25f, .78f, 8.15f), new Vector3(.56f, .78f, .52f), officeMetal);
-                Box("Office cabinet handle", new Vector3(25.25f, 1.02f, 7.87f), new Vector3(.22f, .035f, .035f), officePaper);
-            }
-            else if (r.Rule == RoomRule.Run)
-            {
-                // Run is a utility transition rather than a red-painted room:
-                // neutral chalky walls carry the space, while emergency red is
-                // reserved for a warning source near the next threshold.
-                var runMetal = Mat("Run / galvanized cabinet", C("5D5B57"));
-                var runCable = Mat("Run / rubber cable", C("1B1A19"));
-                var runHazard = Mat("Run / emergency warning", C("B54A36"), true);
-                Box("Run utility cabinet left", new Vector3(38.4f, 1.0f, 4.1f), new Vector3(.7f, 1.0f, 1.0f), runMetal);
-                Box("Run utility cabinet right", new Vector3(45.1f, 1.0f, 7.7f), new Vector3(.7f, 1.0f, 1.0f), runMetal);
-                Box("Run cable tray", new Vector3(0f + 42f, 2.48f, 7.0f), new Vector3(4.2f, .12f, .18f), runCable);
-                Box("Run hazard marker left", new Vector3(37.25f, 1.2f, 9.5f), new Vector3(.08f, 1.25f, 1.1f), runHazard);
-                Box("Run hazard marker right", new Vector3(46.25f, 1.2f, 9.5f), new Vector3(.08f, 1.25f, 1.1f), runHazard);
-                Box("Run service cart", new Vector3(45.15f, .52f, 3.8f), new Vector3(.72f, .12f, .48f), runMetal);
-                Box("Run cart handle", new Vector3(45.15f, .95f, 4.12f), new Vector3(.62f, .08f, .08f), runCable);
-                var runEmergency = new GameObject("Run emergency light").AddComponent<Light>();
-                runEmergency.transform.SetParent(world); runEmergency.transform.position = new Vector3(42f, 2.35f, 10.7f);
-                runEmergency.type = LightType.Point; runEmergency.range = 6.5f; runEmergency.intensity = .65f;
-                runEmergency.color = C("C84C39"); runEmergency.shadows = LightShadows.Soft; runEmergency.shadowStrength = .7f;
-            }
-            for (int i = 0; i < 5 && r.Rule != RoomRule.Exit; i++)
-                Box("Footprint", new Vector3(r.Interior.xMin + .8f + i * .5f, .013f, 3.5f + (i % 2 == 0 ? .12f : -.12f)), new Vector3(.19f, .015f, .1f), darkMat);
-        }
-        BuildContinuousWallSlabs();
-        foreach (var o in level.Openings)
-        {
-            var center = V(o.Center);
-            var openingHeight = OpeningHeight(o);
-            var leafHeight = Mathf.Max(.1f, openingHeight - .04f);
-            var slab = Box(o.Kind.ToString(), center + Vector3.up * (leafHeight * .5f), new Vector3(.3f, leafHeight, o.Tiles.Count), o.Kind == OpeningKind.Window ? glassMat : o.Kind == OpeningKind.Door ? darkMat : wallMat);
-            openingObjects[o.Id] = slab;
-            if (o.Kind == OpeningKind.Hall) slab.SetActive(o.Sealed);
-            var lintel = Box("Lintel", center + Vector3.up * (openingHeight - .12f), new Vector3(1f, .24f, o.Tiles.Count), wallMat);
-            openingLintels[o.Id] = lintel;
-            if (o.Kind == OpeningKind.Door) Box("Brass lock", center + new Vector3(-.17f, 1.15f, -.55f), new Vector3(.06f, .18f, .18f), yellowMat).transform.SetParent(slab.transform, true);
-            if (o.Kind == OpeningKind.Window)
-                for (int n = -1; n <= 1; n++) Box("Glass frame", center + new Vector3(0f, leafHeight * .5f, n * o.Tiles.Count * .45f), new Vector3(.38f, leafHeight, .06f), darkMat).transform.SetParent(slab.transform, true);
-        }
-        Box("Exit light", new Vector3(58f, .025f, 5.5f), new Vector3(2f, .05f, 3f), Mat("Exit glow", C("B2F6DA"), true));
-        cam = new GameObject("First-person camera").AddComponent<Camera>();
-        cam.fieldOfView = 76f; cam.nearClipPlane = .06f; cam.farClipPlane = 80f;
-        cam.allowHDR = true;
-        cam.allowMSAA = true;
-        cam.useOcclusionCulling = true;
-        cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = C("22231C"); cam.gameObject.AddComponent<AudioListener>();
-        hunter = new GameObject("Hunter").transform; hunter.SetParent(world);
-        hunterRig = hunter.gameObject.AddComponent<FrontRoomsRelayRig>();
-        hunterRig.Configure(darkMat, whiteMat, yellowMat);
-        PositionView();
-    }
-
-    void RebindSerializedWorld()
-    {
-        if (world == null) return;
-        var direct = new Dictionary<string, List<GameObject>>();
-        foreach (Transform child in world)
-        {
-            if (!direct.TryGetValue(child.name, out var list)) direct[child.name] = list = new List<GameObject>();
-            list.Add(child.gameObject);
-        }
-
-        GameObject[] candidates(string name)
-        {
-            return direct.TryGetValue(name, out var list) ? list.ToArray() : Array.Empty<GameObject>();
-        }
-        var halls = candidates("Hall");
-        var doors = candidates("Door");
-        var windows = candidates("Window");
-        var lintels = candidates("Lintel");
-        var hallIndex = 0;
-        var doorIndex = 0;
-        var windowIndex = 0;
-        var lintelIndex = 0;
-        foreach (var opening in level.Openings)
-        {
-            var source = opening.Kind == OpeningKind.Hall ? halls : opening.Kind == OpeningKind.Door ? doors : windows;
-            var index = opening.Kind == OpeningKind.Hall ? hallIndex++ : opening.Kind == OpeningKind.Door ? doorIndex++ : windowIndex++;
-            if (lintelIndex < lintels.Length) openingLintels[opening.Id] = lintels[lintelIndex++];
-            if (index >= source.Length) continue;
-            openingObjects[opening.Id] = source[index];
-            source[index].SetActive(opening.Kind == OpeningKind.Hall ? opening.Sealed : true);
-            var renderer = source[index].GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                if (opening.Kind == OpeningKind.Window && glassMat == null) glassMat = renderer.sharedMaterial;
-                if (opening.Kind == OpeningKind.Door && darkMat == null) darkMat = renderer.sharedMaterial;
-            }
-        }
-
-        var keysFound = candidates("Office key");
-        var keyIndex = 0;
-        foreach (var room in level.Rooms)
-            if (room.HasKey && keyIndex < keysFound.Length) keyObjects[room.Id] = keysFound[keyIndex++];
-
-        var notesFound = candidates("Readable note");
-        var noteIndex = 0;
-        foreach (var room in level.Rooms)
-        {
-            if (room.Rule == RoomRule.Run || room.Rule == RoomRule.Exit) continue;
-            if (noteIndex >= notesFound.Length) break;
-            var renderer = notesFound[noteIndex++].GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                noteObjects[room.Id] = renderer;
-                if (whiteMat == null) whiteMat = renderer.sharedMaterial;
-            }
-        }
-
-        if (yellowMat == null)
-        {
-            var lockObject = world.GetComponentsInChildren<Transform>(true);
-            foreach (var t in lockObject)
-            {
-                if (t.name != "Brass lock" && t.name != "Key shaft") continue;
-                var renderer = t.GetComponent<Renderer>();
-                if (renderer != null) { yellowMat = renderer.sharedMaterial; break; }
-            }
-        }
-        if (cam == null) cam = world.GetComponentInChildren<Camera>(true);
-        if (hunter == null) hunter = world.Find("Hunter");
-        if (hunter != null)
-        {
-            hunterRig = hunter.GetComponent<FrontRoomsRelayRig>();
-            if (hunterRig == null) hunterRig = hunter.gameObject.AddComponent<FrontRoomsRelayRig>();
-            hunterRig.Configure(darkMat, whiteMat, yellowMat);
-        }
-        PositionView();
-    }
-
-    void ResolveSerializedMaterials()
-    {
-        // Play Mode normally reuses the serialized editor preview. Recover the
-        // shared materials from that preview so the title corridor keeps the
-        // same wallpaper/carpet language without generating a second set of
-        // procedural textures.
-        if (world == null) return;
-        // The preview contains one material family per room.  Do not use the
-        // first renderer as a generic fallback: the hierarchy is ordered with
-        // Lobby first, so that shortcut silently made every streamed profile
-        // look like Lobby even though the Office and Run props were present.
-        wallMats.Clear();
-        floorMats.Clear();
-        ceilingMats.Clear();
-        foreach (var renderer in world.GetComponentsInChildren<Renderer>(true))
-        {
-            var material = renderer.sharedMaterial;
-            if (material == null) continue;
-            var name = renderer.gameObject.name;
-            var profile = SerializedProfileForName(name);
-            if (profile.HasValue)
-            {
-                if (name.IndexOf("floor", StringComparison.OrdinalIgnoreCase) >= 0)
-                    floorMats[profile.Value] = material;
-                else if (name.IndexOf("ceiling", StringComparison.OrdinalIgnoreCase) >= 0)
-                    ceilingMats[profile.Value] = material;
-                else if (name.IndexOf("wallpaper", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                         name.IndexOf("continuous wall", StringComparison.OrdinalIgnoreCase) >= 0)
-                    wallMats[profile.Value] = material;
-            }
-            if (wallMat == null && name.Contains("continuous wallpaper")) wallMat = material;
-            if (floorMat == null && name.EndsWith(" / floor", StringComparison.Ordinal)) floorMat = material;
-            if (ceilingMat == null && name.EndsWith(" / ceiling", StringComparison.Ordinal)) ceilingMat = material;
-            if (trimMat == null && name.Contains("baseboard")) trimMat = material;
-            if (fixtureMat == null && name.IndexOf("fluorescent fixture", StringComparison.OrdinalIgnoreCase) >= 0) fixtureMat = material;
-            if (darkMat == null && (name == "Door" || name.Contains("Brass lock"))) darkMat = material;
-        }
-        if (wallMat == null) wallMat = Mat("Title wallpaper", C("D4C37B"));
-        if (floorMat == null) floorMat = Mat("Title carpet", C("51472F"));
-        if (ceilingMat == null) ceilingMat = Mat("Title ceiling", C("777266"));
-        if (fixtureMat == null) fixtureMat = Mat("Fluorescent diffuser", C("F7F2D8"), true);
-        if (darkMat == null) darkMat = Mat("Title door", C("252525"));
-
-        // Older serialized previews may not contain every room family. Fill
-        // only missing entries with the same low-cost procedural materials used
-        // by BuildWorld, keeping an authored material wherever it exists.
-        EnsureSerializedProfileMaterial(RoomRule.Lobby, C("BDB18C"), C("51472F"), C("777266"), 0);
-        EnsureSerializedProfileMaterial(RoomRule.Shift, C("A8A07D"), C("4B4330"), C("696355"), 1);
-        EnsureSerializedProfileMaterial(RoomRule.Office, C("B7AE94"), C("4A453C"), C("706D68"), 2);
-        EnsureSerializedProfileMaterial(RoomRule.Run, C("766B60"), C("3B3735"), C("2B2926"), 5);
-        EnsureSerializedProfileMaterial(RoomRule.Exit, C("5D7770"), C("283A38"), C("354846"), 4);
-    }
-
-    static RoomRule? SerializedProfileForName(string name)
-    {
-        if (string.IsNullOrEmpty(name)) return null;
-        if (name.StartsWith("Level 0", StringComparison.OrdinalIgnoreCase)) return RoomRule.Shift;
-        if (name.StartsWith("Level 4", StringComparison.OrdinalIgnoreCase)) return RoomRule.Office;
-        if (name.StartsWith("Level !", StringComparison.OrdinalIgnoreCase)) return RoomRule.Run;
-        if (name.StartsWith("Exit", StringComparison.OrdinalIgnoreCase)) return RoomRule.Exit;
-        if (name.StartsWith("Lobby", StringComparison.OrdinalIgnoreCase)) return RoomRule.Lobby;
-        return null;
-    }
-
-    void EnsureSerializedProfileMaterial(RoomRule rule, Color wallColor, Color floorColor, Color ceilingColor, int style)
-    {
-        if (!wallMats.ContainsKey(rule))
-            wallMats[rule] = TexturedMat("Wallpaper / " + rule + " / generated", wallColor, WallpaperTexture(wallColor, wallColor * .72f, style), new Vector2(1.15f, 1.2f));
-        if (!floorMats.ContainsKey(rule))
-            floorMats[rule] = TexturedMat("Carpet / " + rule + " / generated", floorColor, CarpetTexture(floorColor, style), new Vector2(2.6f, 2.6f));
-        if (!ceilingMats.ContainsKey(rule))
-            ceilingMats[rule] = Mat("Ceiling / " + rule + " / generated", ceilingColor);
-    }
-
-    GameObject TitleBox(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
-    {
-        var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        box.name = name;
-        box.transform.SetParent(parent, false);
-        box.transform.position = position;
-        box.transform.localScale = scale;
-        var renderer = box.GetComponent<Renderer>();
-        if (renderer != null) renderer.sharedMaterial = material;
-        return box;
     }
 
     void BuildTitleCorridor()
@@ -959,10 +473,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // Rebuild it so the title always starts with a fresh wipe/relay clock.
         if (titleWorld != null) StopTitleCorridor();
         titleWorld = new GameObject("Title sequence / recycled corridor").transform;
-        // Keep the runtime title layer away from the authored gameplay greybox.
-        // The camera stays in the same generated room through the player-facing
-        // handoff. The serialized map remains available for editor preview and
-        // explicit -verify3d automation only.
+        // The camera stays in the same generated room through the handoff;
+        // the title corridor simply becomes the level.
         if (cam != null)
         {
             var titlePosition = cam.transform.position;
@@ -977,11 +489,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             foley == null ? doorClip : foley.Doors.hinge,
             foley == null ? null : foley.Doors.latch,
             foley == null ? null : foley.Doors.travel,
-            new[] { WallMaterial(RoomRule.Lobby), WallMaterial(RoomRule.Shift), WallMaterial(RoomRule.Office), WallMaterial(RoomRule.Run), WallMaterial(RoomRule.Exit) },
-            new[] { FloorMaterial(RoomRule.Lobby), FloorMaterial(RoomRule.Shift), FloorMaterial(RoomRule.Office), FloorMaterial(RoomRule.Run), FloorMaterial(RoomRule.Exit) },
-            new[] { CeilingMaterial(RoomRule.Lobby), CeilingMaterial(RoomRule.Shift), CeilingMaterial(RoomRule.Office), CeilingMaterial(RoomRule.Run), CeilingMaterial(RoomRule.Exit) });
-        BuildStreamThreat();
-        titleCameraZ = cam == null ? 0f : cam.transform.position.z;
+            ProfileMaterials(wallMats), ProfileMaterials(floorMats), ProfileMaterials(ceilingMats));
         titleLogoAlpha = 0f;
         logoMotionElapsed = 0f;
         titleHandoffPending = false;
@@ -993,11 +501,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (roomStream == null || cam == null) return;
         roomStream.Tick(dt);
-        titleElapsed += dt;
         // Historical title clock: the complete wordmark stays present while
         // the first streamed door drives the two trailing-S relays.
         logoMotionElapsed += dt;
-        titleCameraZ = roomStream.CameraZ;
         titleLogoAlpha = roomStream.LogoVisibility;
         UpdateLogoMotion();
         if (titleHandoffPending && roomStream.HasControl) EnterGameplayFromTitle();
@@ -1077,14 +583,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
         titleWorld = null;
         roomStream = null;
-        titleSegments.Clear();
-        streamThreatObject = null;
-        streamThreatBody = null;
-        streamThreatHead = null;
-        streamThreatArmLeft = null;
-        streamThreatArmRight = null;
-        streamThreatLegLeft = null;
-        streamThreatLegRight = null;
     }
 
     void RequestTitleStart()
@@ -1098,17 +596,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     void StartCanonicalStreamedRestart()
     {
         if (roomStream == null) return;
-        streamedPlay = false;
-        titleHandoffPending = false;
-        streamThreatTriggered = false;
-        streamThreatState = StreamThreatState.Dormant;
-        if (streamThreatObject != null) streamThreatObject.SetActive(false);
         SetPhase(Phase.Title);
-        // Reuse the title stream's first door and camera handoff. This keeps a
-        // retry on the same room generator, hunter rig, lighting profiles and
-        // infinite pool instead of switching to the legacy authored grid.
+        // A retry reuses the title's first door and camera handoff, so it lands
+        // in the same stream, with the same Relay, as a first run.
         RequestTitleStart();
-        Log("RESTART · canonical streamed route");
+        Log("RESTART · streamed route");
     }
 
     void EnterGameplayFromTitle()
@@ -1117,27 +609,33 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         titleHandoffPending = false;
         streamedPlay = true;
         // The same camera remains in the same generated room. Only its input
-        // ownership changes, so the player never sees a reset to the authored
-        // five-room origin or a loading cut.
+        // ownership changes, so the player never sees a loading cut.
         playerPos = new Vector2(cam.transform.position.x, cam.transform.position.z);
         yaw = 0f;
         pitch = 0f;
         elapsed = 0f;
-        if (hunter != null) hunter.gameObject.SetActive(false);
-        streamThreatState = StreamThreatState.Dormant;
-        streamThreatStateTime = 0f;
-        streamThreatStepTime = 0f;
-        streamThreatGrace = 0f;
-        streamThreatTriggered = false;
-        if (streamThreatObject != null) streamThreatObject.SetActive(false);
-        // The title pool is intentionally Lobby-only until this handoff.
-        // Once the camera reaches the first room's Entry anchor, reveal the
-        // authored sequence so subsequent doors become Shift → Office → Run → Exit.
+        // The handoff room and the next ones stay empty Lobby rooms; furnished
+        // rooms are dressed out of sight. The Relay stays dormant until the
+        // player has spent a moment in the first furnished room.
         roomStream.BeginPlayableSequence();
+        startRoom = roomStream.CurrentRoomNumber;
+        hunterBrain = new FrontRoomsHunterBrain(roomStream, hunterTuning);
+        hunterBrain.StateChanged += state => Event("hunter", state.ToString());
+        hunterBrain.DoorBlow += FoleyDoorBreak;
+        hunterBrain.DoorBroken += door => Event("door_broken", door.ToString());
+        // The Run room is the alarm beat: once the door behind the player has
+        // shut, the Relay is brought up behind it and hunts them from there.
+        hunterBrain.Alarmed += room =>
+        {
+            Flash("RUN  /  KEEP THE RED ROOM MOVING");
+            Event("alarm", room.ToString());
+        };
+        hunterBrain.Caught += End;
         SetPhase(Phase.Playing);
-        Flash("WASD + MOUSE  /  WALK THE ROOMS\nNEXT  /  LEVEL 0 — SHIFT", 6f);
+        Flash("WASD + MOUSE  /  WALK THE ROOMS", 6f);
         Event("start", "streamed-room");
     }
+
 
     void UpdateStreamedPlay(float dt)
     {
@@ -1145,8 +643,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * 2.1f, -75f, 75f);
         // Keep the authored InputManager axes, but also read the physical
         // keys directly. This makes the standalone Mac/WebGL player robust
-        // when a platform starts with the new input backend while the project
-        // still exposes the legacy axes for the verification harness.
+        // when a platform starts with the new input backend.
         var horizontal = Input.GetAxisRaw("Horizontal");
         var vertical = Input.GetAxisRaw("Vertical");
         if (Mathf.Abs(horizontal) < .01f)
@@ -1163,23 +660,52 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         var after = new Vector2(moved.x, moved.z);
         cam.transform.position = new Vector3(after.x, 1.62f, after.y);
         cam.transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
-        titleCameraZ = after.y;
+        playerPos = after;
         if (Vector2.Distance(before, after) > .001f)
         {
             stepTime += dt;
             if (stepTime > (sprint ? .3f : .5f))
             {
                 stepTime = 0f;
-                FoleyFootstep(after, FrontRoomsFoleyActor.Player, StreamSurface(), sprint, sprint ? .48f : .15f);
+                FoleyFootstep(after, FrontRoomsFoleyActor.Player, SurfaceOf(roomStream.CurrentRule), sprint, sprint ? .48f : .15f);
+                if (sprint && hunterBrain != null) hunterBrain.Noise(after, hunterTuning.sprintNoiseRadius);
             }
         }
-        UpdateStreamThreat(dt, after, sprint);
+        UpdateRelay(dt);
     }
 
-    FrontRoomsFoleySurface StreamSurface()
+    void UpdateRelay(float dt)
     {
-        if (roomStream == null) return FrontRoomsFoleySurface.Carpet;
-        switch (roomStream.CurrentRule)
+        if (hunterBrain == null || roomStream == null) return;
+        hunterBrain.Tick(dt, playerPos);
+        if (hunter == null) return;
+        if (hunter.gameObject.activeSelf != hunterBrain.Released) hunter.gameObject.SetActive(hunterBrain.Released);
+        if (!hunterBrain.Released) return;
+        var position = hunterBrain.Position;
+        hunter.position = V(position);
+        var facing = playerPos - position;
+        if (facing.sqrMagnitude > .0001f) hunter.rotation = Quaternion.Euler(0f, Mathf.Atan2(facing.x, facing.y) * Mathf.Rad2Deg, 0f);
+        var state = hunterBrain.State;
+        if (hunterRig != null)
+        {
+            var motion = state == HunterState.Chase ? FrontRoomsRelayRig.MotionState.Run
+                : state == HunterState.BreakDoor ? FrontRoomsRelayRig.MotionState.BreakDoor
+                : state == HunterState.Hunt ? FrontRoomsRelayRig.MotionState.Walk
+                : FrontRoomsRelayRig.MotionState.IdleListen;
+            hunterRig.TickAnimation(dt, motion, hunterBrain.Moving, state == HunterState.Chase ? 1.15f : 1f);
+        }
+        if (!hunterBrain.Moving) return;
+        hunterStepTime += dt;
+        if (hunterStepTime < (state == HunterState.Chase ? .29f : .44f)) return;
+        hunterStepTime = 0f;
+        var distance = Vector2.Distance(playerPos, position);
+        var surface = SurfaceOf(roomStream.RuleAt(roomStream.SequenceAtZ(position.y)));
+        FoleyFootstep(position, FrontRoomsFoleyActor.Hunter, surface, state == HunterState.Chase, .36f + Mathf.Clamp01(1f - distance / 24f) * (state == HunterState.Chase ? .64f : .40f));
+    }
+
+    static FrontRoomsFoleySurface SurfaceOf(RoomRule rule)
+    {
+        switch (rule)
         {
             case RoomRule.Office: return FrontRoomsFoleySurface.Tile;
             case RoomRule.Run: return FrontRoomsFoleySurface.Concrete;
@@ -1188,223 +714,16 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
     }
 
-    void BuildStreamThreat()
-    {
-        if (titleWorld == null || streamThreatObject != null) return;
-        streamThreatObject = new GameObject("STREAM THREAT / RELAY");
-        streamThreatObject.transform.SetParent(titleWorld, false);
-        streamThreatObject.SetActive(false);
-        streamThreatRig = streamThreatObject.AddComponent<FrontRoomsRelayRig>();
-        streamThreatRig.Configure(darkMat, whiteMat, yellowMat);
-        streamThreatBody = streamThreatRig.Body;
-        streamThreatHead = streamThreatRig.Head;
-        streamThreatArmLeft = streamThreatRig.ArmLeft;
-        streamThreatArmRight = streamThreatRig.ArmRight;
-        streamThreatLegLeft = streamThreatRig.LegLeft;
-        streamThreatLegRight = streamThreatRig.LegRight;
-    }
-
-    Transform StreamPrimitive(PrimitiveType type, string name, Transform parent, Vector3 localPosition, Vector3 scale, Material material)
-    {
-        var primitive = GameObject.CreatePrimitive(type);
-        primitive.name = name;
-        primitive.transform.SetParent(parent, false);
-        primitive.transform.localPosition = localPosition;
-        primitive.transform.localScale = scale;
-        var renderer = primitive.GetComponent<Renderer>();
-        if (renderer != null) renderer.sharedMaterial = material;
-        return primitive.transform;
-    }
-
-    void UpdateStreamThreat(float dt, Vector2 player, bool sprint)
-    {
-        if (roomStream == null || streamThreatObject == null) return;
-        var rule = roomStream.CurrentRule;
-        // A title can be left running for several cycles before Space is
-        // pressed. Trigger from either side of the Office -> Run beat so the
-        // encounter is never skipped when the player hands control over in
-        // the red room.
-        if (!streamThreatTriggered && roomStream.CurrentRoomNumber >= 2 && (rule == RoomRule.Office || rule == RoomRule.Run))
-        {
-            streamThreatTriggered = true;
-            streamThreatState = StreamThreatState.Listening;
-            streamThreatStateTime = 0f;
-            // Give the player a readable reveal window after the handoff. The
-            // Relay is deliberately behind the camera's entry point, rather
-            // than inside the same doorway, so a room transition can never
-            // resolve as an instant catch on the first gameplay frame.
-            streamThreatGrace = 2.25f;
-            streamThreatPos = new Vector2(player.x, player.y - 8f);
-            streamThreatObject.SetActive(true);
-            Event("threat", "relay-listening");
-        }
-        if (!streamThreatTriggered) return;
-
-        streamThreatStateTime += dt;
-        streamThreatGrace = Mathf.Max(0f, streamThreatGrace - dt);
-        if (rule == RoomRule.Run && streamThreatState != StreamThreatState.Chase)
-        {
-            streamThreatState = StreamThreatState.Chase;
-            streamThreatStateTime = 0f;
-            Event("threat", "relay-chase");
-            Flash("RUN  /  KEEP THE RED ROOM MOVING", 3f);
-        }
-        if (streamThreatState == StreamThreatState.Listening && (sprint || streamThreatStateTime > 3.2f))
-        {
-            streamThreatState = StreamThreatState.Chase;
-            streamThreatStateTime = 0f;
-            Event("threat", "relay-chase");
-        }
-        if (streamThreatState == StreamThreatState.Chase)
-        {
-            var speed = sprint ? 4.35f : 3.72f;
-            streamThreatPos = Vector2.MoveTowards(streamThreatPos, player, speed * dt);
-            streamThreatStepTime += dt;
-            if (streamThreatStepTime > (sprint ? .29f : .43f))
-            {
-                streamThreatStepTime = 0f;
-                FoleyFootstep(streamThreatPos, FrontRoomsFoleyActor.Hunter, StreamSurface(), sprint, .34f);
-            }
-            if (streamThreatGrace <= 0f && Vector2.Distance(streamThreatPos, player) < .8f)
-            {
-                streamThreatState = StreamThreatState.Lost;
-                streamThreatObject.SetActive(false);
-                End(false);
-                return;
-            }
-        }
-        var threatTransform = streamThreatObject.transform;
-        threatTransform.position = V(streamThreatPos);
-        var facing = Mathf.Atan2(player.x - streamThreatPos.x, player.y - streamThreatPos.y) * Mathf.Rad2Deg;
-        threatTransform.rotation = Quaternion.Euler(0f, facing, 0f);
-        if (streamThreatRig != null)
-        {
-            var motion = streamThreatState == StreamThreatState.Chase ? FrontRoomsRelayRig.MotionState.Run : FrontRoomsRelayRig.MotionState.IdleListen;
-            streamThreatRig.TickAnimation(dt, motion, streamThreatState == StreamThreatState.Chase, streamThreatState == StreamThreatState.Chase ? 1.15f : .7f);
-        }
-    }
-
-    /// <summary>
-    /// The first greybox made one cube per wall tile. That read as a row of
-    /// pillars in first person. Merge adjacent wall cells into continuous
-    /// slabs, breaking only at openings and room-material changes, so the
-    /// wallpaper reads as an actual building surface.
-    /// </summary>
-    void BuildContinuousWallSlabs()
-    {
-        var used = new bool[level.Width, level.Height];
-        for (var y = 0; y < level.Height; y++)
-        {
-            for (var x = 0; x < level.Width; x++)
-            {
-                if (used[x, y] || level.Tiles[x, y] != TileKind.Wall) continue;
-                var room = WallRoomAt(x, y);
-                var horizontalNeighbor = IsWall(x - 1, y) || IsWall(x + 1, y);
-                var verticalNeighbor = IsWall(x, y - 1) || IsWall(x, y + 1);
-
-                if (horizontalNeighbor || !verticalNeighbor)
-                {
-                    var end = x;
-                    while (end + 1 < level.Width && !used[end + 1, y] && IsWall(end + 1, y) && SameWallRoom(room, WallRoomAt(end + 1, y))) end++;
-                    MarkWallRun(used, x, end, y, y);
-                    AddWallSlab(room, x, end, y, y);
-                }
-                else
-                {
-                    var end = y;
-                    while (end + 1 < level.Height && !used[x, end + 1] && IsWall(x, end + 1) && SameWallRoom(room, WallRoomAt(x, end + 1))) end++;
-                    MarkWallRun(used, x, x, y, end);
-                    AddWallSlab(room, x, x, y, end);
-                }
-            }
-        }
-    }
-
-    bool IsWall(int x, int y) => x >= 0 && y >= 0 && x < level.Width && y < level.Height && level.Tiles[x, y] == TileKind.Wall;
-
-    FrontRoom WallRoomAt(int x, int y)
-    {
-        var around = new[] { Vector2Int.left, Vector2Int.right, Vector2Int.down, Vector2Int.up };
-        foreach (var d in around)
-        {
-            var p = new Vector2Int(x + d.x, y + d.y);
-            if (!level.InBounds(p)) continue;
-            var room = level.RoomOf(p);
-            if (room != null) return room;
-        }
-        return level.Rooms[Mathf.Clamp(x / FrontRoomsLevel.CellW, 0, level.Rooms.Count - 1)];
-    }
-
-    static bool SameWallRoom(FrontRoom a, FrontRoom b) => a == null || b == null || a.Rule == b.Rule;
-
-    void MarkWallRun(bool[,] used, int x0, int x1, int y0, int y1)
-    {
-        for (var x = x0; x <= x1; x++)
-            for (var y = y0; y <= y1; y++)
-                used[x, y] = true;
-    }
-
-    void AddWallSlab(FrontRoom room, int x0, int x1, int y0, int y1)
-    {
-        var h = HeightFor(room);
-        var center = new Vector3((x0 + x1 + 1f) * .5f, h * .5f, (y0 + y1 + 1f) * .5f);
-        var scale = new Vector3(x1 - x0 + 1f, h, y1 - y0 + 1f);
-        var slab = Box(room.Name + " / continuous wallpaper", center, scale, WallMaterial(room.Rule));
-
-        // A cube's default UVs are 0..1 regardless of its transform scale.  Set
-        // the wallpaper transform from the slab's actual dimensions so a 1-cell
-        // wall and a 4-cell wall keep the same physical paper repeat.  This also
-        // makes every generated slab a useful, editable material instance in the
-        // serialized scene rather than relying on one global stretched material.
-        var renderer = slab.GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            var material = new Material(WallMaterial(room.Rule));
-            material.name = room.Name + " / wallpaper material (" + (x1 - x0 + 1) + "x" + (y1 - y0 + 1) + ")";
-            var horizontal = x1 > x0 || y1 == y0;
-            var runLength = horizontal ? scale.x : scale.z;
-            const float paperRepeatX = 2.25f;
-            const float paperRepeatY = 2.4f;
-            material.mainTextureScale = new Vector2(Mathf.Max(.25f, runLength / paperRepeatX), Mathf.Max(.25f, h / paperRepeatY));
-            // Keep the paper pattern phase continuous across adjacent slabs.
-            var runStart = horizontal ? x0 : y0;
-            material.mainTextureOffset = new Vector2(runStart / paperRepeatX, 0f);
-            renderer.sharedMaterial = material;
-        }
-    }
-
-    void BuildRoomTrim(FrontRoom room, float height)
-    {
-        // A narrow baseboard and ceiling shadow line keep the large repeated rooms
-        // readable in first person without introducing furniture that blocks routes.
-        var x0 = room.Interior.xMin + .06f;
-        var x1 = room.Interior.xMax - .06f;
-        var z0 = room.Interior.yMin + .06f;
-        var z1 = room.Interior.yMax - .06f;
-        var width = room.Interior.width - .12f;
-        var depth = room.Interior.height - .12f;
-        Box(room.Name + " / baseboard front", new Vector3(room.Center.x, .18f, z0), new Vector3(width, .16f, .08f), trimMat);
-        Box(room.Name + " / baseboard back", new Vector3(room.Center.x, .18f, z1), new Vector3(width, .16f, .08f), trimMat);
-        Box(room.Name + " / baseboard left", new Vector3(x0, .18f, room.Center.y), new Vector3(.08f, .16f, depth), trimMat);
-        Box(room.Name + " / baseboard right", new Vector3(x1, .18f, room.Center.y), new Vector3(.08f, .16f, depth), trimMat);
-        for (var i = 1; i < 4; i++)
-        {
-            var x = room.Interior.xMin + room.Interior.width * i / 4f;
-            Box(room.Name + " / paper seam", new Vector3(x, height * .5f, z0 + .045f), new Vector3(.028f, height * .82f, .012f), seamMat);
-            Box(room.Name + " / paper seam", new Vector3(x, height * .5f, z1 - .045f), new Vector3(.028f, height * .82f, .012f), seamMat);
-        }
-    }
     void BuildSound()
     {
         var recordedDoorCreak = Resources.Load<AudioClip>("Audio/door-creak");
         foley = new FrontRoomsFoley(recordedDoorCreak);
         playerStepClip = FrontRoomsAudio.PlayerStep(); playerRunStepClip = FrontRoomsAudio.PlayerRunStep(); hunterStepClip = FrontRoomsAudio.HunterStep();
-        glassClip = FrontRoomsAudio.Glass(); keyClip = FrontRoomsAudio.Key();
         // The Foley door set layers a latch, hinge recording, movement bed and
-        // settle/impact. Keep the old clips as fallbacks for verification tools.
+        // break impact. The plain clips are fallbacks when Foley is unavailable.
         doorClip = foley.Doors.hinge;
-        slamClip = foley.Doors.slam; bangClip = foley.Doors.breakImpact;
-        caughtClip = FrontRoomsAudio.Caught(); escapeClip = FrontRoomsAudio.Escape();
+        bangClip = foley.Doors.breakImpact;
+        caughtClip = FrontRoomsAudio.Caught();
         hum = cam.gameObject.AddComponent<AudioSource>(); hum.clip = FrontRoomsAudio.Hum(); hum.loop = true; hum.volume = .18f; hum.Play();
     }
     void Sound(AudioClip clip, Vector2 p, float volume = .7f)
@@ -1412,38 +731,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         var g = new GameObject("Spatial sound"); g.transform.position = V(p, 1f);
         var source = g.AddComponent<AudioSource>(); source.clip = clip; source.spatialBlend = 1f; source.minDistance = 2f; source.maxDistance = 26f; source.volume = volume; source.Play();
         Destroy(g, clip.length + .1f);
-    }
-
-    FrontRoomsFoleySurface SurfaceFor(FrontRoom sourceRoom)
-    {
-        if (sourceRoom == null) return FrontRoomsFoleySurface.Carpet;
-        switch (sourceRoom.Rule)
-        {
-            case RoomRule.Office: return FrontRoomsFoleySurface.Tile;
-            case RoomRule.Run: return FrontRoomsFoleySurface.Concrete;
-            case RoomRule.Exit: return FrontRoomsFoleySurface.Metal;
-            default: return FrontRoomsFoleySurface.Carpet;
-        }
-    }
-
-    FrontRoomsFoleySurface SurfaceAt(Vector2 p)
-    {
-        if (level == null) return FrontRoomsFoleySurface.Carpet;
-        var tile = FrontRoomsLevel.TileOf(p);
-        var room = level.RoomOf(tile);
-        if (room != null) return SurfaceFor(room);
-
-        // Opening tiles belong to neither room. Resolve their floor identity
-        // from the nearest side so the single step taken across a doorway
-        // does not fall back to carpet when the destination is tile/concrete.
-        var opening = level.OpeningOf(tile);
-        if (opening != null)
-        {
-            var ownerDistance = Vector2.Distance(p, opening.Owner.Center);
-            var otherDistance = Vector2.Distance(p, opening.Other.Center);
-            return SurfaceFor(ownerDistance <= otherDistance ? opening.Owner : opening.Other);
-        }
-        return FrontRoomsFoleySurface.Carpet;
     }
 
     void FoleyFootstep(Vector2 p, FrontRoomsFoleyActor actor, FrontRoomsFoleySurface surface, bool running, float volume)
@@ -1479,14 +766,14 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         Destroy(g, lifetime);
     }
 
-    void FoleyDoor(Vector2 p, bool closing = false, bool breaking = false)
+    void FoleyDoorBreak(Vector2 p)
     {
         if (foley == null)
         {
-            Sound(breaking ? bangClip : closing ? slamClip : doorClip, p, breaking || closing ? 1f : .7f);
+            Sound(bangClip, p, 1f);
             return;
         }
-        var g = new GameObject("Foley / door / " + (breaking ? "break" : closing ? "slam" : "open"));
+        var g = new GameObject("Foley / door / break");
         g.transform.position = V(p, 1f);
         var source = g.AddComponent<AudioSource>();
         source.spatialBlend = 1f;
@@ -1494,30 +781,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         source.maxDistance = 26f;
         source.rolloffMode = AudioRolloffMode.Logarithmic;
         source.dopplerLevel = .06f;
-        source.priority = breaking ? 48 : 72;
+        source.priority = 48;
         source.pitch = .97f + UnityEngine.Random.Range(-.025f, .025f);
-        if (breaking)
-        {
-            source.PlayOneShot(foley.Doors.breakImpact, 1f);
-            Destroy(g, foley.Doors.breakImpact.length + .1f);
-            return;
-        }
-        if (closing)
-        {
-            source.PlayOneShot(foley.Doors.slam, .9f);
-            Destroy(g, foley.Doors.slam.length + .1f);
-            return;
-        }
-        source.PlayOneShot(foley.Doors.latch, .42f);
-        source.PlayOneShot(foley.Doors.hinge, .78f);
-        source.PlayOneShot(foley.Doors.travel, .42f);
-        Destroy(g, Mathf.Max(foley.Doors.hinge.length, foley.Doors.travel.length) + .12f);
+        source.PlayOneShot(foley.Doors.breakImpact, 1f);
+        Destroy(g, foley.Doors.breakImpact.length + .1f);
     }
 
-    void HunterSound(Vector2 p, float volume)
-    {
-        FoleyFootstep(p, FrontRoomsFoleyActor.Hunter, SurfaceAt(p), state == HunterState.Chase, volume);
-    }
     Font UiFont(string name, int fontSize)
     {
         if (name.Contains("Room meta") || name.Contains("Distance") || name.Contains("Aim")) return monoFont;
@@ -1811,11 +1080,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         crosshair.color = accent;
         gameplayHudAlpha = 0f;
         ApplyGameplayHudAlpha();
-        journalPanel = Panel(g.transform, "Notes panel", new Vector2(.5f, .5f), Vector2.zero, new Vector2(1296, 744), new Color(.055f, .055f, .05f, .96f));
-        Rule(journalPanel.transform, "Notes accent", new Vector2(0, 1), new Vector2(48, -48), new Vector2(4, 120), accent);
-        notebook = Text(journalPanel.transform, "Notebook", new Vector2(0, 1), new Vector2(96, -56), new Vector2(1110, 620), 24, TextAnchor.UpperLeft);
-        notebook.color = paper;
-        journalPanel.SetActive(false);
+
         displaySettingsPanel = Panel(g.transform, "Display settings", new Vector2(.5f, .5f), Vector2.zero, new Vector2(920, 420), new Color(.055f, .055f, .05f, .97f));
         Rule(displaySettingsPanel.transform, "Display settings accent", new Vector2(0, .5f), new Vector2(28, 0), new Vector2(4, 176), accent);
         displaySettingsText = Text(displaySettingsPanel.transform, "Display settings text", new Vector2(.5f, .5f), new Vector2(18, 0), new Vector2(760, 320), 24, TextAnchor.MiddleCenter);
@@ -1876,284 +1141,38 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (roomPanel != null) roomPanel.SetActive(playing);
         if (threatPanel != null) threatPanel.SetActive(playing);
         if (contextPanel != null) contextPanel.SetActive(false);
-        if (journalPanel != null) journalPanel.SetActive(false);
         ApplyGameplayHudAlpha();
-        Cursor.lockState = playing && testDir == null ? CursorLockMode.Locked : CursorLockMode.None; Cursor.visible = !playing;
+        Cursor.lockState = playing ? CursorLockMode.Locked : CursorLockMode.None; Cursor.visible = !playing;
         if (p == Phase.Title)
         {
             overlayText.text = "";
             overlayText.enabled = false;
         }
         else overlayText.enabled = true;
-        if (p == Phase.Paused) overlayText.text = "<size=88><b>PAUSED</b></size>\n\n<size=13>WASD  MOVE    MOUSE  LOOK    SHIFT  RUN\nHOLD E  READ OR BREAK    E  OPEN KEYED DOOR\nTAB  NOTES    R  RESTART\nO  DISPLAY SETTINGS</size>\n\n<color=#F4DF3B><size=20>ESC  RESUME</size></color>";
-        if (p == Phase.Escaped || p == Phase.Caught)
-            overlayText.text = "<size=88><b>" + (p == Phase.Escaped ? "ESCAPED" : "CAUGHT") + "</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  " + notesRead + " NOTES</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
+        if (p == Phase.Paused) overlayText.text = "<size=88><b>PAUSED</b></size>\n\n<size=13>WASD  MOVE    MOUSE  LOOK    SHIFT  RUN\nR  RESTART    O  DISPLAY SETTINGS</size>\n\n<color=#F4DF3B><size=20>ESC  RESUME</size></color>";
+        if (p == Phase.Caught)
+            overlayText.text = "<size=88><b>CAUGHT</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  " + RoomsReached() + " ROOMS</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
     }
-    // Legacy authored-grid entry retained solely for the explicit -verify3d
-    // route checks. Player-facing retries never call this method.
-    void StartAuthoredVerification()
-    {
-        streamedPlay = false;
-        titleHandoffPending = false;
-        StopTitleCorridor();
-        if (cam != null && world != null) cam.transform.SetParent(world, true);
-        playerPos = FrontRoomsLevel.CenterOf(level.PlayerStart);
-        hunterPos = FrontRoomsLevel.CenterOf(level.HunterStart);
-        hunterTarget = hunterPos;
-        room = level.Rooms[0];
-        if (hunter != null) hunter.gameObject.SetActive(true);
-        elapsed = 0; SetPhase(Phase.Playing); PositionView(); Event("start", "first-person");
-    }
-    void OnApplicationFocus(bool focused) { if (!focused && phase == Phase.Playing && testDir == null) SetPhase(Phase.Paused); }
+    void OnApplicationFocus(bool focused) { if (!focused && phase == Phase.Playing) SetPhase(Phase.Paused); }
     void Update()
     {
         if (!Application.isPlaying) return;
-        if (testDir == null)
+        if (phase == Phase.Title && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) RequestTitleStart();
+        else if (phase == Phase.Paused && Input.GetKeyDown(KeyCode.O)) ToggleDisplaySettings();
+        else if (displaySettingsOpen && Input.GetKeyDown(KeyCode.H)) ApplyHdrMode(!hdrEnabled, true);
+        else if (Input.GetKeyDown(KeyCode.Escape) && displaySettingsOpen) ToggleDisplaySettings();
+        else if (Input.GetKeyDown(KeyCode.Escape) && (phase == Phase.Playing || phase == Phase.Paused)) SetPhase(phase == Phase.Playing ? Phase.Paused : Phase.Playing);
+        if (Input.GetKeyDown(KeyCode.R) && phase != Phase.Playing && phase != Phase.Title) { restart = true; SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
+        var dt = Mathf.Min(Time.deltaTime, .1f);
+        if (phase == Phase.Title) UpdateTitleSequence(dt);
+        else if (phase == Phase.Playing && streamedPlay)
         {
-            if (phase == Phase.Title && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) RequestTitleStart();
-            else if (phase == Phase.Paused && Input.GetKeyDown(KeyCode.O)) ToggleDisplaySettings();
-            else if (displaySettingsOpen && Input.GetKeyDown(KeyCode.H)) ApplyHdrMode(!hdrEnabled, true);
-            else if (Input.GetKeyDown(KeyCode.Escape) && displaySettingsOpen) ToggleDisplaySettings();
-            else if (Input.GetKeyDown(KeyCode.Escape) && (phase == Phase.Playing || phase == Phase.Paused)) SetPhase(phase == Phase.Playing ? Phase.Paused : Phase.Playing);
-            if (Input.GetKeyDown(KeyCode.R) && phase != Phase.Playing && phase != Phase.Title) { restart = true; SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
-            if (Input.GetKeyDown(KeyCode.Tab) && phase == Phase.Playing) journal = !journal;
-        }
-        if (phase == Phase.Title)
-        {
-            UpdateTitleSequence(Mathf.Min(Time.deltaTime, .1f));
-            UpdateHud();
-            return;
-        }
-        if (phase == Phase.Playing && streamedPlay)
-        {
-            var dt = Mathf.Min(Time.deltaTime, .1f);
             elapsed += dt;
-            flashTime = Mathf.Max(0f, flashTime - dt);
+            flashTime -= dt;
             UpdateTitleSequence(dt);
             UpdateStreamedPlay(dt);
-            UpdateHud();
-            return;
         }
-        if (phase == Phase.Playing)
-        {
-            float dt = Mathf.Min(Time.deltaTime, .1f); elapsed += dt; flashTime -= dt;
-            if (testDir == null) { yaw += Input.GetAxisRaw("Mouse X") * 2.1f; pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * 2.1f, -75f, 75f); }
-            var local = testDir == null ? new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical")) : Vector2.zero;
-            var forward = new Vector2(Mathf.Sin(yaw * Mathf.Deg2Rad), Mathf.Cos(yaw * Mathf.Deg2Rad));
-            var right = new Vector2(forward.y, -forward.x);
-            var move = testDir == null ? right * local.x + forward * local.y : testMove;
-            bool sprint = testDir == null ? Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift) : testRun;
-            bool interact = testDir == null ? Input.GetKey(KeyCode.E) : testInteract;
-            if (actionTime > 0f && interact) move = Vector2.zero;
-            var before = playerPos;
-            playerPos = Move(playerPos, move.normalized * (sprint ? Run : Walk) * dt);
-            if (Vector2.Distance(before, playerPos) > .001f)
-            {
-                stepTime += dt;
-                if (stepTime > (sprint ? .3f : .5f))
-                {
-                    stepTime = 0;
-                    FoleyFootstep(playerPos, FrontRoomsFoleyActor.Player, SurfaceAt(playerPos), sprint, sprint ? .48f : .15f);
-                    if (sprint) Noise(playerPos, 7f, "running");
-                }
-            }
-            var next = level.RoomOf(FrontRoomsLevel.TileOf(playerPos));
-            if (next != null && next != room) { room = next; transitions++; Event("room", room.Name); if (room.Rule == RoomRule.Run) { Noise(playerPos, 999f, "alarm"); Flash("Run. Break the window ahead."); } }
-            PositionView(); Interactions(interact, dt); UpdateDoors(dt); UpdateShift(dt); UpdateHunter(dt);
-            if (phase == Phase.Playing && level.ExitTiles.Contains(FrontRoomsLevel.TileOf(playerPos))) End(true);
-        }
-        PositionView(); UpdateHud();
-    }
-    Vector2 Move(Vector2 pos, Vector2 delta)
-    {
-        int steps = Mathf.Max(1, Mathf.CeilToInt(delta.magnitude / .15f)); var d = delta / steps;
-        for (int i = 0; i < steps; i++)
-        {
-            var nx = pos + new Vector2(d.x, 0); if (Free(nx)) pos = nx;
-            var ny = pos + new Vector2(0, d.y); if (Free(ny)) pos = ny;
-        }
-        return pos;
-    }
-    bool Free(Vector2 p)
-    {
-        for (int i = 0; i < 4; i++) if (!level.PlayerPassable(FrontRoomsLevel.TileOf(p + new Vector2(i % 2 == 0 ? -Radius : Radius, i < 2 ? -Radius : Radius)))) return false;
-        // Match the visible office desk islands, keeping the front and back routes clear.
-        for (int i = 0; i < 3; i++) if (Mathf.Abs(p.x - (28f + i * 2.6f)) < .85f + Radius && Mathf.Abs(p.y - 5.9f) < .5f + Radius) return false;
-        return true;
-    }
-    void PositionView()
-    {
-        cam.transform.position = V(playerPos, 1.62f); cam.transform.rotation = Quaternion.Euler(pitch, yaw, 0);
-        hunter.position = V(hunterPos); hunter.rotation = Quaternion.Euler(0, Mathf.Atan2(playerPos.x - hunterPos.x, playerPos.y - hunterPos.y) * Mathf.Rad2Deg, 0);
-    }
-    bool Looking(Vector2 p, float reach)
-    {
-        var delta = p - playerPos;
-        if (delta.magnitude > reach) return false;
-        if (delta.magnitude < .35f) return true;
-        return Vector2.Dot(delta.normalized, P(cam.transform.forward).normalized) > .72f;
-    }
-    float Distance(FrontOpening o, Vector2 p)
-    {
-        float best = float.MaxValue;
-        foreach (var t in o.Tiles) best = Mathf.Min(best, Vector2.Distance(p, FrontRoomsLevel.CenterOf(t)));
-        return best;
-    }
-    FrontOpening NearOpening()
-    {
-        FrontOpening best = null; float distance = 2f;
-        foreach (var o in room.AllOpenings)
-        {
-            if (o.Kind == OpeningKind.Hall || o.Open) continue;
-            float d = Distance(o, playerPos);
-            if (d < distance && Looking(o.Center, 2.5f)) { best = o; distance = d; }
-        }
-        return best;
-    }
-    void Interactions(bool holding, float dt)
-    {
-        foreach (var r in level.Rooms)
-            if (r.HasKey && !r.KeyTaken && Vector2.Distance(playerPos, FrontRoomsLevel.CenterOf(r.KeyTile)) < .9f)
-            {
-                r.KeyTaken = true; keys.Add(r.Id); keyObjects[r.Id].SetActive(false); Sound(keyClip, playerPos); Noise(playerPos, 10f, "key"); Event("key", r.Name); Flash("Key taken.");
-            }
-        string id = ""; float duration = 1.5f; var o = NearOpening();
-        bool note = noteObjects.ContainsKey(room.Id) && !room.Read && Looking(FrontRoomsLevel.CenterOf(room.TellTile), 2f);
-        if (o != null)
-        {
-            if (o.Kind == OpeningKind.Door)
-            {
-                if (holding && keys.Contains(o.Owner.Id)) { o.Open = true; openingObjects[o.Id].SetActive(false); Noise(o.Center, 5f, "door"); FoleyDoor(o.Center); Event("door_open", o.Id.ToString()); }
-            }
-            else { id = "window" + o.Id; duration = 1f; }
-        }
-        else if (note) id = "note" + room.Id;
-        if (!holding || id == "") { actionTime = 0; actionIdentity = ""; return; }
-        if (actionIdentity != id) { actionTime = 0; actionIdentity = id; Event("interaction_start", id); }
-        actionTime += dt;
-        if (actionTime < duration) return;
-        actionTime = 0; actionIdentity = "";
-        if (o != null && o.Kind == OpeningKind.Window)
-        {
-            o.Open = o.Broken = true; openingObjects[o.Id].SetActive(false); windowsBroken++;
-            Noise(o.Center, 999f, "glass"); Sound(glassClip, o.Center, 1f); Event("glass", o.Id.ToString()); Flash("The hunter heard the glass.");
-            for (int n = 0; n < 7; n++) Box("Broken glass", V(o.Center + new Vector2(UnityEngine.Random.Range(-.8f, .8f), UnityEngine.Random.Range(-1f, 1f)), .025f), new Vector3(.12f, .035f, .2f), glassMat);
-        }
-        else if (note)
-        {
-            room.Read = true; notesRead++; noteObjects[room.Id].sharedMaterial = yellowMat; Event("note", room.Name); Flash(room.RuleText, 7f);
-        }
-    }
-    void UpdateDoors(float dt)
-    {
-        foreach (var o in level.Openings)
-        {
-            if (o.Kind != OpeningKind.Door || !o.Open || o.Broken) continue;
-            if (Distance(o, playerPos) > 1.7f && Distance(o, hunterPos) > 1.3f) o.CloseTimer += dt; else o.CloseTimer = 0;
-            if (o.CloseTimer > .6f) { o.Open = false; o.CloseTimer = 0; openingObjects[o.Id].SetActive(true); FoleyDoor(o.Center, true); }
-        }
-    }
-    void UpdateShift(float dt)
-    {
-        var a = level.Openings[2]; var b = level.Openings[3];
-        bool visible = Visible(a) || Visible(b);
-        bool occupied = Distance(a, playerPos) < 2f || Distance(b, playerPos) < 2f || Distance(a, hunterPos) < 2f || Distance(b, hunterPos) < 2f;
-        if (visible || occupied) { shiftTime = 0; shiftWarning = false; }
-        else
-        {
-            shiftTime += dt;
-            if (shiftTime > 5f) shiftWarning = true;
-            if (shiftTime > 6f)
-            {
-                a.Sealed = !a.Sealed; b.Sealed = !a.Sealed; openingObjects[a.Id].SetActive(a.Sealed); openingObjects[b.Id].SetActive(b.Sealed);
-                shiftTime = 0; shiftWarning = false; shifts++; Repath(hunterTarget); Event("shift", a.Sealed ? "upper" : "lower");
-            }
-        }
-        hum.volume = shiftWarning ? .025f : .18f;
-    }
-    bool Visible(FrontOpening o)
-    {
-        var viewport = cam.WorldToViewportPoint(V(o.Center, 1.4f));
-        if (viewport.z <= 0 || viewport.x < 0 || viewport.x > 1 || viewport.y < 0 || viewport.y > 1) return false;
-        var near = o.Center + (playerPos - o.Center).normalized * .8f;
-        return level.LineOfSight(playerPos, near);
-    }
-    void Noise(Vector2 p, float radius, string cause)
-    {
-        Event("noise", cause);
-        if (!released || Vector2.Distance(hunterPos, p) > radius || state == HunterState.Chase) return;
-        hunterTarget = p; if (state != HunterState.BreakDoor) SetHunter(HunterState.Hunt); Repath(hunterTarget);
-    }
-    void SetHunter(HunterState s) { if (s == state) return; state = s; stateTime = 0; Event("hunter", s.ToString()); }
-    void Repath(Vector2 p) { path = level.FindHunterPath(FrontRoomsLevel.TileOf(hunterPos), FrontRoomsLevel.TileOf(p)); repathTime = 0; }
-    void UpdateHunter(float dt)
-    {
-        if (!released)
-        {
-            if (elapsed < 10f) return;
-            released = true; hunterTarget = new Vector2(15.5f, 3.5f); SetHunter(HunterState.Hunt); Repath(hunterTarget);
-        }
-        stateTime += dt; repathTime += dt;
-        float distance = Vector2.Distance(hunterPos, playerPos);
-        bool sees = distance < 8f && level.LineOfSight(hunterPos, playerPos);
-        if (sees)
-        {
-            lastSeen = playerPos; lostTime = 0;
-            if (state != HunterState.Chase && state != HunterState.BreakDoor) { SetHunter(HunterState.Chase); Repath(lastSeen); }
-        }
-        var before = hunterPos;
-        switch (state)
-        {
-            case HunterState.Listen:
-                if (stateTime > 2f) { var r = level.RoomOf(FrontRoomsLevel.TileOf(hunterPos)); hunterTarget = level.Rooms[Mathf.Min(4, (r == null ? 0 : r.Id) + 1)].Center; SetHunter(HunterState.Hunt); Repath(hunterTarget); }
-                break;
-            case HunterState.Hunt: if (Follow(2.5f, dt)) SetHunter(HunterState.Search); break;
-            case HunterState.Search: if (stateTime > 2.5f) SetHunter(HunterState.Listen); break;
-            case HunterState.Chase:
-                if (repathTime > .25f) Repath(sees ? playerPos : lastSeen);
-                if (sees && distance < 1.5f) hunterPos = Vector2.MoveTowards(hunterPos, playerPos, 4f * dt); else Follow(4f, dt);
-                if (!sees) { lostTime += dt; if (lostTime > 1.5f) { hunterTarget = lastSeen; SetHunter(HunterState.Hunt); Repath(hunterTarget); } }
-                break;
-            case HunterState.BreakDoor:
-                hunterStepTime += dt;
-                if (hunterStepTime > .5f) { FoleyDoor(breakingDoor.Center, false, true); hunterStepTime = 0; }
-                if (stateTime >= 2.5f)
-                {
-                    breakingDoor.Open = breakingDoor.Broken = true; openingObjects[breakingDoor.Id].SetActive(false); doorsBroken++;
-                    Event("door_broken", breakingDoor.Id.ToString()); breakingDoor = null; SetHunter(HunterState.Hunt); Repath(hunterTarget);
-                }
-                break;
-        }
-        if (Vector2.Distance(before, hunterPos) > .001f)
-        {
-            hunterStepTime += dt;
-            var cadence = state == HunterState.Chase ? .29f : .44f;
-            if (hunterStepTime > cadence)
-            {
-                hunterStepTime = 0;
-                var hunterDistance = Vector2.Distance(playerPos, hunterPos);
-                HunterSound(hunterPos, .36f + Mathf.Clamp01(1f - hunterDistance / 24f) * (state == HunterState.Chase ? .64f : .40f));
-            }
-        }
-        if (hunterRig != null)
-        {
-            var motion = state == HunterState.Chase ? FrontRoomsRelayRig.MotionState.Run
-                : state == HunterState.BreakDoor ? FrontRoomsRelayRig.MotionState.BreakDoor
-                : state == HunterState.Hunt ? FrontRoomsRelayRig.MotionState.Walk
-                : FrontRoomsRelayRig.MotionState.IdleListen;
-            hunterRig.TickAnimation(dt, motion, Vector2.Distance(before, hunterPos) > .001f, state == HunterState.Chase ? 1.15f : 1f);
-        }
-        if (Vector2.Distance(hunterPos, playerPos) < .62f && level.LineOfSight(hunterPos, playerPos)) End(false);
-    }
-    bool Follow(float speed, float dt)
-    {
-        if (path.Count == 0) return true;
-        var next = path[0]; if (!level.CanHunterTraverse(next)) { Repath(hunterTarget); return false; }
-        var o = level.OpeningOf(next);
-        if (o != null && o.Kind == OpeningKind.Door && !o.Open) { breakingDoor = o; SetHunter(HunterState.BreakDoor); hunterStepTime = .5f; return false; }
-        var goal = FrontRoomsLevel.CenterOf(next); hunterPos = Vector2.MoveTowards(hunterPos, goal, speed * dt);
-        if (Vector2.Distance(hunterPos, goal) < .04f) path.RemoveAt(0);
-        return path.Count == 0;
+        UpdateHud();
     }
     void UpdateHud()
     {
@@ -2163,57 +1182,24 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         else
             gameplayHudAlpha = 0f;
         ApplyGameplayHudAlpha();
-        if (streamedPlay)
-        {
-            var streamRule = roomStream == null ? RoomRule.Lobby : roomStream.CurrentRule;
-            var streamName = streamRule == RoomRule.Office ? "LEVEL 4 / OFFICE" : streamRule == RoomRule.Run ? "LEVEL ! / RUN" : streamRule == RoomRule.Shift ? "LEVEL 0 / SHIFT" : streamRule == RoomRule.Exit ? "EXIT / COLD THRESHOLD" : "LOBBY / THRESHOLD";
-            var streamLabel = streamThreatState == StreamThreatState.Chase ? "RELAY  /  CHASE" : streamThreatState == StreamThreatState.Listening ? "RELAY  /  LISTEN" : streamThreatState == StreamThreatState.Lost ? "RELAY  /  LOST" : "DOOR  /  LISTEN";
-            roomMetaText.text = play ? "ROOM " + ((roomStream == null ? 0 : roomStream.CurrentRoomNumber) + 1).ToString("00") + "  /  ACTIVE" : "";
-            roomText.text = play ? streamName : "";
-            threatStateText.text = play ? streamLabel : "";
-            distanceText.text = play && streamThreatTriggered && streamThreatObject != null && streamThreatObject.activeSelf ? "RELAY  " + Mathf.RoundToInt(Vector2.Distance(new Vector2(cam.transform.position.x, cam.transform.position.z), streamThreatPos)) + " M" : "";
-            crosshair.enabled = play;
-            contextText.text = flashTime > 0f ? flash : "";
-            notebook.text = "";
-            if (journalPanel != null) journalPanel.SetActive(false);
-            if (roomPanel != null) roomPanel.SetActive(play);
-            if (threatPanel != null) threatPanel.SetActive(play);
-            if (contextPanel != null) contextPanel.SetActive(play && contextText.text != "");
-            return;
-        }
-        roomMetaText.text = play ? "ROOM " + (room.Id + 1).ToString("00") + "  /  ACTIVE" : "";
-        roomText.text = play ? Name(room).ToUpperInvariant() : "";
-        var hunterDistance = Mathf.RoundToInt(Vector2.Distance(playerPos, hunterPos));
-        var hunterLabel = !released ? "QUIET" : state.ToString().ToUpperInvariant();
-        threatStateText.text = play ? "THREAT  /  " + hunterLabel : "";
-        distanceText.text = play ? (released ? "HUNTER  " + hunterDistance + " M" : "HUNTER  /  OUT OF RANGE") : "";
-        crosshair.enabled = play && !journal;
-        contextText.text = "";
-        notebook.text = "";
-        if (journalPanel != null) journalPanel.SetActive(play && journal);
-        if (roomPanel != null) roomPanel.SetActive(play && !journal);
-        if (threatPanel != null) threatPanel.SetActive(play && !journal);
-        if (contextPanel != null) contextPanel.SetActive(false);
-        if (!play) return;
-        if (journal)
-        {
-            notebook.text = "<size=20><b>NOTES</b></size>\n\n";
-            foreach (var r in level.Rooms) if (r.Read) notebook.text += Name(r) + "\n" + r.RuleText + "\n\n";
-            if (notesRead == 0) notebook.text += "No notes yet.\n\n";
-            notebook.text += "<size=13>Tab  CLOSE    /    THE HUNTER KEEPS MOVING</size>";
-            return;
-        }
-        var o = NearOpening();
-        if (o != null)
-        {
-            if (o.Kind == OpeningKind.Door) contextText.text = keys.Contains(o.Owner.Id) ? "E  /  OPEN DOOR" : "LOCKED  /  FIND THE OFFICE KEY";
-            else contextText.text = actionTime > 0 ? "BREAKING GLASS  /  " + Mathf.RoundToInt(actionTime * 100f) + "%" : "HOLD E  /  BREAK GLASS";
-        }
-        else if (noteObjects.ContainsKey(room.Id) && !room.Read && Looking(FrontRoomsLevel.CenterOf(room.TellTile), 2f))
-            contextText.text = actionTime > 0 ? "READING  /  " + Mathf.RoundToInt(actionTime / 1.5f * 100f) + "%" : "HOLD E  /  READ NOTE";
-        else if (flashTime > 0) contextText.text = flash;
+        if (!streamedPlay) return;
+        var rule = roomStream == null ? RoomRule.Lobby : roomStream.CurrentRule;
+        var roomName = rule == RoomRule.Office ? "LEVEL 4 / OFFICE" : rule == RoomRule.Run ? "LEVEL ! / RUN" : rule == RoomRule.Shift ? "LEVEL 0 / SHIFT" : rule == RoomRule.Exit ? "EXIT / COLD THRESHOLD" : "LOBBY / THRESHOLD";
+        var released = hunterBrain != null && hunterBrain.Released;
+        var threat = !released ? "THREAT  /  QUIET" : hunterBrain.State == HunterState.BreakDoor ? "RELAY  /  BREAKING DOOR" : "RELAY  /  " + hunterBrain.State.ToString().ToUpperInvariant();
+        roomMetaText.text = play ? "ROOM " + RoomsReached().ToString("00") + "  /  ACTIVE" : "";
+        roomText.text = play ? roomName : "";
+        threatStateText.text = play ? threat : "";
+        distanceText.text = play ? (released ? "RELAY  " + Mathf.RoundToInt(RelayDistance()) + " M" : "RELAY  /  OUT OF RANGE") : "";
+        crosshair.enabled = play;
+        contextText.text = play && flashTime > 0f ? flash : "";
+        if (roomPanel != null) roomPanel.SetActive(play);
+        if (threatPanel != null) threatPanel.SetActive(play);
         if (contextPanel != null) contextPanel.SetActive(play && contextText.text != "");
     }
+
+    int RoomsReached() => roomStream == null ? 1 : roomStream.CurrentRoomNumber - startRoom + 1;
+    float RelayDistance() => hunterBrain == null || !hunterBrain.Released ? -1f : Vector2.Distance(playerPos, hunterBrain.Position);
     void ApplyGameplayHudAlpha()
     {
         if (roomHudGroup != null) roomHudGroup.alpha = gameplayHudAlpha;
@@ -2221,69 +1207,16 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (contextHudGroup != null) contextHudGroup.alpha = gameplayHudAlpha;
         if (crosshairHudGroup != null) crosshairHudGroup.alpha = gameplayHudAlpha;
     }
-    string Name(FrontRoom r) => r.Rule == RoomRule.Lobby ? "Lobby" : r.Rule == RoomRule.Shift ? "Level 0" : r.Rule == RoomRule.Office ? "Level 4 / Office" : r.Rule == RoomRule.Run ? "Level ! / Run" : "Exit";
     void Flash(string message, float duration = 3f) { flash = message; flashTime = duration; }
-    void Event(string kind, string detail) { events.Add(elapsed.ToString("0.000", CultureInfo.InvariantCulture) + "," + kind + ",\"" + detail.Replace("\"", "\"\"") + "\"," + Vector2.Distance(playerPos, hunterPos).ToString("0.00", CultureInfo.InvariantCulture)); }
-    void End(bool escaped)
+    void Event(string kind, string detail) { events.Add(elapsed.ToString("0.000", CultureInfo.InvariantCulture) + "," + kind + ",\"" + detail.Replace("\"", "\"\"") + "\"," + RelayDistance().ToString("0.00", CultureInfo.InvariantCulture)); }
+    void End()
     {
         if (phase != Phase.Playing) return;
-        SetPhase(escaped ? Phase.Escaped : Phase.Caught); Sound(escaped ? escapeClip : caughtClip, playerPos); Event("outcome", escaped ? notesRead == 3 && keys.Count > 0 ? "informed" : "fast" : "caught");
-        string dir = testDir ?? Application.persistentDataPath; Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, "events-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".csv"), "time_s,event,detail,hunter_m\n" + string.Join("\n", events));
+        SetPhase(Phase.Caught); Sound(caughtClip, playerPos); Event("outcome", "caught");
+        string dir = Application.persistentDataPath; Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "events-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".csv"), "time_s,event,detail,relay_m\n" + string.Join("\n", events));
         Log(phase + " · " + elapsed.ToString("0.0") + " s");
     }
     static void Log(string message) => Debug.Log("[FrontRooms3D] " + message);
 
-    IEnumerator WalkTo(Vector2 target, bool run = true)
-    {
-        float timeout = 0; testRun = run;
-        while (phase == Phase.Playing && Vector2.Distance(playerPos, target) > .12f && timeout < 14f)
-        {
-            var delta = target - playerPos; testMove = delta; yaw = Mathf.Atan2(delta.x, delta.y) * Mathf.Rad2Deg; pitch = 0;
-            timeout += Time.deltaTime; yield return null;
-        }
-        testMove = Vector2.zero; testRun = false;
-        if (timeout >= 14f) { testFailed = true; Log("MOVE TIMEOUT " + playerPos + " -> " + target); }
-    }
-    IEnumerator HoldAt(Vector2 target, float seconds)
-    {
-        var delta = target - playerPos; yaw = Mathf.Atan2(delta.x, delta.y) * Mathf.Rad2Deg; pitch = 0; testInteract = true;
-        yield return new WaitForSeconds(seconds); testInteract = false; yield return null;
-    }
-    [Serializable] sealed class Report { public bool passed; public string route, outcome, evidence; public int notes, keys, windows, breachedDoors, transitions, shifts; public float seconds; }
-    IEnumerator VerifyRoute()
-    {
-        yield return null; StartAuthoredVerification();
-        if (testRoute == "caught") yield return new WaitForSeconds(16f);
-        else
-        {
-            if (testRoute == "door") { yield return WalkTo(new Vector2(7.3f, 5.5f)); yield return HoldAt(new Vector2(8.5f, 5.5f), 1.6f); }
-            yield return WalkTo(new Vector2(10.5f, 3.5f)); yield return WalkTo(new Vector2(14f, 3.5f));
-            if (testRoute == "door") { yield return WalkTo(new Vector2(16.2f, 5.5f)); yield return HoldAt(new Vector2(17.5f, 5.5f), 1.6f); }
-            var gate = level.Openings[2].Sealed ? level.Openings[3] : level.Openings[2];
-            yield return WalkTo(new Vector2(22.5f, gate.Center.y)); yield return WalkTo(new Vector2(26.5f, gate.Center.y));
-            if (testRoute == "door")
-            {
-                yield return WalkTo(new Vector2(26.5f, 5.5f)); yield return HoldAt(new Vector2(29.5f, 5.5f), .05f);
-                // Approach the note from the front lane, outside the physical desk volumes.
-                yield return WalkTo(new Vector2(29.5f, 4.35f)); yield return HoldAt(new Vector2(29.5f, 5.5f), 1.6f);
-                yield return WalkTo(new Vector2(26.5f, 4.3f)); yield return WalkTo(new Vector2(26.5f, 8.5f)); yield return WalkTo(new Vector2(33.5f, 8.5f));
-                yield return WalkTo(new Vector2(35.4f, 8.5f)); yield return WalkTo(new Vector2(35.4f, 3f)); yield return HoldAt(level.Openings[4].Center, .15f);
-                yield return WalkTo(new Vector2(39f, 3f));
-                float wait = 0; while (phase == Phase.Playing && state != HunterState.BreakDoor && wait < 30f) { wait += Time.deltaTime; yield return null; }
-                if (wait >= 30f) testFailed = true;
-            }
-            else
-            {
-                yield return WalkTo(new Vector2(26.5f, 8f)); yield return WalkTo(new Vector2(35.4f, 8f)); yield return HoldAt(level.Openings[5].Center, 1.1f); yield return WalkTo(new Vector2(39f, 8f));
-            }
-            yield return WalkTo(new Vector2(47.35f, 5f)); yield return HoldAt(level.Openings[6].Center, 1.1f); yield return WalkTo(new Vector2(51f, 5f)); yield return WalkTo(new Vector2(57.5f, 5f));
-        }
-        bool expected = testRoute == "caught" ? phase == Phase.Caught : phase == Phase.Escaped && transitions == 4 && windowsBroken >= (testRoute == "door" ? 1 : 2);
-        if (testRoute == "door") expected &= notesRead == 3 && keys.Count == 1 && doorsBroken >= 1;
-        if (testRoute == "fast") expected &= notesRead == 0 && keys.Count == 0;
-        var report = new Report { passed = !testFailed && expected, route = testRoute, outcome = phase.ToString(), notes = notesRead, keys = keys.Count, windows = windowsBroken, breachedDoors = doorsBroken, transitions = transitions, shifts = shifts, seconds = elapsed, evidence = "Scripted runtime interaction and pursuit checks. Mouse look, audio quality, and human playability require separate inspection." };
-        File.WriteAllText(Path.Combine(testDir, "result.json"), JsonUtility.ToJson(report, true));
-        Log("VERIFY " + (report.passed ? "PASS" : "FAIL")); yield return new WaitForSeconds(.1f); Application.Quit(report.passed ? 0 : 1);
-    }
 }

@@ -1,5 +1,0 @@
-time_s,event,detail,hunter_m
-0.000,start,"first-person",3.00
-10.004,hunter,"Hunt",3.00
-10.004,hunter,"Chase",3.00
-10.595,outcome,"caught",0.57
