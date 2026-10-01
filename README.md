@@ -8,7 +8,7 @@ Open `Builds/Mac/FrontRooms3D.app` and press **Space**. The build was compiled w
 
 **WASD** moves, mouse looks, **Shift** runs, and **hold E** reads a note or breaks glass. Walk over the key, then hold E while aiming at the yellow door. **Esc** pauses; **Tab** opens the note journal; **R** retries after a result.
 
-The slice is Lobby → Level 0 → Level 4 / Office → Level ! / Run → Exit. It uses actual 3D wall, floor, ceiling, light, note, key, door, window and hunter geometry generated at runtime. The HUD only shows the current room, hunter distance, crosshair and one context prompt.
+The title opens on an empty corridor: the camera pushes forward, the brand mark fades in, and passed corridor segments are destroyed while new ones are generated ahead. Press **Space** or **Return** to enter the playable slice: Lobby → Level 0 → Level 4 / Office → Level ! / Run → Exit. The HUD only shows the current room, hunter distance, crosshair and one context prompt.
 
 ## Scope
 
@@ -18,7 +18,7 @@ The original design guidance is the [FrontRooms deck](https://www.figma.com/deck
 
 ## Edit the Unity project
 
-Open this folder in Unity Hub with Unity 6000.3.10f1 and open Assets/Scenes/FrontRooms3D.unity. The scene contains a bootstrap object; the greybox is generated at runtime. Edit Assets/Scripts/FrontRoomsLevel.cs to change rooms, openings, keys and exits, and edit Assets/Scripts/FrontRooms3DGame.cs to change the first-person geometry and tuning. The assignment-folder copy contains the same source plus LEVEL_DESIGN_GUIDE.md.
+Open this folder in Unity Hub with Unity 6000.3.10f1 and open Assets/Scenes/FrontRooms3D.unity. The scene contains a bootstrap object and a serialized, editable greybox preview, so walls, lights and materials are visible in the Scene view. The title corridor is runtime-only and does not replace that playable layout. Edit Assets/Scripts/FrontRoomsLevel.cs to change rooms, openings, keys and exits, and edit Assets/Scripts/FrontRooms3DGame.cs to change the first-person geometry and title tuning. The assignment-folder copy contains the same source plus LEVEL_DESIGN_GUIDE.md.
 
 ## WebGL build
 

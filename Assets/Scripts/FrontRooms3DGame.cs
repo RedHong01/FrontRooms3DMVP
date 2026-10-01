@@ -39,6 +39,14 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Sprite brandLogo;
     Font monoFont, bayonFont, serifFont;
     GameObject overlay, roomPanel, threatPanel, contextPanel, journalPanel;
+    Image overlayImage;
+    Transform titleWorld;
+    readonly List<TitleSegment> titleSegments = new List<TitleSegment>();
+    float titleCameraZ, titleNextZ, titleElapsed, titleLogoAlpha;
+    const float TitleCenterX = 256f;
+    const float TitleSegmentLength = 12f;
+    const float TitleLookAhead = 72f;
+    const float TitleSpeed = 1.15f;
     float yaw = 90f, pitch, elapsed, stateTime, repathTime, lostTime, stepTime, hunterStepTime, actionTime, flashTime, shiftTime, endWait;
     string flash = "", actionIdentity = "";
     bool released, shiftWarning, journal, manualStarted;
@@ -50,6 +58,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     string testDir, testRoute = "door";
     bool testFailed;
     static bool restart;
+
+    sealed class TitleSegment
+    {
+        public GameObject root;
+        public float start;
+        public float end;
+    }
 
     void OnEnable()
     {
@@ -148,8 +163,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         wallMats.Clear(); floorMats.Clear(); ceilingMats.Clear();
         if (world == null) BuildWorld();
         else RebindSerializedWorld();
+        ResolveSerializedMaterials();
         BuildHud();
         BuildSound();
+        BuildTitleCorridor();
         SetPhase(Phase.Title);
         if (testDir != null) { Directory.CreateDirectory(testDir); StartCoroutine(VerifyRoute()); }
         else if (restart) StartGame();
@@ -456,6 +473,145 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         PositionView();
     }
 
+    void ResolveSerializedMaterials()
+    {
+        // Play Mode normally reuses the serialized editor preview. Recover the
+        // shared materials from that preview so the title corridor keeps the
+        // same wallpaper/carpet language without generating a second set of
+        // procedural textures.
+        if (world == null) return;
+        foreach (var renderer in world.GetComponentsInChildren<Renderer>(true))
+        {
+            var material = renderer.sharedMaterial;
+            if (material == null) continue;
+            var name = renderer.gameObject.name;
+            if (wallMat == null && name.Contains("continuous wallpaper")) wallMat = material;
+            if (floorMat == null && name.EndsWith(" / floor", StringComparison.Ordinal)) floorMat = material;
+            if (ceilingMat == null && name.EndsWith(" / ceiling", StringComparison.Ordinal)) ceilingMat = material;
+            if (trimMat == null && name.Contains("baseboard")) trimMat = material;
+        }
+        if (wallMat == null) wallMat = Mat("Title wallpaper", C("D4C37B"));
+        if (floorMat == null) floorMat = Mat("Title carpet", C("51472F"));
+        if (ceilingMat == null) ceilingMat = Mat("Title ceiling", C("777266"));
+    }
+
+    GameObject TitleBox(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
+    {
+        var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        box.name = name;
+        box.transform.SetParent(parent, false);
+        box.transform.position = position;
+        box.transform.localScale = scale;
+        var renderer = box.GetComponent<Renderer>();
+        if (renderer != null) renderer.sharedMaterial = material;
+        return box;
+    }
+
+    void BuildTitleCorridor()
+    {
+        if (titleWorld != null) return;
+        titleWorld = new GameObject("Title sequence / recycled corridor").transform;
+        titleWorld.position = Vector3.zero;
+        titleSegments.Clear();
+        titleCameraZ = -18f;
+        titleNextZ = -30f;
+        titleElapsed = 0f;
+        titleLogoAlpha = 0f;
+        while (titleNextZ < titleCameraZ + TitleLookAhead) CreateTitleSegment();
+
+        // The title camera lives far outside the playable greybox. This keeps
+        // the editable game scene intact while the title presents an empty,
+        // endlessly repeating room with no props or HUD panels.
+        cam.transform.position = new Vector3(TitleCenterX, 1.62f, titleCameraZ);
+        cam.transform.rotation = Quaternion.identity;
+    }
+
+    void CreateTitleSegment()
+    {
+        var index = titleSegments.Count;
+        var length = TitleSegmentLength;
+        var width = 11.5f + ((index % 5 == 2) ? 1.5f : (index % 5 == 4 ? -1f : 0f));
+        var height = 2.9f + ((index % 6 == 3) ? .18f : 0f);
+        var start = titleNextZ;
+        var end = start + length;
+        var centerZ = (start + end) * .5f;
+        var root = new GameObject("Title room / " + index.ToString("000", CultureInfo.InvariantCulture));
+        root.transform.SetParent(titleWorld, false);
+
+        TitleBox(root.transform, "carpet floor", new Vector3(TitleCenterX, -.12f, centerZ), new Vector3(width, .24f, length + .04f), floorMat);
+        TitleBox(root.transform, "ceiling", new Vector3(TitleCenterX, height + .1f, centerZ), new Vector3(width, .2f, length + .04f), ceilingMat);
+        TitleBox(root.transform, "left wallpaper wall", new Vector3(TitleCenterX - width * .5f, height * .5f, centerZ), new Vector3(.26f, height, length), wallMat);
+        TitleBox(root.transform, "right wallpaper wall", new Vector3(TitleCenterX + width * .5f, height * .5f, centerZ), new Vector3(.26f, height, length), wallMat);
+        TitleBox(root.transform, "left baseboard", new Vector3(TitleCenterX - width * .5f + .16f, .18f, centerZ), new Vector3(.08f, .16f, length), trimMat ?? wallMat);
+        TitleBox(root.transform, "right baseboard", new Vector3(TitleCenterX + width * .5f - .16f, .18f, centerZ), new Vector3(.08f, .16f, length), trimMat ?? wallMat);
+
+        // A single fluorescent fixture per segment keeps the empty room legible
+        // and makes the forward motion readable without a costly global light.
+        TitleBox(root.transform, "fluorescent fixture", new Vector3(TitleCenterX, height - .08f, centerZ), new Vector3(2.05f, .1f, .38f), fixtureMat ?? ceilingMat);
+        var lightObject = new GameObject("title fluorescent light");
+        lightObject.transform.SetParent(root.transform, false);
+        lightObject.transform.position = new Vector3(TitleCenterX, height - .38f, centerZ);
+        var point = lightObject.AddComponent<Light>();
+        point.type = LightType.Point;
+        point.range = 7.5f;
+        point.intensity = index % 7 == 5 ? .52f : .9f;
+        point.color = index % 7 == 5 ? C("B9B694") : C("E6D5A7");
+        point.shadows = LightShadows.Soft;
+        point.shadowStrength = .45f;
+        point.shadowBias = .035f;
+        point.shadowNormalBias = .18f;
+
+        // Keep a small seam cadence so rooms read as physical construction even
+        // while the title remains an intentionally empty space.
+        for (var seam = 1; seam < 3; seam++)
+        {
+            var seamZ = start + length * seam / 3f;
+            TitleBox(root.transform, "wallpaper seam", new Vector3(TitleCenterX - width * .5f + .145f, height * .5f, seamZ), new Vector3(.012f, height * .82f, .025f), trimMat ?? wallMat);
+            TitleBox(root.transform, "wallpaper seam", new Vector3(TitleCenterX + width * .5f - .145f, height * .5f, seamZ), new Vector3(.012f, height * .82f, .025f), trimMat ?? wallMat);
+        }
+
+        titleSegments.Add(new TitleSegment { root = root, start = start, end = end });
+        titleNextZ = end;
+    }
+
+    void UpdateTitleSequence(float dt)
+    {
+        if (titleWorld == null || cam == null) return;
+        titleElapsed += dt;
+        titleCameraZ += TitleSpeed * dt;
+        cam.transform.position = new Vector3(TitleCenterX, 1.62f, titleCameraZ);
+        cam.transform.rotation = Quaternion.identity;
+        while (titleNextZ < titleCameraZ + TitleLookAhead) CreateTitleSegment();
+
+        // Recycle every room that is safely behind the near clip. At any point
+        // only roughly 8–10 rooms exist, so the title can continue forever with
+        // bounded GameObject, mesh and light memory.
+        while (titleSegments.Count > 0 && titleSegments[0].end < titleCameraZ - 8f)
+        {
+            var old = titleSegments[0];
+            titleSegments.RemoveAt(0);
+            if (old.root != null) Destroy(old.root);
+        }
+
+        if (logoImage != null)
+        {
+            // Hold a beat in the empty room, then reveal the mark gently.
+            titleLogoAlpha = Mathf.Clamp01(Mathf.Max(0f, titleElapsed - .7f) / 2.2f);
+            logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
+        }
+    }
+
+    void StopTitleCorridor()
+    {
+        if (titleWorld != null)
+        {
+            if (Application.isPlaying) Destroy(titleWorld.gameObject);
+            else DestroyImmediate(titleWorld.gameObject);
+        }
+        titleWorld = null;
+        titleSegments.Clear();
+    }
+
     /// <summary>
     /// The first greybox made one cube per wall tile. That read as a row of
     /// pillars in first person. Merge adjacent wall cells into continuous
@@ -689,7 +845,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         notebook = Text(journalPanel.transform, "Notebook", new Vector2(0, 1), new Vector2(96, -56), new Vector2(1110, 620), 24, TextAnchor.UpperLeft);
         notebook.color = paper;
         journalPanel.SetActive(false);
-        overlay = new GameObject("Menu"); overlay.transform.SetParent(g.transform, false); var image = overlay.AddComponent<Image>();
+        overlay = new GameObject("Menu"); overlay.transform.SetParent(g.transform, false); var image = overlay.AddComponent<Image>(); overlayImage = image;
         // The supplied brand SVG is a black mark. Keep the title surface light so
         // the original artwork remains legible without recolouring the logo asset.
         image.color = new Color(.93f, .92f, .88f, .98f);
@@ -697,7 +853,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         overlayText = Text(overlay.transform, "Menu text", new Vector2(.5f, .5f), Vector2.zero, new Vector2(1440, 760), 20, TextAnchor.MiddleCenter);
         overlayText.color = C("0A0A0A");
         overlayText.rectTransform.anchoredPosition = new Vector2(0f, -170f);
-        logoImage = Panel(overlay.transform, "FrontRooms brand logo", new Vector2(.5f, 1f), new Vector2(0f, -160f), new Vector2(965f, 192f), Color.white).GetComponent<Image>();
+        logoImage = Panel(overlay.transform, "FrontRooms brand logo", new Vector2(.5f, .5f), Vector2.zero, new Vector2(965f, 192f), Color.white).GetComponent<Image>();
         logoImage.raycastTarget = false;
         LoadBrandLogo();
     }
@@ -705,18 +861,38 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         phase = p; bool playing = p == Phase.Playing;
         overlay.SetActive(!playing); crosshair.enabled = playing;
-        if (logoImage != null) logoImage.gameObject.SetActive(p == Phase.Title);
+        if (overlayImage != null) overlayImage.color = p == Phase.Title ? new Color(0f, 0f, 0f, 0f) : new Color(.93f, .92f, .88f, .98f);
+        if (logoImage != null)
+        {
+            logoImage.gameObject.SetActive(p == Phase.Title);
+            if (p == Phase.Title) logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
+        }
         if (roomPanel != null) roomPanel.SetActive(playing);
         if (threatPanel != null) threatPanel.SetActive(playing);
         if (contextPanel != null) contextPanel.SetActive(false);
         if (journalPanel != null) journalPanel.SetActive(false);
         Cursor.lockState = playing && testDir == null ? CursorLockMode.Locked : CursorLockMode.None; Cursor.visible = !playing;
-        if (p == Phase.Title) overlayText.text = "<size=24>READ THE ROOM / CHOOSE AN EXIT</size>\n\n<size=16>WASD  MOVE    MOUSE  LOOK    SHIFT  RUN\nHOLD E  READ OR BREAK    E  OPEN KEYED DOOR\nTAB  NOTES    ESC  PAUSE</size>\n\n<color=#F4DF3B><size=20>SPACE  START</size></color>";
+        if (p == Phase.Title)
+        {
+            overlayText.text = "";
+            overlayText.enabled = false;
+        }
+        else overlayText.enabled = true;
         if (p == Phase.Paused) overlayText.text = "<size=88><b>PAUSED</b></size>\n\n<size=13>WASD  MOVE    MOUSE  LOOK    SHIFT  RUN\nHOLD E  READ OR BREAK    E  OPEN KEYED DOOR\nTAB  NOTES    R  RESTART</size>\n\n<color=#F4DF3B><size=20>ESC  RESUME</size></color>";
         if (p == Phase.Escaped || p == Phase.Caught)
             overlayText.text = "<size=88><b>" + (p == Phase.Escaped ? "ESCAPED" : "CAUGHT") + "</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  " + notesRead + " NOTES</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
     }
-    void StartGame() { elapsed = 0; manualStarted = true; SetPhase(Phase.Playing); Event("start", "first-person"); }
+    void StartGame()
+    {
+        StopTitleCorridor();
+        if (cam != null && world != null) cam.transform.SetParent(world, true);
+        playerPos = FrontRoomsLevel.CenterOf(level.PlayerStart);
+        hunterPos = FrontRoomsLevel.CenterOf(level.HunterStart);
+        hunterTarget = hunterPos;
+        room = level.Rooms[0];
+        if (hunter != null) hunter.gameObject.SetActive(true);
+        elapsed = 0; manualStarted = true; SetPhase(Phase.Playing); PositionView(); Event("start", "first-person");
+    }
     void OnApplicationFocus(bool focused) { if (!focused && phase == Phase.Playing && testDir == null) SetPhase(Phase.Paused); }
     void Update()
     {
@@ -727,6 +903,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             else if (Input.GetKeyDown(KeyCode.Escape) && (phase == Phase.Playing || phase == Phase.Paused)) SetPhase(phase == Phase.Playing ? Phase.Paused : Phase.Playing);
             if (Input.GetKeyDown(KeyCode.R) && phase != Phase.Playing && phase != Phase.Title) { restart = true; SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
             if (Input.GetKeyDown(KeyCode.Tab) && phase == Phase.Playing) journal = !journal;
+        }
+        if (phase == Phase.Title)
+        {
+            UpdateTitleSequence(Mathf.Min(Time.deltaTime, .1f));
+            UpdateHud();
+            return;
         }
         if (phase == Phase.Playing)
         {
