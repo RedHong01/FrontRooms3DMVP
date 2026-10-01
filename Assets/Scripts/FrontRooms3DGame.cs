@@ -273,6 +273,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         wallMats.Clear(); floorMats.Clear(); ceilingMats.Clear();
         if (world == null) BuildWorld();
         else { RebindSerializedWorld(); RepairSerializedOpeningHeights(); }
+        // The serialized Hunter belongs to the legacy authored-grid verifier.
+        // Player-facing runs use the single streamed Relay rig created by the
+        // title corridor, so the two enemy implementations cannot overlap.
+        if (hunter != null) hunter.gameObject.SetActive(false);
         ResolveSerializedMaterials();
         hdrEnabled = PlayerPrefs.GetInt(HdrPreferenceKey, defaultHdr ? 1 : 0) != 0;
         ApplyHdrMode(hdrEnabled, false);
@@ -281,7 +285,14 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         BuildTitleCorridor();
         SetPhase(Phase.Title);
         if (testDir != null) { Directory.CreateDirectory(testDir); StartCoroutine(VerifyRoute()); }
-        else if (restart) StartGame();
+        else if (restart)
+        {
+            // A normal retry must return to the same streamed route used by
+            // the title handoff. The old authored-map StartGame path is kept
+            // only for explicit -verify3d automation below.
+            restart = false;
+            StartCanonicalStreamedRestart();
+        }
         Log("READY · manual title, first-person · " + (testDir == null ? "no automation" : "explicit verification"));
     }
 
@@ -899,9 +910,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (titleWorld != null) StopTitleCorridor();
         titleWorld = new GameObject("Title sequence / recycled corridor").transform;
         // Keep the runtime title layer away from the authored gameplay greybox.
-        // The camera stays in the same generated room through handoff, then the
-        // separate StartGame path returns it to the serialized map for route
-        // verification and ordinary editor-authored play.
+        // The camera stays in the same generated room through the player-facing
+        // handoff. The serialized map remains available for editor preview and
+        // explicit -verify3d automation only.
         if (cam != null)
         {
             var titlePosition = cam.transform.position;
@@ -961,19 +972,27 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             vectorS1T = vectorS1T * vectorS1T * (3f - 2f * vectorS1T);
             var vectorS2T = Mathf.Clamp01((doorProgress - s2Start) / (1f - s2Start));
             vectorS2T = vectorS2T * vectorS2T * (3f - 2f * vectorS2T);
-            var vectorS1X = Mathf.Lerp(814f, 846f, vectorS1T);
+            // VectorImage assets are imported at their painted bounds (about
+            // 78px wide), so their CSS left value is already the visible
+            // glyph position. Do not subtract the original SVG viewBox x
+            // coordinates here; that would move both afterimages to the
+            // far-left edge of the wordmark.
+            var vectorS1X = Mathf.Lerp(798f, 842f, vectorS1T);
             // The far S follows the first afterimage until the relay point,
             // then continues from the first S's actual position at that point.
             // This keeps the earlier hand-off continuous and preserves the
             // intended left-to-right depth relationship.
             var s2StartS1T = Mathf.Clamp01(s2Start / s1End);
             s2StartS1T = s2StartS1T * s2StartS1T * (3f - 2f * s2StartS1T);
-            var vectorS2StartX = Mathf.Lerp(814f, 846f, s2StartS1T);
+            // Historical relay baseline: the far S starts from the current
+            // first-S position at the handoff, not from a second, tighter
+            // offset. This keeps the two trailing glyphs evenly tracked.
+            var vectorS2StartX = Mathf.Lerp(798f, 842f, s2StartS1T);
             var vectorS2X = doorProgress < s2Start
                 ? vectorS1X
                 : Mathf.Lerp(vectorS2StartX, 880f, vectorS2T);
-            vectorLogoS1Image.style.left = new UiLength(vectorS1X - 841.734f, UiLengthUnit.Pixel);
-            vectorLogoS2Image.style.left = new UiLength(vectorS2X - 879.734f, UiLengthUnit.Pixel);
+            vectorLogoS1Image.style.left = new UiLength(vectorS1X, UiLengthUnit.Pixel);
+            vectorLogoS2Image.style.left = new UiLength(vectorS2X, UiLengthUnit.Pixel);
             // Keep the vector mark on the same fade-in clock as the title
             // corridor. It remains at full opacity after the reveal; only the
             // player handoff hides it.
@@ -1024,6 +1043,22 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (roomStream == null) return;
         roomStream.RequestStart();
         titleHandoffPending = true;
+    }
+
+    void StartCanonicalStreamedRestart()
+    {
+        if (roomStream == null) return;
+        streamedPlay = false;
+        titleHandoffPending = false;
+        streamThreatTriggered = false;
+        streamThreatState = StreamThreatState.Dormant;
+        if (streamThreatObject != null) streamThreatObject.SetActive(false);
+        SetPhase(Phase.Title);
+        // Reuse the title stream's first door and camera handoff. This keeps a
+        // retry on the same room generator, hunter rig, lighting profiles and
+        // infinite pool instead of switching to the legacy authored grid.
+        RequestTitleStart();
+        Log("RESTART · canonical streamed route");
     }
 
     void EnterGameplayFromTitle()
@@ -1332,7 +1367,22 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
     FrontRoomsFoleySurface SurfaceAt(Vector2 p)
     {
-        return level == null ? FrontRoomsFoleySurface.Carpet : SurfaceFor(level.RoomOf(FrontRoomsLevel.TileOf(p)));
+        if (level == null) return FrontRoomsFoleySurface.Carpet;
+        var tile = FrontRoomsLevel.TileOf(p);
+        var room = level.RoomOf(tile);
+        if (room != null) return SurfaceFor(room);
+
+        // Opening tiles belong to neither room. Resolve their floor identity
+        // from the nearest side so the single step taken across a doorway
+        // does not fall back to carpet when the destination is tile/concrete.
+        var opening = level.OpeningOf(tile);
+        if (opening != null)
+        {
+            var ownerDistance = Vector2.Distance(p, opening.Owner.Center);
+            var otherDistance = Vector2.Distance(p, opening.Other.Center);
+            return SurfaceFor(ownerDistance <= otherDistance ? opening.Owner : opening.Other);
+        }
+        return FrontRoomsFoleySurface.Carpet;
     }
 
     void FoleyFootstep(Vector2 p, FrontRoomsFoleyActor actor, FrontRoomsFoleySurface surface, bool running, float volume)
@@ -1364,7 +1414,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             low.cutoffFrequency = 1450f;
             low.lowpassResonanceQ = 1.1f;
         }
-        Destroy(g, .52f);
+        var lifetime = Mathf.Max(selection.impact.length, selection.texture.length, selection.cloth.length) + .06f;
+        Destroy(g, lifetime);
     }
 
     void FoleyDoor(Vector2 p, bool closing = false, bool breaking = false)
@@ -1500,10 +1551,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         vectorLogoLeftImage = VectorLogoImage("SVG complete wordmark", leftAsset, 8f, 17.6f);
         vectorLogoRoot.Add(vectorLogoLeftImage);
 
-        // Keep each imported S's full viewBox and align its painted path to
-        // the final S baseline so the old relay does not create a left sliver.
-        vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 814f - 841.734f, 17.8f);
-        vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 814f - 879.734f, 17.8f);
+        // Unity imports each S at its painted bounds. Place both visible glyphs
+        // on the final solid-S baseline; do not apply the source SVG viewBox
+        // x coordinates a second time.
+        vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 798f, 17.8f);
+        vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 798f, 17.8f);
         vectorLogoRoot.Add(vectorLogoS1Image);
         vectorLogoRoot.Add(vectorLogoS2Image);
         vectorLogoRoot.style.display = UiDisplayStyle.None;
@@ -1776,7 +1828,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (p == Phase.Escaped || p == Phase.Caught)
             overlayText.text = "<size=88><b>" + (p == Phase.Escaped ? "ESCAPED" : "CAUGHT") + "</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  " + notesRead + " NOTES</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
     }
-    void StartGame()
+    // Legacy authored-grid entry retained solely for the explicit -verify3d
+    // route checks. Player-facing retries never call this method.
+    void StartAuthoredVerification()
     {
         streamedPlay = false;
         titleHandoffPending = false;
@@ -2137,7 +2191,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     [Serializable] sealed class Report { public bool passed; public string route, outcome, evidence; public int notes, keys, windows, breachedDoors, transitions, shifts; public float seconds; }
     IEnumerator VerifyRoute()
     {
-        yield return null; StartGame();
+        yield return null; StartAuthoredVerification();
         if (testRoute == "caught") yield return new WaitForSeconds(16f);
         else
         {
