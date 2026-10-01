@@ -79,7 +79,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     GameObject streamThreatObject;
     Transform streamThreatBody, streamThreatHead, streamThreatArmLeft, streamThreatArmRight, streamThreatLegLeft, streamThreatLegRight;
     Vector2 streamThreatPos;
-    float streamThreatStateTime, streamThreatStepTime;
+    float streamThreatStateTime, streamThreatStepTime, streamThreatGrace;
     bool streamThreatTriggered;
     [SerializeField, Tooltip("Optional room prefab/template copied into each streamed title room.")]
     GameObject streamedRoomTemplate;
@@ -752,6 +752,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         streamThreatState = StreamThreatState.Dormant;
         streamThreatStateTime = 0f;
         streamThreatStepTime = 0f;
+        streamThreatGrace = 0f;
         streamThreatTriggered = false;
         if (streamThreatObject != null) streamThreatObject.SetActive(false);
         SetPhase(Phase.Playing);
@@ -827,18 +828,28 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (roomStream == null || streamThreatObject == null) return;
         var rule = roomStream.CurrentRule;
-        if (!streamThreatTriggered && roomStream.CurrentRoomNumber >= 2 && rule == RoomRule.Office)
+        // A title can be left running for several cycles before Space is
+        // pressed. Trigger from either side of the Office -> Run beat so the
+        // encounter is never skipped when the player hands control over in
+        // the red room.
+        if (!streamThreatTriggered && roomStream.CurrentRoomNumber >= 2 && (rule == RoomRule.Office || rule == RoomRule.Run))
         {
             streamThreatTriggered = true;
             streamThreatState = StreamThreatState.Listening;
             streamThreatStateTime = 0f;
-            streamThreatPos = new Vector2(player.x, player.y - 5.2f);
+            // Give the player a readable reveal window after the handoff. The
+            // Relay is deliberately behind the camera's entry point, rather
+            // than inside the same doorway, so a room transition can never
+            // resolve as an instant catch on the first gameplay frame.
+            streamThreatGrace = 2.25f;
+            streamThreatPos = new Vector2(player.x, player.y - 8f);
             streamThreatObject.SetActive(true);
             Event("threat", "relay-listening");
         }
         if (!streamThreatTriggered) return;
 
         streamThreatStateTime += dt;
+        streamThreatGrace = Mathf.Max(0f, streamThreatGrace - dt);
         if (rule == RoomRule.Run && streamThreatState != StreamThreatState.Chase)
         {
             streamThreatState = StreamThreatState.Chase;
@@ -862,7 +873,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                 streamThreatStepTime = 0f;
                 FoleyFootstep(streamThreatPos, FrontRoomsFoleyActor.Hunter, StreamSurface(), sprint, .34f);
             }
-            if (Vector2.Distance(streamThreatPos, player) < .8f)
+            if (streamThreatGrace <= 0f && Vector2.Distance(streamThreatPos, player) < .8f)
             {
                 streamThreatState = StreamThreatState.Lost;
                 streamThreatObject.SetActive(false);
