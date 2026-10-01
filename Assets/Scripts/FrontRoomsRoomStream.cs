@@ -15,6 +15,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     public const float RoomLength = 12f;
     const float DoorWidth = 2.4f;
     const float WallThickness = .26f;
+    // The rear seal belongs to the room behind a threshold. Keep it just
+    // inside the next room so it cannot sit on the same plane as the door
+    // leaves when a pooled room is recycled onto that threshold.
+    const float RearSealOffset = .24f;
     const float BoundaryMargin = .34f;
     const float TitleSpeed = 1.15f;
     const float TransitionSpeed = 2.25f;
@@ -527,7 +531,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
         CacheRoomLights(room);
 
-        room.rearSeal = Box(room.root.transform, "opaque rear boundary seal", new Vector3(0f, RoomHeight * .5f, 0f), new Vector3(RoomWidth, RoomHeight, .18f), wallMaterial);
+        room.rearSeal = Box(room.root.transform, "opaque rear boundary seal", new Vector3(0f, RoomHeight * .5f, RearSealOffset), new Vector3(RoomWidth, RoomHeight, .18f), wallMaterial);
         room.rearSeal.SetActive(index == 0);
         BuildDoor(room);
     }
