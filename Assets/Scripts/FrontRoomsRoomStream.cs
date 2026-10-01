@@ -42,6 +42,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         public bool doorOpening;
         public bool doorOpen;
         public bool connected;
+        public bool doorSoundPlayed;
+        public AudioSource doorAudio;
     }
 
     Camera streamCamera;
@@ -51,6 +53,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     Material trimMaterial;
     Material fixtureMaterial;
     Material doorMaterial;
+    AudioClip doorCreakClip;
     readonly RoomSlot[] pool = new RoomSlot[MaxRooms];
     readonly Vector3[] movementScratch = new Vector3[1];
     int currentPoolIndex;
@@ -92,7 +95,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
     /// <summary>Build the fixed room pool around the camera's current position.</summary>
     public void Initialize(Camera camera, Material wall, Material floor, Material ceiling,
-        Material trim, Material fixture, Material door)
+        Material trim, Material fixture, Material door, AudioClip doorCreak = null)
     {
         streamCamera = camera;
         wallMaterial = wall;
@@ -101,6 +104,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         trimMaterial = trim;
         fixtureMaterial = fixture;
         doorMaterial = door;
+        doorCreakClip = doorCreak;
         initialized = false;
         startRequested = false;
         hasControl = false;
@@ -179,8 +183,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         pendingTargetZ = next.startZ + 2f;
         PendingAnchorPosition = new Vector3(streamCamera.transform.position.x, streamCamera.transform.position.y, pendingTargetZ);
         next.connected = false;
-        next.doorOpening = true;
-        current.doorOpening = true;
+        // The next room stays closed until it reaches the normal proximity
+        // trigger. Opening its animation here would make a distant door play
+        // its creak before the player can see or hear the hinge move.
+        next.doorOpening = false;
+        BeginDoorOpening(current);
     }
 
     /// <summary>
@@ -226,11 +233,17 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
         if (source.doorProgress < 1f)
         {
-            source.doorOpening = true;
+            BeginDoorOpening(source);
             source.doorProgress = Mathf.MoveTowards(source.doorProgress, 1f, dt / DoorOpenSeconds);
             ApplyDoorPose(source);
             if (source.doorProgress >= 1f)
             {
+                // Stop treating the hinge as an active animation once it has
+                // reached its target. Leaving this flag set makes the pool
+                // revisit the finished door every frame and can make the
+                // final frame look like a small hitch when the next room is
+                // connected.
+                source.doorOpening = false;
                 source.doorOpen = true;
                 target.connected = true;
                 if (target.rearSeal != null) target.rearSeal.SetActive(false);
@@ -271,13 +284,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             if (room == null) continue;
             var distance = room.endZ - cameraZ;
             if (!room.doorOpen && distance < 4f && distance > -1f)
-                room.doorOpening = true;
+                BeginDoorOpening(room);
             if (room.doorOpening && room.doorProgress < 1f)
             {
                 room.doorProgress = Mathf.MoveTowards(room.doorProgress, 1f, dt / DoorOpenSeconds);
                 ApplyDoorPose(room);
                 if (room.doorProgress >= 1f)
                 {
+                    room.doorOpening = false;
                     room.doorOpen = true;
                     var next = FindSequence(room.sequence + 1);
                     if (next != null)
@@ -292,6 +306,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 room.doorOpen = false;
                 room.doorOpening = false;
                 room.doorProgress = 0f;
+                room.doorSoundPlayed = false;
+                if (room.doorAudio != null) room.doorAudio.Stop();
                 ApplyDoorPose(room);
             }
         }
@@ -324,6 +340,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         oldest.doorOpening = false;
         oldest.doorOpen = false;
         oldest.connected = false;
+        oldest.doorSoundPlayed = false;
+        if (oldest.doorAudio != null) oldest.doorAudio.Stop();
         if (oldest.rearSeal != null) oldest.rearSeal.SetActive(true);
         ApplyDoorPose(oldest);
         recycledCount++;
@@ -474,14 +492,47 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         var left = Box(leftPivot, "double door left", new Vector3(.6f, 1.2f, 0f), new Vector3(1.2f, 2.4f, .14f), doorMaterial ?? wallMaterial);
         var right = Box(rightPivot, "double door right", new Vector3(-.6f, 1.2f, 0f), new Vector3(1.2f, 2.4f, .14f), doorMaterial ?? wallMaterial);
         room.leftDoor = leftPivot; room.rightDoor = rightPivot;
-        room.doorProgress = 0f; room.doorOpening = false; room.doorOpen = false;
+        var audioObject = new GameObject("door creak / spatial");
+        audioObject.transform.SetParent(room.root.transform, false);
+        audioObject.transform.localPosition = new Vector3(0f, RoomHeight * .42f, RoomLength);
+        var audio = audioObject.AddComponent<AudioSource>();
+        audio.clip = doorCreakClip;
+        audio.playOnAwake = false;
+        audio.loop = false;
+        audio.spatialBlend = 1f;
+        audio.minDistance = 2.5f;
+        audio.maxDistance = 20f;
+        audio.rolloffMode = AudioRolloffMode.Logarithmic;
+        audio.dopplerLevel = .08f;
+        audio.priority = 72;
+        room.doorAudio = audio;
+        room.doorProgress = 0f; room.doorOpening = false; room.doorOpen = false; room.doorSoundPlayed = false;
         ApplyDoorPose(room);
+    }
+
+    void BeginDoorOpening(RoomSlot room)
+    {
+        if (room == null) return;
+        room.doorOpening = true;
+        if (room.doorSoundPlayed) return;
+        room.doorSoundPlayed = true;
+        if (room.doorAudio == null || doorCreakClip == null) return;
+        // A very small deterministic pitch variation keeps repeated streamed
+        // doors from sounding phase-locked while preserving the same source.
+        room.doorAudio.pitch = .97f + Mathf.Abs(room.sequence % 7) * .01f;
+        room.doorAudio.Play();
     }
 
     void ApplyDoorPose(RoomSlot room)
     {
         if (room.leftDoor == null || room.rightDoor == null) return;
-        var angle = 94f * room.doorProgress;
+        // A hinge does not stop with a hard linear snap. Smoothstep eases the
+        // last few degrees to zero velocity, removing the visible end-of-open
+        // hitch while preserving the same 0.9 s motion clock used by the
+        // stream and title mark.
+        var t = Mathf.Clamp01(room.doorProgress);
+        t = t * t * (3f - 2f * t);
+        var angle = 94f * t;
         room.leftDoor.localRotation = Quaternion.Euler(0f, -angle, 0f);
         room.rightDoor.localRotation = Quaternion.Euler(0f, angle, 0f);
     }

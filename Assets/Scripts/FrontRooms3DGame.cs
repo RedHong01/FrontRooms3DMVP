@@ -604,7 +604,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
         roomStream = titleWorld.gameObject.AddComponent<FrontRoomsRoomStream>();
         roomStream.roomTemplate = streamedRoomTemplate;
-        roomStream.Initialize(cam, WallMaterial(RoomRule.Lobby), FloorMaterial(RoomRule.Lobby), CeilingMaterial(RoomRule.Lobby), trimMat, fixtureMat, darkMat);
+        roomStream.Initialize(cam, WallMaterial(RoomRule.Lobby), FloorMaterial(RoomRule.Lobby), CeilingMaterial(RoomRule.Lobby), trimMat, fixtureMat, darkMat, doorClip);
         titleCameraZ = cam == null ? 0f : cam.transform.position.z;
         titleLogoAlpha = 0f;
         logoMotionElapsed = 0f;
@@ -847,7 +847,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         playerStepClip = FrontRoomsAudio.PlayerStep(); playerRunStepClip = FrontRoomsAudio.PlayerRunStep(); hunterStepClip = FrontRoomsAudio.HunterStep();
         glassClip = FrontRoomsAudio.Glass(); keyClip = FrontRoomsAudio.Key();
-        doorClip = FrontRoomsAudio.DoorOpen(); slamClip = FrontRoomsAudio.DoorSlam(); bangClip = FrontRoomsAudio.DoorBang();
+        // Use the short, realistic CC0 field recording for every ordinary door
+        // opening. Keep the synthesized clip as a fallback so the project still
+        // runs when a Resources import is temporarily unavailable in the editor.
+        var recordedDoorCreak = Resources.Load<AudioClip>("Audio/door-creak");
+        doorClip = recordedDoorCreak != null ? recordedDoorCreak : FrontRoomsAudio.DoorOpen();
+        slamClip = FrontRoomsAudio.DoorSlam(); bangClip = FrontRoomsAudio.DoorBang();
         caughtClip = FrontRoomsAudio.Caught(); escapeClip = FrontRoomsAudio.Escape();
         hum = cam.gameObject.AddComponent<AudioSource>(); hum.clip = FrontRoomsAudio.Hum(); hum.loop = true; hum.volume = .18f; hum.Play();
     }
