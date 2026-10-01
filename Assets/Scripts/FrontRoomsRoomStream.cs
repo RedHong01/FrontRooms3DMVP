@@ -401,7 +401,12 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             lightObject.transform.SetParent(room.root.transform, false);
             lightObject.transform.localPosition = new Vector3(0f, RoomHeight - .38f, RoomLength * .5f);
             var light = lightObject.AddComponent<Light>();
-            light.type = LightType.Point; light.range = 7.5f; light.intensity = .9f; light.color = new Color(.9f, .84f, .66f);
+            // Reach the side walls and the next threshold so the wallpaper and
+            // embedded doorway remain readable in the title and WebGL player.
+            light.type = LightType.Point; light.range = 9.2f; light.intensity = 1.35f; light.color = new Color(1f, .93f, .74f);
+            light.shadows = LightShadows.Soft;
+            light.shadowStrength = .4f;
+            light.bounceIntensity = .35f;
             room.entry = CreateEntry(room.root.transform);
         }
 

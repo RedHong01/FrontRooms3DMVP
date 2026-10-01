@@ -36,7 +36,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     AudioClip playerStepClip, playerRunStepClip, hunterStepClip, glassClip, keyClip, doorClip, slamClip, bangClip, caughtClip, escapeClip;
     Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, crosshair, notebook;
     Image logoImage;
+    Image logoLeftImage, logoSlideImage;
+    Transform logoMotionRoot;
+    Material whiteLogoMaterial;
     Sprite brandLogo;
+    enum LogoMotionVariation { SlideThenFade, FullLockup }
+    [SerializeField, Tooltip("Title logo test: SlideThenFade isolates the SS mark; FullLockup keeps the complete wordmark.")]
+    LogoMotionVariation logoMotionVariation = LogoMotionVariation.SlideThenFade;
     Font monoFont, bayonFont, serifFont;
     GameObject overlay, roomPanel, threatPanel, contextPanel, journalPanel;
     Image overlayImage;
@@ -47,6 +53,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     GameObject streamedRoomTemplate;
     readonly List<TitleSegment> titleSegments = new List<TitleSegment>();
     float titleCameraZ, titleNextZ, titleElapsed, titleLogoAlpha;
+    float logoMotionElapsed;
     bool titleHandoffPending;
     bool streamedPlay;
     float titleHandoffTargetZ;
@@ -319,20 +326,20 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
         // Set ambientLight first: in Unity's built-in renderer this property is
         // an alias for the sky colour and would otherwise overwrite it.
-        RenderSettings.ambientLight = new Color(.10f, .095f, .075f);
-        RenderSettings.ambientSkyColor = C("5B5E5A");
-        RenderSettings.ambientEquatorColor = C("26221B");
-        RenderSettings.ambientGroundColor = C("0F0D0A");
-        RenderSettings.reflectionIntensity = .25f;
+        RenderSettings.ambientLight = new Color(.16f, .15f, .12f);
+        RenderSettings.ambientSkyColor = C("74776D");
+        RenderSettings.ambientEquatorColor = C("393329");
+        RenderSettings.ambientGroundColor = C("1B1813");
+        RenderSettings.reflectionIntensity = .3f;
         RenderSettings.fog = true; RenderSettings.fogMode = FogMode.ExponentialSquared;
         RenderSettings.fogColor = C("1B1A17"); RenderSettings.fogDensity = .024f;
         QualitySettings.shadowDistance = 48f;
         QualitySettings.shadowCascades = 4;
         var fill = new GameObject("Soft ambient direction").AddComponent<Light>();
         fill.transform.SetParent(world);
-        fill.type = LightType.Directional; fill.intensity = .10f; fill.color = C("C4D0CC");
+        fill.type = LightType.Directional; fill.intensity = .16f; fill.color = C("C4D0CC");
         fill.shadows = LightShadows.Soft;
-        fill.shadowStrength = .22f;
+        fill.shadowStrength = .18f;
         fill.shadowBias = .045f;
         fill.shadowNormalBias = .28f;
         fill.shadowNearPlane = .1f;
@@ -355,8 +362,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                 // ranges and intensities make each fluorescent fixture read as
                 // a small pool of light, leaving the seams, trim and corners in
                 // believable shade instead of evenly lighting the whole room.
-                light.range = r.Rule == RoomRule.Shift ? 5.7f : r.Rule == RoomRule.Run ? 6.2f : r.Rule == RoomRule.Office ? 6.8f : 6.4f;
-                light.intensity = r.Rule == RoomRule.Shift ? .78f : r.Rule == RoomRule.Run ? 1.15f : r.Rule == RoomRule.Office ? 1.25f : .98f;
+                light.range = r.Rule == RoomRule.Shift ? 6.8f : r.Rule == RoomRule.Run ? 7.2f : r.Rule == RoomRule.Office ? 8f : 7.6f;
+                light.intensity = r.Rule == RoomRule.Shift ? 1.05f : r.Rule == RoomRule.Run ? 1.35f : r.Rule == RoomRule.Office ? 1.45f : 1.2f;
                 light.color = r.Rule == RoomRule.Run ? C("D8493D") : r.Rule == RoomRule.Shift ? C("B9B694") : r.Rule == RoomRule.Office ? C("FFE1B1") : r.Rule == RoomRule.Exit ? C("A9D7D0") : C("E6D5A7");
                 light.shadows = LightShadows.Soft;
                 light.shadowStrength = r.Rule == RoomRule.Run ? .82f : .67f;
@@ -548,6 +555,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         roomStream.Initialize(cam, wallMat, floorMat, ceilingMat, trimMat, fixtureMat, darkMat);
         titleCameraZ = cam == null ? 0f : cam.transform.position.z;
         titleLogoAlpha = 0f;
+        logoMotionElapsed = 0f;
         titleHandoffPending = false;
         streamedPlay = false;
         if (cam != null) cam.transform.rotation = Quaternion.identity;
@@ -557,14 +565,35 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (roomStream == null || cam == null) return;
         roomStream.Tick(dt);
+        titleElapsed += dt;
+        logoMotionElapsed += dt;
         titleCameraZ = roomStream.CameraZ;
         titleLogoAlpha = roomStream.LogoVisibility;
-        if (logoImage != null)
-        {
-            logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
-            if (logoOutline != null) logoOutline.effectColor = new Color(1f, .86f, .34f, titleLogoAlpha * .42f);
-        }
+        UpdateLogoMotion();
         if (titleHandoffPending && roomStream.HasControl) EnterGameplayFromTitle();
+    }
+
+    void UpdateLogoMotion()
+    {
+        if (logoMotionRoot == null || logoLeftImage == null || logoSlideImage == null) return;
+        var visible = phase == Phase.Title;
+        logoMotionRoot.gameObject.SetActive(visible);
+        if (!visible) return;
+
+        var slideT = Mathf.Clamp01((logoMotionElapsed - .78f) / 1.25f);
+        slideT = slideT * slideT * (3f - 2f * slideT);
+        var fadeT = Mathf.Clamp01((logoMotionElapsed - 1.62f) / .72f);
+        fadeT = fadeT * fadeT * (3f - 2f * fadeT);
+        var slideRect = logoSlideImage.rectTransform;
+        // Start the SS forms left of their final lockup, then settle them on
+        // the right edge. The second variation keeps the left lockup visible
+        // so the class can compare a complete brand read to the reductive mark.
+        var restX = -75f;
+        var startX = restX - 118f;
+        slideRect.anchoredPosition = new Vector2(Mathf.Lerp(startX, restX, slideT), 0f);
+        var leftAlpha = logoMotionVariation == LogoMotionVariation.SlideThenFade ? 1f - fadeT : 1f;
+        logoLeftImage.color = new Color(1f, 1f, 1f, titleLogoAlpha * leftAlpha);
+        logoSlideImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
     }
 
     void StopTitleCorridor()
@@ -806,14 +835,65 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             logoImage.sprite = brandLogo;
             logoImage.preserveAspect = true;
             logoImage.color = Color.white;
-            var whiteLogoShader = Shader.Find("UI/FrontRooms White Logo");
+            var whiteLogoShader = Resources.Load<Shader>("Brand/WhiteLogoUI") ?? Shader.Find("UI/FrontRooms White Logo");
             if (whiteLogoShader != null)
             {
-                var whiteLogoMaterial = new Material(whiteLogoShader);
+                whiteLogoMaterial = new Material(whiteLogoShader);
                 whiteLogoMaterial.name = "FrontRooms logo white (runtime)";
                 logoImage.material = whiteLogoMaterial;
             }
+            ConfigureLogoMotion(texture);
         }
+    }
+
+    void ConfigureLogoMotion(Texture2D texture)
+    {
+        if (texture == null || logoImage == null || logoImage.transform.parent == null) return;
+        var parent = logoImage.transform.parent;
+        var rootObject = new GameObject("FrontRooms logo motion");
+        logoMotionRoot = rootObject.transform;
+        logoMotionRoot.SetParent(parent, false);
+        var rootRect = rootObject.AddComponent<RectTransform>();
+        rootRect.anchorMin = rootRect.anchorMax = new Vector2(.5f, .5f);
+        rootRect.pivot = new Vector2(.5f, .5f);
+        rootRect.anchoredPosition = Vector2.zero;
+        rootRect.sizeDelta = new Vector2(texture.width, texture.height);
+
+        // The supplied lockup reserves the final 150 px for the two offset S
+        // forms. Keeping those pixels as a separate sprite lets the title use
+        // the requested slide-and-fade motion without redrawing the artwork.
+        const int splitX = 815;
+        var leftWidth = Mathf.Clamp(splitX, 1, texture.width - 1);
+        var rightWidth = texture.width - leftWidth;
+        var leftSprite = Sprite.Create(texture, new Rect(0f, 0f, leftWidth, texture.height), new Vector2(.5f, .5f), 100f);
+        var rightSprite = Sprite.Create(texture, new Rect(leftWidth, 0f, rightWidth, texture.height), new Vector2(.5f, .5f), 100f);
+        leftSprite.name = "FrontRooms logo left lockup";
+        rightSprite.name = "FrontRooms logo sliding SS";
+        logoLeftImage = LogoPart(logoMotionRoot, "Logo left lockup", leftSprite, leftWidth, -((texture.width - leftWidth) * .5f));
+        logoSlideImage = LogoPart(logoMotionRoot, "Logo sliding SS", rightSprite, rightWidth, -((texture.width - leftWidth) * .5f));
+        if (whiteLogoMaterial != null)
+        {
+            logoLeftImage.material = whiteLogoMaterial;
+            logoSlideImage.material = whiteLogoMaterial;
+        }
+        logoImage.gameObject.SetActive(false);
+        logoMotionRoot.gameObject.SetActive(false);
+    }
+
+    Image LogoPart(Transform parent, string name, Sprite sprite, float width, float x)
+    {
+        var objectForImage = new GameObject(name);
+        objectForImage.transform.SetParent(parent, false);
+        var image = objectForImage.AddComponent<Image>();
+        image.sprite = sprite;
+        image.preserveAspect = false;
+        image.raycastTarget = false;
+        var rect = image.rectTransform;
+        rect.anchorMin = rect.anchorMax = new Vector2(.5f, .5f);
+        rect.pivot = new Vector2(.5f, .5f);
+        rect.anchoredPosition = new Vector2(x, 0f);
+        rect.sizeDelta = new Vector2(width, sprite.rect.height);
+        return image;
     }
     GameObject TypographyGroup(Transform parent, string name, Vector2 anchor, Vector2 pos, Vector2 size)
     {
@@ -871,8 +951,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         notebook.color = paper;
         journalPanel.SetActive(false);
         overlay = new GameObject("Menu"); overlay.transform.SetParent(g.transform, false); var image = overlay.AddComponent<Image>(); overlayImage = image;
-        // The supplied brand SVG is a black mark. Keep the title surface light so
-        // the original artwork remains legible without recolouring the logo asset.
+        // The title uses the supplied brand asset with a white runtime shader;
+        // the room remains visible behind it while the mark fades in.
         image.color = new Color(.93f, .92f, .88f, .98f);
         var rt = image.rectTransform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
         overlayText = Text(overlay.transform, "Menu text", new Vector2(.5f, .5f), Vector2.zero, new Vector2(1440, 760), 20, TextAnchor.MiddleCenter);
@@ -892,9 +972,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (overlayImage != null) overlayImage.color = p == Phase.Title ? new Color(0f, 0f, 0f, 0f) : new Color(.93f, .92f, .88f, .98f);
         if (logoImage != null)
         {
-            logoImage.gameObject.SetActive(p == Phase.Title);
-            if (p == Phase.Title) logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
+            logoImage.gameObject.SetActive(p == Phase.Title && logoMotionRoot == null);
+            if (p == Phase.Title && logoMotionRoot == null) logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
         }
+        if (logoMotionRoot != null) logoMotionRoot.gameObject.SetActive(p == Phase.Title);
         if (roomPanel != null) roomPanel.SetActive(playing);
         if (threatPanel != null) threatPanel.SetActive(playing);
         if (contextPanel != null) contextPanel.SetActive(false);
