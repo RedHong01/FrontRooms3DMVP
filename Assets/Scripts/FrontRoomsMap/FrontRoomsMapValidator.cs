@@ -138,7 +138,20 @@ namespace FrontRooms.Map
                 {
                     var c = cache.Get(MapGrid.ChunkOf(cell));
                     var o = c.Origin;
-                    if (c.pillar[(x - o.x) + (y - o.y) * (n + 1)]) report.pillars++;
+                    if (c.pillar[(x - o.x) + (y - o.y) * (n + 1)])
+                    {
+                        report.pillars++;
+                        // 7. Columns stand on the 6 m grid, strictly inside an intact room, never in a Low zone.
+                        if (!FrontRoomsMapGenerator.OnColumnGrid(cell)) Fail("column off the 6 m grid at " + cell);
+                        if (gen.HeightOf(cell) == ZoneHeight.Low) Fail("column in a Low zone at " + cell);
+                        var inside = false;
+                        for (var r = 0; r < c.rooms.Length && !inside; r++)
+                        {
+                            var room = c.rooms[r];
+                            inside = c.RoomIntact(r) && gen.Uniform(c, room) && x - o.x > room.x && x - o.x < room.x + room.w && y - o.y > room.y && y - o.y < room.y + room.h;
+                        }
+                        if (!inside) Fail("column outside an intact room at " + cell);
+                    }
                 }
             }
             void CheckEdge(GridCoord a, GridCoord b)
@@ -191,7 +204,7 @@ namespace FrontRooms.Map
                 var coord = new GridCoord(cx, cy);
                 var a = cache.Get(coord);
                 var b = fresh.Generate(coord);
-                if (!Same(a.east, b.east) || !Same(a.north, b.north) || !Same(a.west, b.west) || !Same(a.south, b.south) || !Same(a.pillar, b.pillar) || a.keyCell != b.keyCell)
+                if (!Same(a.east, b.east) || !Same(a.north, b.north) || !Same(a.west, b.west) || !Same(a.south, b.south) || !Same(a.pillar, b.pillar) || !Same(a.pillarStyle, b.pillarStyle) || a.keyCell != b.keyCell)
                     Fail("chunk " + coord + " differs when rebuilt");
                 var shifted = fresh.Generate(coord, 1);
                 for (var k = 0; k < n; k++)

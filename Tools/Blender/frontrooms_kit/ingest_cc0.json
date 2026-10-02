@@ -1,0 +1,15 @@
+[
+ {
+  "name": "Kit_BergereChair",
+  "source": "Tools/lookdev/cc0_src/polyhaven/GreenChair_01/GreenChair_01_2k.gltf",
+  "source_url": "https://polyhaven.com/a/GreenChair_01",
+  "license": "CC0 1.0 - Poly Haven, Green Chair 01 by Kirill Sannikov",
+  "yaw": 0,
+  "scale": 1.0,
+  "lod1": 0.45,
+  "reslot_by_albedo": {"rules": [{"slot": "Prop_VelvetPink", "test": "g > r * 0.95 and g > b"}], "default": "Prop_WoodWalnut"},
+  "tags": ["pile"],
+  "pile": {"cls": "Seat", "mass": 1, "states": ["Upright", "Back", "EdgeLean"], "palette": "domestic70s", "topper": false},
+  "supports": []
+ }
+]

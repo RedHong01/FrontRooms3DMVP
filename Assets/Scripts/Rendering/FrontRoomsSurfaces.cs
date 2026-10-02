@@ -41,7 +41,12 @@ public static class FrontRoomsSurfaces
     public static Material DoorVeneer => Get("Door_Veneer");
     public static Material PaintedMetal => Get("Painted_Metal");
     public static Material TrofferLens => Get("Troffer_Lens");
-    public static Material OfficeLouver => Get("Office_Louver");
+    // The office reference and the film both show flat frosted (opal) lenses,
+    // so Office fixtures share the Level 0 lens. OfficeLouver is kept for the
+    // map's existing calls and now returns the frosted lens too.
+    public static Material OfficeLens => Get("Troffer_Lens");
+    public static Material OfficeLouver => OfficeLens;
+    public static Material ParabolicLouver => Get("Office_Louver");
     public static Material ExitSign => Get("Run_ExitSign");
     public static Material CoveBase => Get("Cove_Base");
     public static Material CubicleFabric => Get("Office_Fabric");
@@ -58,6 +63,19 @@ public static class FrontRoomsSurfaces
             material = Lit("Missing / " + name, new Color(.55f, .52f, .45f), .2f);
         }
         Cache[name] = material;
+        return material;
+    }
+
+    /// <summary>
+    /// The project material Resources/Surfaces/&lt;name&gt;, or null without a
+    /// warning (the prop kit falls back to the FBX's imported material).
+    /// </summary>
+    public static Material TryGet(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        if (Cache.TryGetValue(name, out var cached) && cached != null) return cached;
+        var material = Resources.Load<Material>("Surfaces/" + name);
+        if (material != null) Cache[name] = material;
         return material;
     }
 

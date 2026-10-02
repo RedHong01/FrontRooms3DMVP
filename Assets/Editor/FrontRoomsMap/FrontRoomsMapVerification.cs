@@ -5,7 +5,8 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Data-level checks of the map generator for 100 seeds: neighbouring chunks
+/// Data-level checks of the map generator for 100 seeds, using the level
+/// profile's generation numbers (FrontRoomsLevelProfiles.Resolve): neighbouring chunks
 /// agree on every shared edge, every cell is reachable, doors and windows sit
 /// only where the ceiling height changes, every key zone has its key, rebuilds
 /// are identical, and a shifted chunk keeps its borders. It does not build
@@ -25,12 +26,13 @@ public static class FrontRoomsMapVerification
 
     public static string Run(bool throwOnFailure)
     {
-        var report = FrontRoomsMapValidator.Run(new MapSettings(), FirstSeed, SeedCount, RadiusChunks);
+        var profile = FrontRoomsLevelProfiles.Resolve();
+        var report = FrontRoomsMapValidator.Run(profile.generation, FirstSeed, SeedCount, RadiusChunks);
         var path = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", "map-verification-latest.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, JsonUtility.ToJson(report, true));
         var summary = "[FrontRoomsMap] " + (report.failed == 0 ? "PASS" : "FAIL") + " · " + report.passed + "/" + report.seedCount
-            + " seeds · " + (RadiusChunks * 2) + "×" + (RadiusChunks * 2) + " chunks each · " + path;
+            + " seeds · " + (RadiusChunks * 2) + "×" + (RadiusChunks * 2) + " chunks each · profile " + (AssetDatabase.GetAssetPath(profile) is string p && p.Length > 0 ? p : "code defaults") + " · " + path;
         if (report.failed == 0) Debug.Log(summary);
         else
         {

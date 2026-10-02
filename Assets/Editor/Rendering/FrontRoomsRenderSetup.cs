@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.IO;
 using System.Linq;
@@ -25,9 +26,11 @@ public static class FrontRoomsRenderSetup
     const string SurfaceDir = "Assets/Resources/Surfaces";
     const string TextureDir = SurfaceDir + "/Textures";
 
-    // World tile sizes. Each divides the room stream's 256 m rebase.
-    const float Roll = 256f / 373f;      // one 27" wallpaper roll
-    const float FourFoot = 256f / 210f;  // 4' ceiling grid / 2 x 2' carpet tiles / 4 x 12" VCT
+    // World tile sizes. Each divides the room stream's 192 m rebase.
+    // Metric module grid (LEVEL_MODULE_SPEC P0b): every repeat divides the
+    // room stream's 192 m rebase and lines up with the map's 3 m cells.
+    const float Roll = .75f;             // one wallpaper roll width
+    const float FourFoot = 1.2f;         // ceiling sheet of 2 x 0.6 m tiles / 2 x 0.6 m carpet tiles / 4 x 0.3 m VCT
 
     [MenuItem("FrontRooms/Rendering/Set up URP, post and surfaces")]
     public static void SetUp()
@@ -37,6 +40,8 @@ public static class FrontRoomsRenderSetup
         var pipeline = EnsurePipeline();
         EnsurePost();
         EnsureSurfaces();
+        EnsureGlassMaterials();
+        EnsureOfficePost();
         ConvertSceneMaterials();
         GraphicsSettings.defaultRenderPipeline = pipeline;
         var activeLevel = QualitySettings.GetQualityLevel();
@@ -142,6 +147,39 @@ public static class FrontRoomsRenderSetup
     /// white balance, soft halation on the tubes, a haze that lifts the blacks
     /// like a CRT, fine grain and a little lens falloff. No glossy contrast.
     /// </summary>
+    // Office zones: the measured target is a low-key, desaturated olive/green-grey
+    // under 4000 K tubes (research/10_synthesis.md §6.4). Only the differences
+    // from the global film look are overridden.
+    const string OfficePostPath = "Assets/Resources/Rendering/FrontRoomsPost_Office.asset";
+
+    static void EnsureOfficePost()
+    {
+        var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(OfficePostPath);
+        if (profile == null)
+        {
+            profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            AssetDatabase.CreateAsset(profile, OfficePostPath);
+        }
+        var white = Get<WhiteBalance>(profile);
+        white.temperature.Override(2f);
+        white.tint.Override(-10f);
+        var color = Get<ColorAdjustments>(profile);
+        color.postExposure.Override(.32f);
+        color.contrast.Override(4f);
+        color.saturation.Override(-18f);
+        color.colorFilter.Override(new Color(.97f, 1f, .98f));
+        var lgg = Get<LiftGammaGain>(profile);
+        lgg.lift.Override(new Vector4(.98f, 1f, .98f, .02f));
+        var smh = Get<ShadowsMidtonesHighlights>(profile);
+        smh.shadows.Override(new Vector4(.95f, 1f, 1f, 0f));
+        smh.highlights.Override(new Vector4(1f, 1f, .97f, 0f));
+        var grain = Get<FilmGrain>(profile);
+        grain.intensity.Override(.18f);
+        var ca = Get<ChromaticAberration>(profile);
+        ca.intensity.Override(.03f);
+        EditorUtility.SetDirty(profile);
+    }
+
     static void EnsurePost()
     {
         var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(PostPath);
@@ -260,7 +298,91 @@ public static class FrontRoomsRenderSetup
         new SurfaceDef { name = "Painted_Metal", texture = "PaintedMetal", tile = Vector2.one, meshUV = true, macroTone = .15f, macroDirt = .15f },
         new SurfaceDef { name = "Troffer_Lens", texture = "TrofferLens", tile = new Vector2(FourFoot * .5f, FourFoot), meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "TrofferLens", emissionColor = new Color(2.2f, 2.1f, 1.8f) },
         new SurfaceDef { name = "Cove_Base", tint = new Color(.23f, .19f, .14f), smooth = .38f, macroTone = .2f },
+
+        // Prop kit slots (Tools/Blender/frontrooms_kit): CC0 scans packed by
+        // Tools/lookdev/import_cc0_textures.py, regraded to the measured
+        // targets in research/10_synthesis.md §5.2. Mesh UVs are in metres,
+        // so tile = the scan's physical size. Painted steel is dielectric.
+        new SurfaceDef { name = "Prop_WoodCherry", texture = "Prop_WoodCherry", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_WoodOak", texture = "Prop_WoodOak", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_WoodTeak", texture = "Prop_WoodTeak", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_WoodDark", texture = "Prop_WoodDark", tile = new Vector2(2.0f, 2.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_WoodEbony", texture = "Prop_WoodEbony", tile = new Vector2(2.0f, 2.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_WoodWalnut", texture = "Prop_WoodWalnut", tile = new Vector2(1.8f, 1.8f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_WoodLaminate", texture = "Prop_WoodLaminate", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_Plywood", texture = "Prop_Plywood", tile = new Vector2(0.5f, 0.5f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_Chipboard", texture = "Prop_Chipboard", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_PinePallet", texture = "Prop_PinePallet", tile = new Vector2(1.4f, 1.4f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.15f, macroDirt = 0.2f },
+        new SurfaceDef { name = "Prop_Studs", texture = "Prop_Studs", tile = new Vector2(0.5f, 0.5f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_LaminateBeige", tint = new Color(0.788f, 0.745f, 0.627f), smooth = 0.43f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        new SurfaceDef { name = "Prop_PlasticBeige", texture = "Prop_PlasticBeige", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.1f, macroDirt = 0.1f },
+        new SurfaceDef { name = "Prop_PlasticWhite", texture = "Prop_PlasticWhite", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.1f, macroDirt = 0.1f },
+        new SurfaceDef { name = "Prop_PlasticBlack", texture = "Prop_PlasticBlack", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0f, macroDirt = 0.05f },
+        new SurfaceDef { name = "Prop_PlasticGrey", texture = "Prop_PlasticGrey", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.04f, macroDirt = 0.05f },
+        new SurfaceDef { name = "Prop_Rubber", tint = new Color(0.02f, 0.02f, 0.02f), smooth = 0.15f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        new SurfaceDef { name = "Prop_SteelPutty", texture = "Prop_SteelPutty", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.1f, macroDirt = 0.1f },
+        new SurfaceDef { name = "Prop_SteelBrown", texture = "Prop_SteelBrown", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.06f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_SteelBlack", texture = "Prop_SteelBlack", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.04f, macroDirt = 0.06f },
+        new SurfaceDef { name = "Prop_Aluminium", texture = "Prop_Aluminium", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 1.0f, bump = 1.0f, macroTone = 0f, macroDirt = 0.06f },
+        new SurfaceDef { name = "Prop_Chrome", tint = new Color(0.847f, 0.847f, 0.847f), smooth = 0.85f, metallic = 1.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        new SurfaceDef { name = "Prop_Brass", tint = new Color(0.69f, 0.541f, 0.29f), smooth = 0.6f, metallic = 1.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        new SurfaceDef { name = "Prop_FabricCubicle", texture = "Prop_FabricCubicle", tile = new Vector2(0.27f, 0.27f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.12f, macroDirt = 0.12f },
+        new SurfaceDef { name = "Prop_FabricBeige", texture = "Prop_FabricBeige", tile = new Vector2(0.27f, 0.27f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_FabricChair", texture = "Prop_FabricChair", tile = new Vector2(0.27f, 0.27f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.03f, macroDirt = 0.04f },
+        new SurfaceDef { name = "Prop_FabricTeal", texture = "Prop_FabricTeal", tile = new Vector2(0.27f, 0.27f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_FabricCharcoal", texture = "Prop_FabricCharcoal", tile = new Vector2(0.27f, 0.27f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_FabricNavy", texture = "Prop_FabricNavy", tile = new Vector2(0.27f, 0.27f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_VelvetPink", texture = "Prop_VelvetPink", tile = new Vector2(0.28f, 0.28f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_FabricFloral", texture = "Prop_FabricFloral", tile = new Vector2(0.5f, 0.5f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
+        new SurfaceDef { name = "Prop_Vinyl", texture = "Prop_Vinyl", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.03f, macroDirt = 0.04f },
+        new SurfaceDef { name = "Prop_GlassCRT", tint = new Color(0.059f, 0.078f, 0.071f), smooth = 0.84f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        new SurfaceDef { name = "Prop_Cardboard", texture = "Prop_Cardboard", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.15f, macroDirt = 0.15f },
+        new SurfaceDef { name = "Prop_TapeBlue", texture = "Prop_TapeBlue", tile = new Vector2(0.3f, 0.3f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0f, macroDirt = 0.04f },
+        new SurfaceDef { name = "Prop_Paper", tint = new Color(0.863f, 0.847f, 0.8f), smooth = 0.24f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        new SurfaceDef { name = "Prop_LampShade", tint = new Color(0.886f, 0.847f, 0.753f), smooth = 0.1f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        new SurfaceDef { name = "Prop_Ceramic", tint = new Color(0.353f, 0.227f, 0.141f), smooth = 0.8f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        new SurfaceDef { name = "Prop_ScreenCRT", texture = "Prop_ScreenCRT", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = 0f },
+        new SurfaceDef { name = "Prop_ScreenCRT_On", texture = "Prop_ScreenCRT", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "Prop_ScreenCRT", emissionColor = new Color(1.3f, 1.15f, .9f) },
+        new SurfaceDef { name = "Prop_VendingFront", texture = "Prop_VendingFront", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "Prop_VendingFront", emissionColor = new Color(1.5f, 1.45f, 1.3f) },
+        new SurfaceDef { name = "Prop_CopierPanel", texture = "Prop_CopierPanel", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = .05f },
+        new SurfaceDef { name = "Prop_KeyboardKeys", texture = "Prop_KeyboardKeys", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = .05f },
+        new SurfaceDef { name = "Prop_Label", texture = "Prop_Label", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = 0f },
     };
+
+    // Transparent prop slots use URP Lit (FrontRooms/Surface is opaque).
+    static readonly (string name, Color color, float smooth)[] GlassDefs =
+    {
+        ("Prop_Glass", new Color(.82f, .88f, .88f, .16f), .92f),
+        ("Prop_BottleBlue", new Color(.36f, .58f, .80f, .42f), .9f),
+    };
+
+    static void EnsureGlassMaterials()
+    {
+        var shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null) return;
+        foreach (var (name, color, smooth) in GlassDefs)
+        {
+            var path = SurfaceDir + "/" + name + ".mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null)
+            {
+                m = new Material(shader) { name = name };
+                AssetDatabase.CreateAsset(m, path);
+            }
+            m.shader = shader;
+            m.SetFloat("_Surface", 1f);
+            m.SetFloat("_Blend", 0f);
+            m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            m.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            m.SetFloat("_ZWrite", 0f);
+            m.SetFloat("_Smoothness", smooth);
+            m.SetColor("_BaseColor", color);
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            m.SetShaderPassEnabled("DepthOnly", false);
+            EditorUtility.SetDirty(m);
+        }
+    }
 
     static void EnsureSurfaces()
     {
@@ -272,7 +394,9 @@ public static class FrontRoomsRenderSetup
             return;
         }
         var macro = Tex("MacroWear_M");
-        foreach (var d in SurfaceDefs)
+        var defs = new List<SurfaceDef>(SurfaceDefs);
+        defs.AddRange(ManifestDefs());
+        foreach (var d in defs)
         {
             var path = SurfaceDir + "/" + d.name + ".mat";
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -285,8 +409,14 @@ public static class FrontRoomsRenderSetup
             if (d.texture != null)
             {
                 m.SetTexture("_BaseMap", Tex(d.texture + "_A"));
-                m.SetTexture("_BumpMap", Tex(d.texture + "_N"));
-                m.SetTexture("_MaskMap", Tex(d.texture + "_S"));
+                m.SetTexture("_BumpMap", TexOptional(d.texture + "_N"));
+                m.SetTexture("_MaskMap", TexOptional(d.texture + "_S"));
+            }
+            else
+            {
+                m.SetTexture("_BaseMap", null);
+                m.SetTexture("_BumpMap", null);
+                m.SetTexture("_MaskMap", null);
             }
             m.SetColor("_BaseColor", d.tint);
             m.SetTextureScale("_BaseMap", new Vector2(d.st.x, d.st.y));
@@ -368,21 +498,49 @@ public static class FrontRoomsRenderSetup
                 converted++;
             }
         }
-        // No realtime GI: Trilight stands in for the bounce. The ceiling faces
-        // down and takes the ground colour, so that is the warm carpet bounce;
-        // walls take the equator; floors the dim sky.
-        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-        RenderSettings.ambientSkyColor = new Color(.20f, .19f, .15f);
-        RenderSettings.ambientEquatorColor = new Color(.26f, .24f, .17f);
-        RenderSettings.ambientGroundColor = new Color(.40f, .36f, .24f);
-        RenderSettings.fog = true;
-        RenderSettings.fogMode = FogMode.ExponentialSquared;
-        RenderSettings.fogColor = new Color(.16f, .15f, .11f);
-        RenderSettings.fogDensity = .014f;
-        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
-        UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene);
+        // Ambient and fog are applied at runtime by FrontRoomsLook, so the
+        // scene (owned by the map work) is only saved when a material changed.
+        FrontRoomsLook.ApplyAmbient();
+        if (converted > 0)
+        {
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(scene);
+            UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene);
+        }
         Debug.Log("[FrontRoomsRender] Scene materials moved to URP Lit: " + converted);
     }
+
+    // Imported CC0 assets (Tools/Blender/frontrooms_kit/ingest_cc0.py) append
+    // their materials here; each becomes a FrontRooms/Surface mesh-UV material.
+    const string ManifestPath = "Assets/Resources/Props/materials_manifest.json";
+
+    [Serializable] sealed class ManifestEntry { public string name; public string texture; public float[] tile; public bool meshUV = true; public float smooth = 1f, metallic, bump = 1f, macroTone = .05f, macroDirt = .06f; public float[] tint; }
+    [Serializable] sealed class ManifestList { public ManifestEntry[] items; }
+
+    static IEnumerable<SurfaceDef> ManifestDefs()
+    {
+        if (!File.Exists(ManifestPath)) yield break;
+        var list = JsonUtility.FromJson<ManifestList>("{\"items\":" + File.ReadAllText(ManifestPath) + "}");
+        if (list?.items == null) yield break;
+        foreach (var e in list.items)
+        {
+            if (string.IsNullOrEmpty(e.name)) continue;
+            yield return new SurfaceDef
+            {
+                name = e.name,
+                texture = string.IsNullOrEmpty(e.texture) ? null : e.texture,
+                tile = e.tile != null && e.tile.Length >= 2 ? new Vector2(e.tile[0], e.tile[1]) : Vector2.one,
+                meshUV = e.meshUV,
+                smooth = e.smooth,
+                metallic = e.metallic,
+                bump = e.bump,
+                macroTone = e.macroTone,
+                macroDirt = e.macroDirt,
+                tint = e.tint != null && e.tint.Length >= 3 ? new Color(e.tint[0], e.tint[1], e.tint[2]) : Color.white,
+            };
+        }
+    }
+
+    static Texture2D TexOptional(string stem) => AssetDatabase.LoadAssetAtPath<Texture2D>(TextureDir + "/" + stem + ".png");
 
     static Texture2D Tex(string stem)
     {

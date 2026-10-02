@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using FrontRooms.Map;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -20,9 +21,10 @@ using UiLength = UnityEngine.UIElements.Length;
 using UiLengthUnit = UnityEngine.UIElements.LengthUnit;
 
 [ExecuteAlways]
-// First-person FrontRooms. The title corridor and the playable level are the
-// same infinite room stream; the camera is handed to the player in place and
-// the serialized Relay hunts them through it.
+// First-person FrontRooms. The title is the looping room stream; when the
+// player presses Space its first door opens and they noclip into the
+// generated Level 0 maze (FrontRoomsMapWorld), where the serialized Relay
+// hunts them (FrontRoomsMapHunter).
 public sealed class FrontRooms3DGame : MonoBehaviour
 {
     enum Phase { Title, Playing, Paused, Caught }
@@ -32,8 +34,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Transform hunter;
     [SerializeField, Tooltip("When the Relay is released, how it listens, hunts, searches, chases and breaks doors.")]
     FrontRoomsHunterTuning hunterTuning = new FrontRoomsHunterTuning();
+    [SerializeField, Tooltip("The Level 0 maze's numbers: generation, run seed, streaming, light budget, dressing (Assets/Levels/FrontRoomsLevel0.asset). Empty: the code defaults.")]
+    FrontRoomsLevelProfile levelProfile;
     FrontRoomsRelayRig hunterRig;
-    FrontRoomsHunterBrain hunterBrain;
+    FrontRoomsMapWorld map;
+    FrontRoomsMapHunter relay;
+    Transform playerRoot;
+    CharacterController playerBody;
     Vector2 playerPos;
     readonly List<string> events = new List<string>();
     Material wallMat, floorMat, darkMat, ceilingMat;
@@ -46,6 +53,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     FrontRoomsFoley foley;
     Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, keyText, displaySettingsText;
     Image crosshairImage, keyImage;
+    Text promptText;
+    Image noclipFade, holdBarFill;
+    GameObject holdBar;
+    readonly Image[] staminaSegments = new Image[5];
     GameObject keyPanel;
     Image logoImage;
     Image logoLeftImage, logoSlideImage;
@@ -79,7 +90,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     float titleLogoAlpha;
     float logoMotionElapsed;
     bool titleHandoffPending;
-    bool streamedPlay;
+    bool mapPlay;
+    // Noclip: -1 when idle, otherwise seconds into the white-out or fade-in.
+    float noclipTime = -1f;
+    bool noclipSwitched;
     // The runtime stream runs on its own centerline, clear of the edit-mode
     // profile preview at X = 0.
     public const float TitleCenterX = 256f;
@@ -95,11 +109,30 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     const float LogoS2StartAt = .50f;
     const float GameplayHudFadeSeconds = .9f;
     const string CalmHint = "Shift to sprint. About 5 seconds, and it hears every step.";
+    const float CalmHintSeconds = 9f;
     float gameplayHudAlpha;
     float yaw, pitch, elapsed, stepTime, hunterStepTime, flashTime;
     string flash = "";
-    int startRoom;
     const float Walk = 3.2f, Run = 5.5f;
+    // Sprint stamina: about 5 s of running, refilling after a 1 s breather.
+    const float StaminaSeconds = 5f, StaminaRecoverDelay = 1f, StaminaRecoverRate = 1f;
+    const float EyeHeight = ModuleUnits.PlayerEye, Reach = 2.4f, GlassNoiseRadius = 40f;
+    // The noclip: a fast white-out as the first door opens, then the maze fades in.
+    const float NoclipOutSeconds = .22f, NoclipInSeconds = .8f;
+    float stamina = StaminaSeconds, sinceSprint, fallSpeed;
+    // Climbing through a broken window: the sill (0.35 m) is above the step
+    // height and the opening (1.65 m) is lower than the player, so walking
+    // into the frame vaults through it, ducking under the head.
+    const float ClimbSeconds = .6f, ClimbLift = .35f, ClimbDuck = .55f;
+    float climbTime = -1f;
+    Vector3 climbFrom, climbTo;
+    Collider aimed;
+    bool aimedHold;
+    float holdProgress;
+    string prompt;
+    readonly HashSet<GridCoord> zonesVisited = new HashSet<GridCoord>();
+    GridCoord currentZone;
+    int keysTaken, runSeed;
     static bool restart;
 
     void OnEnable()
@@ -201,24 +234,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     /// </summary>
     public static void ApplySceneLighting(Transform parent)
     {
-        // Keep the room readable through local fixtures rather than flooding the
-        // whole map with a flat grey/yellow ambient wash.  Trilight gives the
-        // unlit side of the walls a cool ceiling bounce and a much darker floor
-        // bounce, which is closer to a real fluorescent room and keeps doorways
-        // and corners from looking like unlit solid-colour blocks.
-        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
-        // Set ambientLight first: in Unity's built-in renderer this property is
-        // an alias for the sky colour and would otherwise overwrite it.
-        // The practicals are downward spots, so the ceiling faces down into
-        // the ground colour: that is the warm bounce off the carpet. Same values
-        // as FrontRoomsRenderSetup writes into the shipped scene.
-        RenderSettings.ambientLight = new Color(.20f, .19f, .15f);
-        RenderSettings.ambientSkyColor = new Color(.20f, .19f, .15f);
-        RenderSettings.ambientEquatorColor = new Color(.26f, .24f, .17f);
-        RenderSettings.ambientGroundColor = new Color(.40f, .36f, .24f);
-        RenderSettings.reflectionIntensity = .3f;
-        RenderSettings.fog = true; RenderSettings.fogMode = FogMode.ExponentialSquared;
-        RenderSettings.fogColor = new Color(.16f, .15f, .11f); RenderSettings.fogDensity = .014f;
+        // Trilight bounce and haze shared with the maze and the shipped scene;
+        // it also rebuilds URP's ambient probe, without which they do nothing.
+        FrontRoomsLook.ApplyAmbient();
         var fill = new GameObject("Soft ambient direction").AddComponent<Light>();
         fill.transform.SetParent(parent);
         fill.type = LightType.Directional; fill.intensity = .22f; fill.color = C("D6D3B4");
@@ -248,6 +266,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         QualitySettings.globalTextureMipmapLimit = 0;
         Time.timeScale = 1f;
         DestroyEditorPreview();
+#if UNITY_EDITOR
+        AutopilotStart();
+#endif
+        // URP lights surfaces with the ambient probe, which is only rebuilt
+        // from the scene's ambient colours on a bake or here.
+        DynamicGI.UpdateEnvironment();
         InitializeFonts();
         cam = GetComponentInChildren<Camera>(true);
         if (cam == null) cam = CreateCamera(transform);
@@ -329,7 +353,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         titleLogoAlpha = 0f;
         logoMotionElapsed = 0f;
         titleHandoffPending = false;
-        streamedPlay = false;
+        mapPlay = false;
         if (cam != null) cam.transform.rotation = Quaternion.identity;
     }
 
@@ -423,7 +447,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
     void RequestTitleStart()
     {
-        if (titleHandoffPending || streamedPlay) return;
+        if (titleHandoffPending || mapPlay || noclipTime >= 0f) return;
         if (roomStream == null) return;
         roomStream.RequestStart();
         titleHandoffPending = true;
@@ -433,119 +457,314 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (roomStream == null) return;
         SetPhase(Phase.Title);
-        // A retry reuses the title's first door and camera handoff, so it lands
-        // in the same stream, with the same Relay, as a first run.
+        // A retry reuses the title's first door and noclip, so it lands in a
+        // fresh maze (or the same one when Map Seed is set), like a first run.
         RequestTitleStart();
-        Log("RESTART · streamed route");
+        Log("RESTART · noclip into the maze");
     }
 
+    /// <summary>
+    /// The first door is open and the camera is through it. The player
+    /// noclips: a fast white-out, the corridor is dropped, and the Level 0
+    /// maze fades in around them.
+    /// </summary>
     void EnterGameplayFromTitle()
     {
-        if (!titleHandoffPending || streamedPlay) return;
+        if (!titleHandoffPending || mapPlay) return;
         titleHandoffPending = false;
-        streamedPlay = true;
-        // The same camera remains in the same generated room. Only its input
-        // ownership changes, so the player never sees a loading cut.
-        playerPos = new Vector2(cam.transform.position.x, cam.transform.position.z);
+        noclipTime = 0f;
+        noclipSwitched = false;
+        if (noclipFade != null) noclipFade.enabled = true;
+    }
+
+    void UpdateNoclip(float dt)
+    {
+        noclipTime += dt;
+        if (!noclipSwitched)
+        {
+            var t = Mathf.Clamp01(noclipTime / NoclipOutSeconds);
+            SetNoclipFade(t * t);
+            if (noclipTime < NoclipOutSeconds) return;
+            noclipSwitched = true;
+            noclipTime = 0f;
+            StartMapRun();
+            return;
+        }
+        var fade = 1f - Mathf.Clamp01(noclipTime / NoclipInSeconds);
+        SetNoclipFade(fade * fade);
+        if (noclipTime < NoclipInSeconds) return;
+        noclipTime = -1f;
+        if (noclipFade != null) noclipFade.enabled = false;
+    }
+
+    void SetNoclipFade(float alpha)
+    {
+        if (noclipFade == null) return;
+        var c = noclipFade.color;
+        c.a = Mathf.Clamp01(alpha);
+        noclipFade.color = c;
+    }
+
+    void StartMapRun()
+    {
+        StopTitleCorridor();
+        var profile = levelProfile != null ? levelProfile : FrontRoomsLevelProfile.Default;
+        runSeed = profile.runSeed != 0 ? profile.runSeed : UnityEngine.Random.Range(1, int.MaxValue);
+#if UNITY_EDITOR
+        if (autopilot && autopilotSeed != 0) runSeed = autopilotSeed;
+#endif
+        map = FrontRoomsMapWorld.CreateEmbedded(transform, profile, runSeed);
+
+        // The player is a capsule the camera rides on; walls and doors are
+        // the map's colliders.
+        playerRoot = new GameObject("Player").transform;
+        playerRoot.SetParent(transform, false);
+        playerRoot.position = map.SpawnWorldPosition;
+        playerBody = playerRoot.gameObject.AddComponent<CharacterController>();
+        playerBody.height = ModuleUnits.PlayerHeight;
+        playerBody.radius = ModuleUnits.PlayerRadius;
+        playerBody.center = new Vector3(0f, ModuleUnits.PlayerHeight * .5f, 0f);
+        playerBody.stepOffset = .3f;
+        playerBody.skinWidth = .03f;
+        cam.transform.SetParent(playerRoot, false);
+        cam.transform.localPosition = new Vector3(0f, EyeHeight, 0f);
+        cam.transform.localRotation = Quaternion.identity;
+        cam.farClipPlane = map.SightDistance;
         yaw = 0f;
         pitch = 0f;
+        fallSpeed = 0f;
+        climbTime = -1f;
+        stamina = StaminaSeconds;
+        sinceSprint = 0f;
+        map.DoorMoved += OnDoorMoved;
+        map.GlassBroken += OnGlassBroken;
+        map.KeyTaken += OnKeyTaken;
+        map.Begin(playerRoot);
+
+        relay = new FrontRoomsMapHunter(map, hunterTuning, playerBody, hunter, runSeed);
+        relay.StateChanged += state => Event("hunter", state.ToString());
+        relay.DoorBlow += p => FoleyDoorBreak(Flat(p));
+        relay.Caught += End;
+
+        zonesVisited.Clear();
+        keysTaken = 0;
+        currentZone = map.ZoneOf(map.CellOf(playerRoot.position)).id;
+        zonesVisited.Add(currentZone);
+        playerPos = Flat(playerRoot.position);
         elapsed = 0f;
-        // The handoff room and the next ones stay empty Lobby rooms; furnished
-        // rooms are dressed out of sight. The Relay stays dormant until the
-        // player has spent a moment in the first furnished room.
-        roomStream.BeginPlayableSequence();
-        startRoom = roomStream.CurrentRoomNumber;
-        hunterBrain = new FrontRoomsHunterBrain(roomStream, hunterTuning);
-        hunterBrain.StateChanged += state => Event("hunter", state.ToString());
-        hunterBrain.DoorBlow += FoleyDoorBreak;
-        hunterBrain.DoorBroken += door => Event("door_broken", door.ToString());
-        // The Run room is the alarm beat: once the door behind the player has
-        // shut, the Relay is brought up behind it and hunts them from there.
-        hunterBrain.Alarmed += room =>
-        {
-            Flash("RUN  /  KEEP THE RED ROOM MOVING");
-            Event("alarm", room.ToString());
-        };
-        hunterBrain.Caught += End;
+        mapPlay = true;
         SetPhase(Phase.Playing);
-        Event("start", "streamed-room");
+        Event("start", "map seed " + runSeed);
+        Log("NOCLIP · Level 0 maze, seed " + runSeed + " · " + map.BuiltChunkCount + " chunks built");
     }
 
-
-    void UpdateStreamedPlay(float dt)
+    void OnDoorMoved(Vector3 p)
     {
-        yaw += Input.GetAxisRaw("Mouse X") * 2.1f;
-        pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * 2.1f, -75f, 75f);
-        // Keep the authored InputManager axes, but also read the physical
-        // keys directly. This makes the standalone Mac/WebGL player robust
-        // when a platform starts with the new input backend.
-        var horizontal = Input.GetAxisRaw("Horizontal");
-        var vertical = Input.GetAxisRaw("Vertical");
-        if (Mathf.Abs(horizontal) < .01f)
-            horizontal = (Input.GetKey(KeyCode.D) ? 1f : 0f) - (Input.GetKey(KeyCode.A) ? 1f : 0f);
-        if (Mathf.Abs(vertical) < .01f)
-            vertical = (Input.GetKey(KeyCode.W) ? 1f : 0f) - (Input.GetKey(KeyCode.S) ? 1f : 0f);
-        var local = new Vector2(horizontal, vertical);
-        var forward = new Vector2(Mathf.Sin(yaw * Mathf.Deg2Rad), Mathf.Cos(yaw * Mathf.Deg2Rad));
-        var right = new Vector2(forward.y, -forward.x);
-        var sprint = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        var before = new Vector2(cam.transform.position.x, cam.transform.position.z);
-        var movement = (right * local.x + forward * local.y).normalized * (sprint ? Run : Walk) * dt;
-        var moved = roomStream == null ? cam.transform.position : roomStream.Move(movement);
-        var after = new Vector2(moved.x, moved.z);
-        cam.transform.position = new Vector3(after.x, 1.62f, after.y);
-        cam.transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
-        playerPos = after;
-        if (Vector2.Distance(before, after) > .001f)
+        Sound(doorClip, Flat(p), .8f);
+        relay?.Noise(p, hunterTuning.doorNoiseRadius);
+        Event("door", Flat(p).ToString());
+    }
+
+    void OnGlassBroken(Vector3 p)
+    {
+        FoleyDoorBreak(Flat(p));
+        relay?.Noise(p, GlassNoiseRadius);
+        Flash("GLASS BROKEN  /  WALK INTO THE FRAME TO CLIMB THROUGH");
+        Event("glass", Flat(p).ToString());
+    }
+
+    void OnKeyTaken(GridCoord zone)
+    {
+        keysTaken++;
+        Flash("KEY  /  OPENS THIS ZONE'S DOORS");
+        Event("key", zone.ToString());
+    }
+
+    static Vector2 Flat(Vector3 p) => new Vector2(p.x, p.z);
+
+    void UpdateMapPlay(float dt)
+    {
+        if (map == null || playerBody == null) return;
+        Vector2 local;
+        bool sprintHeld;
+#if UNITY_EDITOR
+        if (autopilot) AutopilotSteer(dt, out local, out sprintHeld);
+        else
+#endif
+        {
+            yaw += Input.GetAxisRaw("Mouse X") * 2.1f;
+            pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * 2.1f, -75f, 75f);
+            // Keep the authored InputManager axes, but also read the physical
+            // keys directly. This makes the standalone Mac/WebGL player robust
+            // when a platform starts with the new input backend.
+            var horizontal = Input.GetAxisRaw("Horizontal");
+            var vertical = Input.GetAxisRaw("Vertical");
+            if (Mathf.Abs(horizontal) < .01f)
+                horizontal = (Input.GetKey(KeyCode.D) ? 1f : 0f) - (Input.GetKey(KeyCode.A) ? 1f : 0f);
+            if (Mathf.Abs(vertical) < .01f)
+                vertical = (Input.GetKey(KeyCode.W) ? 1f : 0f) - (Input.GetKey(KeyCode.S) ? 1f : 0f);
+            local = new Vector2(horizontal, vertical);
+            sprintHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        }
+        playerRoot.rotation = Quaternion.Euler(0f, yaw, 0f);
+        cam.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+        var wish = playerRoot.right * local.x + playerRoot.forward * local.y;
+        if (wish.sqrMagnitude > 1f) wish.Normalize();
+        var sprinting = sprintHeld && wish.sqrMagnitude > .01f && stamina > 0f;
+        if (sprinting)
+        {
+            stamina = Mathf.Max(0f, stamina - dt);
+            sinceSprint = 0f;
+        }
+        else
+        {
+            sinceSprint += dt;
+            if (sinceSprint > StaminaRecoverDelay) stamina = Mathf.Min(StaminaSeconds, stamina + StaminaRecoverRate * dt);
+        }
+        fallSpeed = playerBody.isGrounded ? -1f : fallSpeed - 9.81f * dt;
+        var before = playerPos;
+        if (climbTime >= 0f || TryStartClimb(wish)) Climb(dt);
+        else playerBody.Move((wish * (sprinting ? Run : Walk) + Vector3.up * fallSpeed) * dt);
+        playerPos = Flat(playerRoot.position);
+        if (Vector2.Distance(before, playerPos) > .001f)
         {
             stepTime += dt;
-            if (stepTime > (sprint ? .3f : .5f))
+            if (stepTime > (sprinting ? .3f : .5f))
             {
                 stepTime = 0f;
-                FoleyFootstep(after, FrontRoomsFoleyActor.Player, SurfaceOf(roomStream.CurrentRule), sprint, sprint ? .48f : .15f);
-                if (sprint && hunterBrain != null) hunterBrain.Noise(after, hunterTuning.sprintNoiseRadius);
+                FoleyFootstep(playerPos, FrontRoomsFoleyActor.Player, FrontRoomsFoleySurface.Carpet, sprinting, sprinting ? .48f : .15f);
+                if (sprinting) relay?.Noise(playerRoot.position, hunterTuning.sprintNoiseRadius);
             }
         }
-        UpdateRelay(dt);
+        var zone = map.ZoneOf(map.CellOf(playerRoot.position)).id;
+        if (zone != currentZone)
+        {
+            currentZone = zone;
+            if (zonesVisited.Add(zone)) Event("zone", zone.ToString());
+        }
+        UpdateAim(dt);
+        relay.Tick(dt, playerRoot.position, cam.transform.position, playerRoot.forward);
+        UpdateRelayRig(dt);
     }
 
-    void UpdateRelay(float dt)
+    /// <summary>Walking into a broken window's frame from up to 0.95 m away starts a climb through it.</summary>
+    bool TryStartClimb(Vector3 wish)
     {
-        if (hunterBrain == null || roomStream == null) return;
-        hunterBrain.Tick(dt, playerPos);
-        if (hunter == null) return;
-        if (hunter.gameObject.activeSelf != hunterBrain.Released) hunter.gameObject.SetActive(hunterBrain.Released);
-        if (!hunterBrain.Released) return;
-        var position = hunterBrain.Position;
-        hunter.position = V(position);
-        var facing = playerPos - position;
+        if (wish.sqrMagnitude < .1f) return false;
+        var feet = playerRoot.position;
+        var here = map.CellOf(feet);
+        foreach (var step in new[] { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) })
+        {
+            var next = here + step;
+            if (!map.IsBrokenWindow(here, next)) continue;
+            var center = map.CrossingPoint(here, next);
+            var dir = map.CellCenter(next) - map.CellCenter(here);
+            dir.y = 0f;
+            dir.Normalize();
+            var rel = feet - center;
+            rel.y = 0f;
+            var along = Vector3.Dot(rel, dir);
+            var lateral = (rel - dir * along).magnitude;
+            if (along < -.95f || along > 0f || lateral > .45f || Vector3.Dot(wish.normalized, dir) < .5f) continue;
+            climbFrom = feet;
+            climbTo = center + dir * .75f;
+            climbTo.y = feet.y;
+            climbTime = 0f;
+            FoleyFootstep(Flat(feet), FrontRoomsFoleyActor.Player, FrontRoomsFoleySurface.Carpet, false, .3f);
+            return true;
+        }
+        return false;
+    }
+
+    void Climb(float dt)
+    {
+        climbTime += dt;
+        var t = Mathf.Clamp01(climbTime / ClimbSeconds);
+        var arc = Mathf.Sin(t * Mathf.PI);
+        playerBody.enabled = false;
+        playerRoot.position = Vector3.Lerp(climbFrom, climbTo, t * t * (3f - 2f * t)) + Vector3.up * (arc * ClimbLift);
+        playerBody.enabled = true;
+        cam.transform.localPosition = new Vector3(0f, EyeHeight - arc * ClimbDuck, 0f);
+        fallSpeed = 0f;
+        if (t < 1f) return;
+        climbTime = -1f;
+        cam.transform.localPosition = new Vector3(0f, EyeHeight, 0f);
+    }
+
+    /// <summary>What the crosshair is on: E opens or shuts a door, holding E breaks glass.</summary>
+    void UpdateAim(float dt)
+    {
+        var previous = aimed;
+        aimed = null;
+        prompt = null;
+        aimedHold = false;
+        if (Physics.Raycast(new Ray(cam.transform.position, cam.transform.forward), out var hit, Reach, ~0, QueryTriggerInteraction.Ignore))
+        {
+            prompt = map.Describe(hit.collider, out aimedHold);
+            if (prompt != null) aimed = hit.collider;
+        }
+        if (previous != null && previous != aimed) map.ReleaseHold(previous);
+        if (aimed == null)
+        {
+            holdProgress = 0f;
+            return;
+        }
+        if (!aimedHold)
+        {
+            holdProgress = 0f;
+            if (Input.GetKeyDown(KeyCode.E)) map.Use(aimed);
+            return;
+        }
+        if (Input.GetKey(KeyCode.E))
+        {
+            if (map.Hold(aimed, dt, out holdProgress))
+            {
+                aimed = null;
+                holdProgress = 0f;
+            }
+        }
+        else
+        {
+            map.ReleaseHold(aimed);
+            holdProgress = 0f;
+        }
+    }
+
+    void UpdateRelayRig(float dt)
+    {
+        if (relay == null || hunter == null) return;
+        if (hunter.gameObject.activeSelf != relay.Released) hunter.gameObject.SetActive(relay.Released);
+        if (!relay.Released) return;
+        var position = relay.Position;
+        hunter.position = position;
+        var facing = relay.SeesPlayer ? Flat(playerRoot.position - position) : Flat(relay.Heading);
         if (facing.sqrMagnitude > .0001f) hunter.rotation = Quaternion.Euler(0f, Mathf.Atan2(facing.x, facing.y) * Mathf.Rad2Deg, 0f);
-        var state = hunterBrain.State;
+        var state = relay.State;
         if (hunterRig != null)
         {
             var motion = state == HunterState.Chase ? FrontRoomsRelayRig.MotionState.Run
                 : state == HunterState.BreakDoor ? FrontRoomsRelayRig.MotionState.BreakDoor
                 : state == HunterState.Hunt ? FrontRoomsRelayRig.MotionState.Walk
                 : FrontRoomsRelayRig.MotionState.IdleListen;
-            hunterRig.TickAnimation(dt, motion, hunterBrain.Moving, state == HunterState.Chase ? 1.15f : 1f);
+            hunterRig.TickAnimation(dt, motion, relay.Moving, state == HunterState.Chase ? 1.15f : 1f);
         }
-        if (!hunterBrain.Moving) return;
+        if (!relay.Moving) return;
         hunterStepTime += dt;
         if (hunterStepTime < (state == HunterState.Chase ? .29f : .44f)) return;
         hunterStepTime = 0f;
-        var distance = Vector2.Distance(playerPos, position);
-        var surface = SurfaceOf(roomStream.RuleAt(roomStream.SequenceAtZ(position.y)));
-        FoleyFootstep(position, FrontRoomsFoleyActor.Hunter, surface, state == HunterState.Chase, .36f + Mathf.Clamp01(1f - distance / 24f) * (state == HunterState.Chase ? .64f : .40f));
+        var p = Flat(position);
+        var distance = Vector2.Distance(playerPos, p);
+        FoleyFootstep(p, FrontRoomsFoleyActor.Hunter, FrontRoomsFoleySurface.Carpet, state == HunterState.Chase, .36f + Mathf.Clamp01(1f - distance / 24f) * (state == HunterState.Chase ? .64f : .40f));
     }
 
-    static FrontRoomsFoleySurface SurfaceOf(RoomRule rule)
+    static string ZoneName(ZoneInfo zone)
     {
-        switch (rule)
+        if (zone.theme == ZoneTheme.Office) return "LEVEL 4 / OFFICE";
+        switch (zone.height)
         {
-            case RoomRule.Office: return FrontRoomsFoleySurface.Tile;
-            case RoomRule.Run: return FrontRoomsFoleySurface.Concrete;
-            case RoomRule.Exit: return FrontRoomsFoleySurface.Metal;
-            default: return FrontRoomsFoleySurface.Carpet;
+            case ZoneHeight.Low: return "LEVEL 0 / LOW ROOMS";
+            case ZoneHeight.Tall: return "LEVEL 0 / TALL HALLS";
+            default: return "LEVEL 0 / THE MAZE";
         }
     }
 
@@ -918,6 +1137,18 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         crosshairImage.sprite = LoadHudSprite("UI/HUD_Crosshair");
         crosshairImage.preserveAspect = true;
         crosshairHudGroup = crosshairObject.AddComponent<CanvasGroup>();
+        // Prompt, hold ring and stamina sit under the crosshair and share its fade.
+        promptText = Text(crosshairObject.transform, "Key prompt", new Vector2(.5f, .5f), new Vector2(0f, -44f), new Vector2(720f, 26f), 20, TextAnchor.MiddleCenter);
+        promptText.color = paper;
+        promptText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        holdBar = Panel(crosshairObject.transform, "Hold bar", new Vector2(.5f, .5f), new Vector2(0f, -68f), new Vector2(120f, 4f), new Color(1f, 1f, 1f, .25f));
+        holdBarFill = Panel(holdBar.transform, "Hold bar fill", new Vector2(0f, .5f), Vector2.zero, new Vector2(0f, 4f), accent).GetComponent<Image>();
+        holdBar.SetActive(false);
+        for (var i = 0; i < staminaSegments.Length; i++)
+        {
+            staminaSegments[i] = Panel(crosshairObject.transform, "Stamina " + (i + 1), new Vector2(.5f, .5f), new Vector2(-60f + i * 30f, -92f), new Vector2(24f, 6f), accent).GetComponent<Image>();
+            staminaSegments[i].enabled = false;
+        }
 
         keyPanel = TypographyGroup(g.transform, "HUD / Key", new Vector2(0, 0), new Vector2(72, 118), new Vector2(147, 22));
         keyHudGroup = keyPanel.AddComponent<CanvasGroup>();
@@ -964,6 +1195,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         logoOutline.effectColor = new Color(1f, .86f, .34f, 0f);
         LoadBrandLogo();
         UpdateDisplaySettingsText();
+        // Last child of the canvas, so the noclip white-out covers everything.
+        noclipFade = Panel(g.transform, "Noclip fade", new Vector2(.5f, .5f), Vector2.zero, Vector2.zero, new Color(.97f, .95f, .86f, 0f)).GetComponent<Image>();
+        var fadeRect = noclipFade.rectTransform;
+        fadeRect.anchorMin = Vector2.zero;
+        fadeRect.anchorMax = Vector2.one;
+        fadeRect.offsetMin = fadeRect.offsetMax = Vector2.zero;
+        noclipFade.enabled = false;
     }
     void SetPhase(Phase p)
     {
@@ -1001,28 +1239,37 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             overlayText.enabled = false;
         }
         else overlayText.enabled = true;
-        if (p == Phase.Paused) overlayText.text = "<size=88><b>PAUSED</b></size>\n\n<size=13>WASD  MOVE    MOUSE  LOOK    SHIFT  RUN\nR  RESTART    O  DISPLAY SETTINGS</size>\n\n<color=#F4DF3B><size=20>ESC  RESUME</size></color>";
+        if (p == Phase.Paused) overlayText.text = "<size=88><b>PAUSED</b></size>\n\n<size=13>WASD  MOVE    MOUSE  LOOK    SHIFT  SPRINT    E  DOOR    HOLD E  BREAK GLASS\nR  RESTART    O  DISPLAY SETTINGS</size>\n\n<color=#F4DF3B><size=20>ESC  RESUME</size></color>";
         if (p == Phase.Caught)
-            overlayText.text = "<size=88><b>CAUGHT</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  " + RoomsReached() + " ROOMS</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
+            overlayText.text = "<size=88><b>CAUGHT</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  " + zonesVisited.Count + " ZONES  /  " + keysTaken + " KEYS  /  " + (relay == null ? 0 : relay.DoorsBroken) + " DOORS BROKEN</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
     }
-    void OnApplicationFocus(bool focused) { if (!focused && phase == Phase.Playing) SetPhase(Phase.Paused); }
+    void OnApplicationFocus(bool focused)
+    {
+#if UNITY_EDITOR
+        if (autopilot) return;
+#endif
+        if (!focused && phase == Phase.Playing) SetPhase(Phase.Paused);
+    }
     void Update()
     {
         if (!Application.isPlaying) return;
-        if (phase == Phase.Title && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) RequestTitleStart();
+        if (phase == Phase.Title && noclipTime < 0f && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) RequestTitleStart();
         else if (phase == Phase.Paused && Input.GetKeyDown(KeyCode.O)) ToggleDisplaySettings();
         else if (displaySettingsOpen && Input.GetKeyDown(KeyCode.H)) ApplyHdrMode(!hdrEnabled, true);
         else if (Input.GetKeyDown(KeyCode.Escape) && displaySettingsOpen) ToggleDisplaySettings();
         else if (Input.GetKeyDown(KeyCode.Escape) && (phase == Phase.Playing || phase == Phase.Paused)) SetPhase(phase == Phase.Playing ? Phase.Paused : Phase.Playing);
         if (Input.GetKeyDown(KeyCode.R) && phase != Phase.Playing && phase != Phase.Title) { restart = true; SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
         var dt = Mathf.Min(Time.deltaTime, .1f);
+#if UNITY_EDITOR
+        if (autopilot) AutopilotTick(dt);
+#endif
         if (phase == Phase.Title) UpdateTitleSequence(dt);
-        else if (phase == Phase.Playing && streamedPlay)
+        if (noclipTime >= 0f) UpdateNoclip(dt);
+        if (phase == Phase.Playing && mapPlay)
         {
             elapsed += dt;
             flashTime -= dt;
-            UpdateTitleSequence(dt);
-            UpdateStreamedPlay(dt);
+            UpdateMapPlay(dt);
         }
         UpdateHud();
     }
@@ -1034,26 +1281,39 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         else
             gameplayHudAlpha = 0f;
         ApplyGameplayHudAlpha();
-        if (!streamedPlay) return;
-        var rule = roomStream == null ? RoomRule.Lobby : roomStream.CurrentRule;
-        var roomName = rule == RoomRule.Office ? "LEVEL 4 / OFFICE" : rule == RoomRule.Run ? "LEVEL ! / RUN" : rule == RoomRule.Shift || rule == RoomRule.Lobby ? "LEVEL 0 / PILLAR HALL" : rule == RoomRule.Exit ? "EXIT / COLD THRESHOLD" : "LEVEL 0 / PILLAR HALL";
-        var released = hunterBrain != null && hunterBrain.Released;
-        var threat = !released ? "THREAT  /  QUIET" : hunterBrain.State == HunterState.BreakDoor ? "RELAY  /  BREAKING DOOR" : "RELAY  /  " + hunterBrain.State.ToString().ToUpperInvariant();
-        roomMetaText.text = "";
-        roomText.text = play ? roomName : "";
+        if (!mapPlay || map == null || playerRoot == null) return;
+        var zone = map.ZoneOf(map.CellOf(playerRoot.position));
+        var released = relay != null && relay.Released;
+        var threat = !released ? "" : relay.State == HunterState.BreakDoor ? "RELAY  /  BREAKING DOOR" : "RELAY  /  " + relay.State.ToString().ToUpperInvariant();
+        roomMetaText.text = play ? "ZONE " + zonesVisited.Count.ToString("00") + "  /  " + zone.height.ToString().ToUpperInvariant() + "  " + MapGrid.CeilingHeight(zone.height).ToString("0.0") + " M" : "";
+        roomText.text = play ? ZoneName(zone) : "";
         var showThreat = play && released;
         threatStateText.text = showThreat ? threat : "";
         distanceText.text = showThreat ? "RELAY  " + Mathf.RoundToInt(RelayDistance()) + " M" : "";
         if (crosshairImage != null) crosshairImage.enabled = play;
-        contextText.text = play ? (flashTime > 0f && !string.IsNullOrEmpty(flash) ? flash : CalmHint) : "";
+        // The hint card is timed: the first-run hint, then only flashes.
+        var hint = flashTime > 0f && !string.IsNullOrEmpty(flash) ? flash : elapsed < CalmHintSeconds ? CalmHint : "";
+        contextText.text = play ? hint : "";
+        if (promptText != null) promptText.text = play && prompt != null ? prompt : "";
+        if (holdBar != null)
+        {
+            holdBar.SetActive(play && holdProgress > 0f);
+            holdBarFill.rectTransform.sizeDelta = new Vector2(120f * holdProgress, 4f);
+        }
+        var tired = play && stamina < StaminaSeconds - .01f;
+        for (var i = 0; i < staminaSegments.Length; i++)
+        {
+            if (staminaSegments[i] == null) continue;
+            staminaSegments[i].enabled = tired;
+            staminaSegments[i].color = stamina >= (i + .5f) * (StaminaSeconds / staminaSegments.Length) ? new Color(.957f, .875f, .231f) : new Color(1f, 1f, 1f, .25f);
+        }
         if (roomPanel != null) roomPanel.SetActive(play);
         if (threatPanel != null) threatPanel.SetActive(showThreat);
-        if (keyPanel != null) keyPanel.SetActive(play);
-        if (contextPanel != null) contextPanel.SetActive(play);
+        if (keyPanel != null) keyPanel.SetActive(play && map.HasKeyFor(zone.id));
+        if (contextPanel != null) contextPanel.SetActive(play && hint.Length > 0);
     }
 
-    int RoomsReached() => roomStream == null ? 1 : roomStream.CurrentRoomNumber - startRoom + 1;
-    float RelayDistance() => hunterBrain == null || !hunterBrain.Released ? -1f : Vector2.Distance(playerPos, hunterBrain.Position);
+    float RelayDistance() => relay == null || !relay.Released ? -1f : Vector2.Distance(playerPos, Flat(relay.Position));
     void ApplyGameplayHudAlpha()
     {
         if (roomHudGroup != null) roomHudGroup.alpha = gameplayHudAlpha;
@@ -1074,4 +1334,347 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     }
     static void Log(string message) => Debug.Log("[FrontRooms3D] " + message);
 
+#if UNITY_EDITOR
+    // ---------- Autopilot: a scripted play-through for batch verification ----------
+    // FrontRoomsMainScenePlaytest sets the session flag and enters Play. The
+    // autopilot presses Space, noclips, walks the maze along breadth-first
+    // routes (opening doors on the way), sprints once, captures frames to
+    // Verification/main-autopilot, writes report.json and a done file. It
+    // never runs in a build or in a normal Play session.
+    public const string AutopilotKey = "FrontRooms.Autopilot";
+    /// <summary>Session key for a fixed maze seed on the autopilot (0 = the profile's).</summary>
+    public const string AutopilotSeedKey = "FrontRooms.Autopilot.Seed";
+    int autopilotSeed, autoSkipFrames, autoGhostsSeen;
+    float autoWorstFrameMs;
+    readonly List<string> autoGhostLog = new List<string>();
+    readonly List<float> autoFrameMs = new List<float>();
+    readonly List<string> autoSpikes = new List<string>();
+    public const string AutopilotDoneFile = "Temp/frontrooms-autopilot-done.txt";
+    const float AutopilotPlaySeconds = 75f;
+    static readonly GridCoord[] AutoSteps = { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
+    bool autopilot, autoFinished, autoRelayShot;
+    float autoClock, autoPlayClock, autoNextShot, autoStuckClock, autoDistance, autoReleaseTime = -1f, autoMinRelay = float.MaxValue;
+    int autoShots, autoFrames, autoErrors, autoRoutes, autoDoorsOpened, autoMaxChunks;
+    Vector3 autoLastPosition;
+    Vector2 autoLastFlat;
+    string autoOutDir;
+    readonly List<GridCoord> autoRoute = new List<GridCoord>();
+    int autoRouteIndex;
+    readonly HashSet<GridCoord> autoCells = new HashSet<GridCoord>();
+    readonly List<string> autoErrorLog = new List<string>();
+    readonly List<string> autoStates = new List<string>();
+
+    [Serializable]
+    sealed class AutopilotReport
+    {
+        public string verdict;
+        public int seed;
+        public float playSeconds;
+        public float distanceWalked;
+        public int cellsVisited;
+        public int zonesVisited;
+        public int maxChunksBuilt;
+        public int routes;
+        public int doorsOpened;
+        public int keysTaken;
+        public float relayReleasedAt = -1f;
+        public float closestRelayMetres;
+        public string relayFinalState;
+        public int relayDoorsBroken;
+        public int relayRelays;
+        public int relayGhosts;
+        public bool caught;
+        public float averageFps;
+        public float worstFrameMs;
+        public float p95FrameMs;
+        public float p99FrameMs;
+        public List<string> frameSpikes = new List<string>();
+        public int officeRoomsDressed;
+        public int errors;
+        public List<string> errorLog = new List<string>();
+        public List<string> relayStates = new List<string>();
+        public List<string> relayGhostLog = new List<string>();
+        public List<string> frames = new List<string>();
+    }
+
+    readonly List<string> autoFrameNames = new List<string>();
+
+    void AutopilotStart()
+    {
+        autopilot = UnityEditor.SessionState.GetBool(AutopilotKey, false);
+        autopilotSeed = UnityEditor.SessionState.GetInt(AutopilotSeedKey, 0);
+        if (!autopilot) return;
+        autoOutDir = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", "main-autopilot");
+        Directory.CreateDirectory(autoOutDir);
+        foreach (var old in Directory.GetFiles(autoOutDir, "*.png")) File.Delete(old);
+        Application.logMessageReceived += AutopilotLog;
+        Log("AUTOPILOT on · frames to " + autoOutDir);
+    }
+
+    void AutopilotLog(string condition, string stack, LogType type)
+    {
+        if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
+        autoErrors++;
+        if (autoErrorLog.Count < 20) autoErrorLog.Add(type + ": " + condition);
+    }
+
+    void AutopilotTick(float dt)
+    {
+        if (autoFinished) return;
+        autoClock += dt;
+        autoFrames++;
+        // Streaming and dressing hitches, after the first 2 s of play (the noclip build is hidden).
+        // Frames right after an autopilot capture carry its PNG encode, not the game's cost.
+        if (autoSkipFrames > 0) autoSkipFrames--;
+        else if (mapPlay && autoPlayClock > 2f)
+        {
+            var ms = Time.unscaledDeltaTime * 1000f;
+            autoWorstFrameMs = Mathf.Max(autoWorstFrameMs, ms);
+            autoFrameMs.Add(ms);
+            // Spikes with their time, to tell streaming or dressing hitches from one-off editor shader compiles.
+            if (ms > 50f && autoSpikes.Count < 12)
+                autoSpikes.Add(autoPlayClock.ToString("0.0", CultureInfo.InvariantCulture) + " s: " + ms.ToString("0") + " ms, zone " + ZoneName(map.ZoneOf(map.CellOf(playerRoot.position))) + ", chunks " + map.BuiltChunkCount);
+        }
+        if (relay != null && relay.Ghosts != autoGhostsSeen)
+        {
+            autoGhostsSeen = relay.Ghosts;
+            if (autoGhostLog.Count < 20)
+                autoGhostLog.Add(autoPlayClock.ToString("0.0", CultureInfo.InvariantCulture) + " s " + relay.State + " at " + relay.Position.ToString("F2") + " cell " + map.CellOf(relay.Position) + " · " + relay.DebugSteering + " · " + relay.DebugBlocker);
+        }
+        if (!mapPlay)
+        {
+            if (phase == Phase.Title && noclipTime < 0f && !titleHandoffPending)
+            {
+                if (autoShots == 0 && autoClock > 1.2f) AutopilotCapture("00_title");
+                if (autoClock > 1.8f) RequestTitleStart();
+            }
+            if (autoClock > 40f) AutopilotFinish("never reached the maze");
+            return;
+        }
+        autoPlayClock += dt;
+        if (playerRoot != null)
+        {
+            var flat = Flat(playerRoot.position);
+            if (autoPlayClock > dt) autoDistance += Vector2.Distance(flat, autoLastFlat);
+            autoLastFlat = flat;
+            autoCells.Add(map.CellOf(playerRoot.position));
+        }
+        autoMaxChunks = Mathf.Max(autoMaxChunks, map.BuiltChunkCount);
+        if (relay != null)
+        {
+            if (autoStates.Count == 0 || autoStates[autoStates.Count - 1].EndsWith(relay.State.ToString()) == false)
+                autoStates.Add(autoPlayClock.ToString("0.0", CultureInfo.InvariantCulture) + " s " + relay.State);
+            if (relay.Released)
+            {
+                if (autoReleaseTime < 0f) autoReleaseTime = autoPlayClock;
+                autoMinRelay = Mathf.Min(autoMinRelay, RelayDistance());
+                if (!autoRelayShot && autoPlayClock - autoReleaseTime > 1.5f)
+                {
+                    autoRelayShot = true;
+                    AutopilotCaptureRelay();
+                }
+            }
+        }
+        if (autoPlayClock > .6f && autoPlayClock >= autoNextShot)
+        {
+            autoNextShot = autoPlayClock + 9f;
+            AutopilotCapture((autoShots < 10 ? "0" : "") + autoShots + "_play_" + Mathf.RoundToInt(autoPlayClock) + "s");
+        }
+        if (phase == Phase.Caught) AutopilotFinish("caught");
+        else if (autoPlayClock >= AutopilotPlaySeconds) AutopilotFinish("time");
+    }
+
+    /// <summary>Walk the current route; plan a new far route when it ends or the walk stalls.</summary>
+    void AutopilotSteer(float dt, out Vector2 local, out bool sprint)
+    {
+        local = Vector2.zero;
+        sprint = false;
+        var here = map.CellOf(playerRoot.position);
+        autoStuckClock += dt;
+        if (autoStuckClock > 2.5f)
+        {
+            if ((playerRoot.position - autoLastPosition).magnitude < .4f) autoRouteIndex = autoRoute.Count;
+            autoLastPosition = playerRoot.position;
+            autoStuckClock = 0f;
+        }
+        if (autoRouteIndex >= autoRoute.Count) AutopilotPlan(here);
+        if (autoRouteIndex >= autoRoute.Count) return;
+        var next = autoRoute[autoRouteIndex];
+        if (here == next)
+        {
+            autoRouteIndex++;
+            return;
+        }
+        if (Mathf.Abs(here.x - next.x) + Mathf.Abs(here.y - next.y) != 1)
+        {
+            autoRouteIndex = autoRoute.Count;
+            return;
+        }
+        var passage = map.PassageBetween(here, next);
+        if (passage == FrontRoomsMapWorld.Passage.ClosedDoor)
+        {
+            if (map.TryOpenDoor(here, next)) autoDoorsOpened++;
+        }
+        else if (passage != FrontRoomsMapWorld.Passage.Open)
+        {
+            autoRouteIndex = autoRoute.Count;
+            return;
+        }
+        var target = map.CrossingPoint(here, next) + (map.CellCenter(next) - map.CellCenter(here)).normalized * .45f;
+        var to = target - playerRoot.position;
+        to.y = 0f;
+        var desiredYaw = Mathf.Atan2(to.x, to.z) * Mathf.Rad2Deg;
+        yaw = Mathf.MoveTowardsAngle(yaw, desiredYaw, 300f * dt);
+        pitch = Mathf.MoveTowards(pitch, 0f, 60f * dt);
+        local = new Vector2(0f, Mathf.Abs(Mathf.DeltaAngle(yaw, desiredYaw)) < 45f ? 1f : .15f);
+        sprint = autoPlayClock > 16f && autoPlayClock < 22f;
+    }
+
+    /// <summary>Breadth-first route to a far cell (depth 18–30) through open edges and doors.</summary>
+    void AutopilotPlan(GridCoord from)
+    {
+        autoRoute.Clear();
+        autoRouteIndex = 0;
+        var cameFrom = new Dictionary<GridCoord, GridCoord>();
+        var depth = new Dictionary<GridCoord, int> { [from] = 0 };
+        var queue = new Queue<GridCoord>();
+        queue.Enqueue(from);
+        var far = new List<GridCoord>();
+        while (queue.Count > 0)
+        {
+            var cell = queue.Dequeue();
+            var d = depth[cell];
+            if (d >= 18) far.Add(cell);
+            if (d >= 30) continue;
+            foreach (var step in AutoSteps)
+            {
+                var n = cell + step;
+                if (depth.ContainsKey(n) || !map.IsBuilt(n)) continue;
+                var p = map.PassageBetween(cell, n);
+                if (p == FrontRoomsMapWorld.Passage.Wall || p == FrontRoomsMapWorld.Passage.Glass) continue;
+                depth[n] = d + 1;
+                cameFrom[n] = cell;
+                queue.Enqueue(n);
+            }
+        }
+        if (far.Count == 0)
+            foreach (var pair in depth) if (pair.Value > 0) far.Add(pair.Key);
+        if (far.Count == 0) return;
+        var goal = far[UnityEngine.Random.Range(0, far.Count)];
+        for (var c = goal; c != from; c = cameFrom[c]) autoRoute.Add(c);
+        autoRoute.Reverse();
+        autoRoutes++;
+    }
+
+    void AutopilotCapture(string name)
+    {
+        if (cam == null) return;
+        AutopilotRender(cam, name);
+    }
+
+    /// <summary>A third-person look at the Relay from behind the player's side of it, to check the rig is placed and animating.</summary>
+    void AutopilotCaptureRelay()
+    {
+        if (relay == null || cam == null) return;
+        var go = new GameObject("AUTOPILOT / relay camera");
+        var shot = go.AddComponent<Camera>();
+        shot.CopyFrom(cam);
+        shot.enabled = false;
+        // Stand in the most open of eight directions around the Relay, so the
+        // shot is not taken from inside a wall.
+        var target = relay.Position + Vector3.up * 1.3f;
+        var bestDir = Vector3.back;
+        var bestClear = -1f;
+        for (var i = 0; i < 8; i++)
+        {
+            var dir = Quaternion.Euler(0f, i * 45f, 0f) * Vector3.forward;
+            var clear = Physics.Raycast(target, dir, out var hit, 3.2f, ~0, QueryTriggerInteraction.Ignore) && !hit.collider.transform.IsChildOf(hunter) ? hit.distance : 3.2f;
+            if (clear > bestClear) { bestClear = clear; bestDir = dir; }
+        }
+        go.transform.position = target + bestDir * Mathf.Max(.6f, bestClear - .35f) + Vector3.up * .3f;
+        go.transform.LookAt(target);
+        AutopilotRender(shot, (autoShots < 10 ? "0" : "") + autoShots + "_relay");
+        Destroy(go);
+    }
+
+    void AutopilotRender(Camera source, string name)
+    {
+        autoSkipFrames = 2;
+        var rt = RenderTexture.GetTemporary(1600, 900, 24, RenderTextureFormat.ARGB32);
+        var previous = source.targetTexture;
+        source.targetTexture = rt;
+        source.Render();
+        source.Render();
+        source.targetTexture = previous;
+        var active = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+        tex.Apply();
+        RenderTexture.active = active;
+        RenderTexture.ReleaseTemporary(rt);
+        File.WriteAllBytes(Path.Combine(autoOutDir, name + ".png"), tex.EncodeToPNG());
+        Destroy(tex);
+        autoFrameNames.Add(name + ".png");
+        autoShots++;
+    }
+
+    static float Percentile(List<float> values, float q)
+    {
+        if (values.Count == 0) return 0f;
+        var sorted = new List<float>(values);
+        sorted.Sort();
+        return sorted[Mathf.Clamp(Mathf.CeilToInt(q * sorted.Count) - 1, 0, sorted.Count - 1)];
+    }
+
+    static int CountNamed(Transform root, string name)
+    {
+        var count = 0;
+        foreach (var t in root.GetComponentsInChildren<Transform>(true)) if (t.name == name) count++;
+        return count;
+    }
+
+    void AutopilotFinish(string reason)
+    {
+        if (autoFinished) return;
+        autoFinished = true;
+        var report = new AutopilotReport
+        {
+            seed = runSeed,
+            playSeconds = autoPlayClock,
+            distanceWalked = autoDistance,
+            cellsVisited = autoCells.Count,
+            zonesVisited = zonesVisited.Count,
+            maxChunksBuilt = autoMaxChunks,
+            routes = autoRoutes,
+            doorsOpened = autoDoorsOpened,
+            keysTaken = keysTaken,
+            relayReleasedAt = autoReleaseTime,
+            closestRelayMetres = autoMinRelay == float.MaxValue ? -1f : autoMinRelay,
+            relayFinalState = relay == null ? "none" : relay.State.ToString(),
+            relayDoorsBroken = relay == null ? 0 : relay.DoorsBroken,
+            relayRelays = relay == null ? 0 : relay.Relays,
+            relayGhosts = relay == null ? 0 : relay.Ghosts,
+            caught = phase == Phase.Caught,
+            averageFps = autoClock > 0f ? autoFrames / autoClock : 0f,
+            worstFrameMs = autoWorstFrameMs,
+            p95FrameMs = Percentile(autoFrameMs, .95f),
+            p99FrameMs = Percentile(autoFrameMs, .99f),
+            frameSpikes = autoSpikes,
+            officeRoomsDressed = map == null ? 0 : CountNamed(map.transform, "office dressing"),
+            errors = autoErrors,
+            errorLog = autoErrorLog,
+            relayStates = autoStates,
+            relayGhostLog = autoGhostLog,
+            frames = autoFrameNames,
+        };
+        var reached = mapPlay && autoDistance > 20f && autoCells.Count > 8;
+        report.verdict = (reached && autoErrors == 0 && relay != null && relay.Released ? "PASS" : "FAIL") + " · ended by " + reason;
+        File.WriteAllText(Path.Combine(autoOutDir, "report.json"), JsonUtility.ToJson(report, true));
+        var done = Path.Combine(Directory.GetParent(Application.dataPath).FullName, AutopilotDoneFile);
+        Directory.CreateDirectory(Path.GetDirectoryName(done));
+        File.WriteAllText(done, report.verdict);
+        Log("AUTOPILOT " + report.verdict);
+    }
+#endif
 }

@@ -88,3 +88,6 @@ FusionIntegrityPlayLog*.txt
 # Local package caches and build staging directories
 Packages/*/Library/
 Builds/.BuildStaging/
+
+# Raw CC0 downloads (repacked into Assets/ by the importers)
+Tools/lookdev/cc0_src/

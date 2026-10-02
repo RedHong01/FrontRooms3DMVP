@@ -1,0 +1,16 @@
+{
+    "verdict": "PASS · 60/60 hunts arrived, 0 pass-throughs, 0 frames in architecture, 0 frames in furniture outside a pass-through, 0 exceptions",
+    "seed": 20261001,
+    "boxes": 140,
+    "officeRoomsDressed": 4,
+    "trials": 60,
+    "arrived": 60,
+    "endedBeside": 0,
+    "ghosts": 0,
+    "exceptions": 0,
+    "wallFrames": 0,
+    "furnitureFramesNotGhosting": 0,
+    "averageSeconds": 11.891926765441895,
+    "worstPlanMs": 2.2139999866485597,
+    "failures": []
+}

@@ -1,0 +1,172 @@
+# FrontRooms modular unit spec
+
+The contract between the level (map chat: generator, `FrontRoomsMapWorld`, Relay, future Level Designer) and the art (visual chat: surfaces, lamps, Office kit, furniture pile, Relay rig). Every architectural piece, prop and future room module is measured against it. In code it is `Assets/Scripts/FrontRoomsMap/FrontRoomsModuleUnits.cs` (`ModuleUnits`); the level's tunable numbers live in `Assets/Levels/FrontRoomsLevel0.asset` (`FrontRoomsLevelProfile`).
+
+Status: P0 of the level-design modularization (2026-10-02), reviewed against the code. Sections marked **P0b** are agreed directions that change the picture and land as a joint step.
+
+## 1. Conventions (every unit)
+
+| Rule | Value |
+|---|---|
+| Units | metres, scale 1 (Blender metric, FBX `apply_unit_scale`) |
+| Axes | Y up; a unit's **front faces +Z** (Blender −Y) |
+| Pivot | floor centre: stands on y = 0, centred on x = 0 and z = 0. Depth must be centred too: kits place by `depth / 2`, and `HalfFootprint` is symmetric about the pivot, so trailing parts (cables) inflate the footprint. `Kit_CRTMonitor` is not depth-centred yet (z −0.311..0.213) |
+| Name | `Kit_<PascalCase>` (props), `Prop_<Material>` (slots) |
+| Randomness | seeded per room, never `UnityEngine.Random`, no static state. Same seed, same room: a chunk can be dropped and rebuilt at any time |
+| Parent | everything under the `parent` the map passes; nothing outside the floor rect |
+
+## 2. Grid
+
+| Unit | Value | Why |
+|---|---|---|
+| Cell | **3.0 m** square, one corridor wide | every wall, doorway, door and window spans exactly one cell edge |
+| Chunk | 8 × 8 cells = 24 m | built and dropped around the player |
+| Fine module | **0.6 m** (5 per cell, 40 per chunk) | metric ceiling grid, carpet tiles, fixture footprints |
+| Structural grid | **6 m** (every other cell line) | columns (§3) |
+| Wall | 0.16 m thick, **centred on the cell line** | each side loses 0.08 m |
+| Clear span | `n × 3 − 0.16` | 2 cells 5.84, 3 cells 8.84, 4 cells 11.84, 7 cells 20.84 |
+
+Cell (x, y) covers world X [3x, 3x+3) and Z [3y, 3y+3) in map space. A wall piece that reaches a cell corner runs 0.08 m (`WallHalf`) past it, so a full wall edge is 3.16 m long: two walls in a line overlap by 0.16 m and an L or T junction is a shared 0.16 × 0.16 m square (butt overlap, no mitre). A piece that ends at an opening is not extended. Where two themes meet a wall is two 0.08 m skins, each in its own room's paper.
+
+### Heights
+
+| Zone | Ceiling | Shares |
+|---|---|---|
+| Low | 2.4 m | 35 % |
+| Standard | 2.9 m | 55 % (Office is a theme of Standard only) |
+| Tall | 5.4 m | 10 % |
+
+Floor slab 0.20 below y = 0; ceiling slab 0.16 above the ceiling. An edge wall takes the taller side's height. Props keep **0.05 m** under the ceiling (`CeilingClearance`), except the pile's ceiling-stuck tableau (§6).
+
+## 3. Architecture (map-owned sizes)
+
+The map builds these; the visual chat owns their materials and finish. Sizes change only by agreement: the Relay's crossings, the player capsule and the key rule depend on them.
+
+| Piece | Where | Size | Notes |
+|---|---|---|---|
+| Arch (doorless doorway) | edges inside a zone (and Open/Arch room edges) | 1.1–1.8 m wide, top 2.2 m (0.2 m under a lower ceiling) | off-centre from the edge hash, ≥ 0.2 m of wall to each corner; no trim |
+| Door | Low ↔ Standard borders only | opening 1.0 × 2.1 m, centred | leaf 0.98 × 2.08 × 0.05, hinge on the edge's low-coordinate jamb (south jamb of an east edge, west jamb of a north edge), pivot on the wall centre line, leaf centred in the wall. It opens 95° **away from whoever opens or breaks it** (a pushed door) and stays that way across rebuilds. Trim 0.07 face; the jamb stands 0.02 proud of each wall face; the open leaf's first ~0.1 m passes inside the 0.20 m jamb, so no stop or rebate near the hinge |
+| Window (breakable glass) | any border with a Tall side | 1.4 m wide, sill 0.35, top 2.0, centred | glass 0.03; same trim, no sill trim. Hold E to break; **walk into the broken frame to climb through** (0.6 s, the view ducks under the head) |
+| Column | see below | 0.6 or 0.9 m square, full height | faced in the room's wall material |
+| Bulkhead (Office) | between two Office columns on the same grid line, inside the room | as wide as the column, 0.35 deep under the ceiling | no collision (above every head) |
+
+**Columns (rule v1, map-owned).** Columns stand on cell corners of the world **6 m grid** (both corner indices even), so columns in neighbouring rooms line up like a real building. Only inside carved rooms that are one open space (no later room cuts into them, every cell the same height and theme), at least 3 cells on both sides, never in Low zones, maze corridors or 2-cell rooms. A room that qualifies rolls once per revision (`MapSettings`: Level 0 25 %, Office 75 %, Tall hall 70 %); if it hits, every grid corner inside it gets a column: 3 × 3 → 1, 3 × 4 → 1–2, 4 × 4 → 1–4, Tall 5 × 5 → 4, 5 × 7 → 6, 7 × 7 → 9.
+
+| Room | Column | Finish (visual chat) |
+|---|---|---|
+| Level 0 Standard | 0.6 m | wallpapered, as in the film stills |
+| Office | 0.9 m + bulkheads | drywall (`Office_Wall`), 0.10 m cove base (`CoveBase`), no chair rail |
+| Tall hall | 0.9 m, 5.4 m tall | wallpapered |
+
+Guarantees from the geometry: a column face is ≥ 2.47 m from any wall face or opening and ≥ 1.27 m from every keep-clear strip, and ≥ 1.06 m from every cell-to-cell crossing line (0.75 m is needed), so routes are never blocked. Columns are architecture: they block sight.
+
+Real-world check: a commercial 3070 leaf is 0.914 × 2.134 m in a frame ≈ 1.02 m wide (SDI 111); a two-layer metal-stud wall is ≈ 0.156 m. Our door and wall read true.
+
+## 4. Ceiling, fixtures and light
+
+| Rule | Now | P0b (joint) |
+|---|---|---|
+| Ceiling grid | world repeat 1.219 (2'×4' print; the chosen tile sizes divide the title stream's 256 m rebase) — does not divide 3 m, so walls land mid-tile differently in every cell | **0.6 m grid pitch anchored at world (0, 0)** (see §5 for the texture repeat) |
+| Troffer | 1.2 (X) × 0.6 (Z) × 0.025 lens at the cell centre, its centre 0.02 below the ceiling (`TrofferDrop`, face at H − 0.0325); spot at H − 0.06 | 0.6 (X) × 1.2 (Z) lens filling whole tiles: X [1.2, 1.8], Z [1.2, 2.4] of the cell (centre +0.3 m Z). A real 2×4 troffer in a 2×2 grid with one cross tee left out |
+| Lamp | downward spot 162°/96°, colour (1, .96, .88), range 10 (12 tall), intensity 5 / Office 5.5 / ×1.6 tall | light follows the lens centre |
+| Budget | lights on within `lightRadius` 16 m (3 m fade); 1 lamp in 3 may cast Soft shadows within `shadowRadius` 9 m | both in the level profile |
+
+Lamp intensity, colour, flicker odds and lens materials are the visual chat's numbers. The map chat owns placement, count and the budget radii. Office troffers keep clear of bulkheads (the lens edge is ≥ 0.9 m from any grid line).
+
+## 5. Surfaces (world-projected tile sizes)
+
+Room surfaces are world-projected (`FrontRooms/Surface`), so the map's mesh-UV repeats only reach fallback materials. Every number here is the material's **world repeat** (`_TileSize`), which may hold several physical tiles: `Office_CarpetTile`, `Office_Ceiling2x2` and `Ceiling_Fissured` hold 2 tiles across one repeat today.
+
+- **Must divide 3 m:** the ceiling grid **pitch** (tile size): 0.3, 0.5, 0.6, 0.75, 1.0, 1.5 or 3.0. The repeat may be pitch × tiles per texture. A 2 × 2-tile texture at 1.2 m keeps a 0.6 m grid on every cell line but its pattern shifts by one tile from cell to cell; for identical cells use a 1-tile texture (repeat 0.6) or a 5 × 5-tile one (repeat 3.0).
+- **Should divide 3 m** (identical wall modules in the designer preview): wallpaper horizontal repeat (27" roll 0.686 → **0.75**), Office wall (1.219 → 1.0 or 1.5), carpet (Level 0 1.0 ✓; Office 24" tiles → 0.6 m tiles, repeat 1.2 with the current 2 × 2 texture; a quarter-turned install repeats every 2 tiles anyway).
+- **Free:** vertical repeats (the paper is cut at the ceiling, as real paper is), prop materials (mesh UV).
+- **Title stream rebase:** `RebaseIfNeeded` shifts the world in Z by whole multiples of `RebaseThreshold`, which must therefore be a multiple of every world-projected period along Z: the horizontal tiles, the 24 m chunk and the shader's macro-wear periods (8 m and 12.8 m). With the sizes above use **192 m** (or 768 m) instead of 256 m, changed in the same step as `GridX`/`GridZ`, `Roll`/`FourFoot` and the shader comment.
+- **Ceiling grime:** `_CeilingHeight` is 2.9 on every material and the band is `smoothstep(1.3, 2.9, y)`. Low zones (2.4) reach only ~77 % of it at their ceiling line; Tall zones (5.4) are fully grimed from 2.9 m up instead of showing a band under the ceiling. P0b: the map splits renderers by ceiling height and sets `_CeilingHeight` per renderer with a `MaterialPropertyBlock`, once the visual chat confirms the property.
+
+## 6. Rooms and the dressing contract
+
+The generator carves rooms (`CellRect`) on top of the maze: Low 2 × 2–3 cells, Standard 2 × 2–4, Tall 1 × 5–7. A later room wins where two overlap, and the earlier rect keeps maze edges (walls, arches) along the overlap. **Only rooms that are one open space are dressed**: no later room cuts into them (`MapChunk.RoomIntact`) and every cell has the same height and theme (`FrontRoomsMapGenerator.Uniform`). Office rooms are Standard height only, so 6, 9 or 12 m a side. Rooms are dressed one per frame, after their chunk's geometry, since chunks build ≥ 24 m away.
+
+`FrontRoomsOfficeKit.Dress(Transform parent, Rect floorXZ, float ceilingHeight, int seed, Rect[] keepClear, Rect[] obstacles)` (the map binds this one by parameter types, else the 5-argument one):
+
+- `floorXZ` is in chunk-local metres and **cell-aligned**: its edges are wall centre lines; the wall face is 0.08 m inside (`WallHalf`). Wall units sit `depth / 2 + 0.03` from the **face**.
+- `keepClear` holds one strip per passable boundary edge (open, doorway, door, window), along the inside of that cell edge, spanning the full 3 m: **1.0 m** deep, **1.2 m** at doors whichever way the leaf swings. Boundary stretches that no strip touches are wall.
+- `obstacles` are the room's columns (footprints in chunk-local metres): occupied, with the kit's own 0.45 m reserved halo. The 6-argument path never places columns itself.
+- Dress keeps every strip connected to every other through aisles **≥ 1.0 m** (`MinAisle`; player capsule 0.6). The design target between pods is the 1.6 m chase lane (kit to enforce pod-to-pod spacing, not only halos).
+- Nothing taller than `ceilingHeight − 0.05`. Nothing on a strip, with or without a collider.
+
+`FrontRoomsFurniturePile.Build(Transform parent, Vector3 centerLocal, float radius, float ceilingHeight, int seed)`: halls of at least 4 × 4 cells; chance 0.35 (≥ 0.6 in Tall). The centre is the room centre, or with columns the centre of the 6 m bay nearest it; the radius is `min(3.2, 0.22 × shorter side)` and shrinks so the pile plus a 0.6 m ring stays off columns and walls (no pile under 1.2 m). Upright pieces keep under `min(0.95 H, H − 0.06)`; the ceiling-stuck tableau deliberately sinks up to 0.12 m into the 0.16 m ceiling slab.
+
+### What fits (aisle 1.6 m, the Office chase lane)
+
+Footprints from the visual chat's Blender kit (2026-10-02), with real catalog sizes for reference:
+
+| Unit | Footprint W × D × H | Real reference |
+|---|---|---|
+| Desk worksurface | 1.524 × 0.762, top 0.74 | 30 × 60 in, 28.5–30 in high (BIFMA G1 / ANSI-HFES) |
+| Pedestal | 0.38 × 0.56 × 0.71 | |
+| Cubicle panel | `Kit_CubiclePanel` 1.524 W and `Kit_CubiclePanelShort` 0.762 W (narrow, not low), both 0.065 thick × 1.57 H | 53–54 in = 1.35 (low), 65 in = 1.65 (standard). Proposed: a 1.65 m variant, which would block the Relay's sight (§7) |
+| Station | 1.524 × 1.70 (desk + 0.9 chair zone) | chair pull-back 0.91 min |
+| Pod 2 × 2 back-to-back | 3.10 × 3.45 | |
+| Task chair | 0.66 base, seat 0.45, back 0.95 | 26–28 in base, seat 15–22 in |
+| Vertical file (4 drawer) | 0.38 × 0.66 × 1.32 | HON 310: 0.381 × 0.673 × 1.321 |
+| Lateral file (planned, no `Kit_` id yet) | 0.91 × 0.46 × 1.32 | HON Brigade: 0.914 × 0.457 × 1.334 |
+| Vending | 0.90 × 0.90 × 1.83 | |
+| Water cooler | 0.32 × 0.32 × 1.37 (bottle top) | |
+| Copier | 0.62 × 0.68 × 1.15 | |
+| Interior window (decor) | 2.44 × 1.22, sill 0.90 target (code places 0.95), no collider | |
+
+| Room side | Clear | Single row on a wall (1.70 + 1.6) | Back-to-back pod free-standing (1.6 + 3.45 + 1.6) | Pod with one long side on a wall | Two-column pod across (3.10) |
+|---|---|---|---|---|---|
+| 2 cells | 5.84 | ✓ | ✗ (6.65) | ✓ (5.05) | end on a wall (4.70) |
+| 3 cells | 8.84 | ✓ | ✓ | ✓ | ✓ free-standing (6.30) |
+| 4 cells | 11.84 | ✓ | ✓ | ✓ | ✓ |
+
+Wall units need a 0.5 m service zone in front. The decor window stays inside one cell edge (never across a corner junction) and only on wall stretches no strip touches.
+
+## 7. Collision, navigation and sight
+
+- Props: authored **box colliders** per prop (sidecar `colliders[]`); no mesh colliders; desk-top items none.
+- Player: `CharacterController` 1.75 × r 0.3, step 0.3, eye 1.62. Walk 3.2, run 5.5 m/s for 5 s.
+- Relay: a body of r 0.3, tested between 0.4 and 1.95 m (it fits a door and a broken window). It routes cell to cell on the map; inside a leg it walks straight while the body fits the whole way and otherwise plans a detour on a 0.25 m grid over the cells around it (furniture, columns, open door leaves). With no way round furniture it passes through it, still on a route that keeps out of walls. A hunt that ends in furniture stops beside it; it never spawns overlapping anything. Checked by **FrontRooms → Map → Test Relay navigation** (60 hunts among random boxes). **The rig must fit a 1.0 × 2.1 m door and a 2.4 m ceiling** (≤ 2.05 m tall while walking, or it stoops).
+- Sight is a ray between eyes at 1.60 (Relay) and 1.62 (player). Desks and the current 1.57 m panels don't block it; walls, shut doors, columns and anything with a collider top ≥ 1.65 m do.
+
+## 8. Streaming and performance
+
+The map builds one chunk per frame, nearest first, and furnishes one room per frame after that. Budgets per dressed room:
+
+| | Office rooms | Other rooms |
+|---|---|---|
+| LOD0 triangles | ≤ 120 k (LOD1 ≈ 45 % from ~8 m) | ≤ 60 k |
+| Renderers / colliders | ≤ 120 / ≤ 40 | ≤ 120 / ≤ 40 |
+| Dress time | ≤ 3 ms | ≤ 3 ms |
+
+Props ≤ 0.3 m cast no shadows. Acceptance is the autopilot (`FrontRoomsMainScenePlaytest`, with `-autopilotSeed N` for a fixed maze; seeds 2554 and 20388 spawn in an Office zone): average ≥ 55 fps and `worstFrameMs` ≤ 50 after the first 2 s. Baseline without furniture: 58–59 fps.
+
+## 9. For the Level Designer (P1 onward)
+
+A `RoomModule` will be authored in these units, so kit assets need to be placeable by id:
+
+- footprint in cells (≤ 8 × 8: a room never crosses a chunk), ceiling class, theme;
+- per perimeter edge: Wall / Open / Arch (the map still decides door or window on zone borders); columns follow §3 unless the module overrides them;
+- props by `Kit_` id at (x, z) metres from the room's min corner, snapped to 0.05 m, yaw in 90° steps (15° for chairs and piles);
+- fill rules ("3–5 desks along walls") on top of fixed placements.
+
+To support that, the sidecar should grow: `footprint` (W × D at the floor, depth-centred), `placement` (Floor / Wall / DeskTop / Ceiling), `service` (clear depth in front), `maxCeilingClearance`. `frontAxis` is written by Blender but dropped by `Info`; `pile` is read.
+
+## 10. Ownership and changes
+
+| Area | Owner | Files |
+|---|---|---|
+| Grid, openings, columns and bulkheads, room carving, keep-clear, dressing order, budgets, Relay body and navigation | map chat | `FrontRoomsMap/*`, `FrontRooms3DGame.cs`, `Editor/FrontRoomsMap/*`, `Assets/Levels/*`, this spec |
+| Surfaces, tile sizes, lamp look, lens, finishes, Office kit, pile, Relay rig, title stream | visual chat | `Rendering/*`, `Office/*`, `FrontRoomsRoomStream.cs`, `Tools/Blender`, `Tools/lookdev` |
+
+A change to a number in §2–§4 or §6–§7 is agreed in both chats first, then `ModuleUnits` and this file change together.
+
+## 11. Known gaps (2026-10-02)
+
+- In the main project only `Kit_CRTMonitor` is built so far; the Office kit (~29 assets) is in the visual chat's copy, in review.
+- Two office kits exist: the title stream still uses `FrontRoomsOfficeFurniture` (fronts face −Z, different sizes). The map uses `FrontRoomsOfficeKit` only.
+- Stale docs: `LIGHTING_SPEC.md`, `BACKROOMS_VISUAL_SPEC.md`, `WALLPAPER_UV.md`, `LEVELS_AND_ENTITIES.md`, `FRONTROOMS_MAZE_LEVEL_DESIGN.md` describe the title stream or older prototypes. This spec and `MAP_GENERATION.md` describe the game.
+
+Sources for real-world sizes: Armstrong Cortega and Rockfon T24 data sheets (ceiling grid), Lithonia 2GTL4 / BLT (troffers), SDI 111 (door frames), US Access Board ADA ch. 4 (clear widths), UW EHS ergonomics guide citing BIFMA G1 and ANSI/HFES 100 (desks, chairs), HON catalog (files), officefurniture2go guides (panels, aisles).

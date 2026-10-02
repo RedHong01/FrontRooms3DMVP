@@ -1,0 +1,141 @@
+"""Wooden stringer pallet, North-American 48 x 40 in. type (the pallet under
+the plywood crate at the base of the tall pile in A24 "Backrooms" Still B).
+
+Real-world reference: GMA-style 4-way notched stringer pallet, rough-sawn
+pine/mixed softwood. 7 top deck boards (two wide lead boards, five narrow)
+nailed across 3 stringers that carry two forklift notches each, 3 bottom
+boards (ends + centre, the end ones chamfered on their inner edge for pallet
+-jack wheels). Boards are slightly irregular: widths, gaps, tiny twists and
+nail heads, as a used pallet is; the -X lead board has a corner broken off,
+showing the stringer end and a bent nail. Every deck board seats on (or a
+hair into) the stringers, so the deck top never rises above 0.144 m: the
+pile stacks the crate on the OBB top.
+Grain follows each board (_pilecases_grain), each board on its own patch.
+
+Size: 1.20 m (X, stringer length) x 1.00 m (Y, deck board length) x 0.144 m.
+Symmetric; -Y is the side a forklift would see the deck board ends from.
+"""
+
+import math
+import random
+
+import _pilecases_grain as grain
+
+NAME = "Kit_Pallet"
+
+PINE = "Prop_PinePallet"
+NAIL = "Prop_SteelBlack"
+
+L, Wd, H = 1.20, 1.00, 0.144
+BOT_T = 0.020
+STR_H = 0.105
+STR_T = 0.038
+TOP_T = 0.019
+STRINGERS_Y = (-Wd / 2 + STR_T / 2, 0.0, Wd / 2 - STR_T / 2)
+
+
+def _nail(kit, x, y, z, rng):
+    kit.cylinder(0.0042, 0.0012, (x + rng.uniform(-0.002, 0.002), y + rng.uniform(-0.002, 0.002), z),
+                 NAIL, verts=8, bevel=0.0, name="nail head")
+
+
+def build(kit):
+    rng = random.Random(4840)
+    z_str0 = BOT_T
+    z_top0 = BOT_T + STR_H
+
+    # --- Stringers with two rounded forklift notches each ------------------
+    def notch(a, b, depth=0.036):
+        return [(a, 0.0), (a + 0.022, depth * 0.72), (a + 0.045, depth), (b - 0.045, depth),
+                (b - 0.022, depth * 0.72), (b, 0.0)]
+    outline = [(-L / 2, 0.0)] + notch(-0.405, -0.145) + notch(0.145, 0.405) + [(L / 2, 0.0), (L / 2, STR_H), (-L / 2, STR_H)]
+    for k, sy in enumerate(STRINGERS_Y):
+        kit.extrude(outline, STR_T, (rng.uniform(-0.004, 0.004), sy, z_str0), PINE, plane="xz",
+                    bevel=0.0025, segments=1, name="stringer")
+
+    # --- Top deck: 7 boards along Y, irregular widths and gaps -------------
+    widths = [0.140, 0.092, 0.088, 0.096, 0.086, 0.094, 0.138]
+    total_gap = L - sum(widths)
+    gaps = [rng.uniform(0.85, 1.15) for _ in range(6)]
+    s = sum(gaps)
+    gaps = [g / s * total_gap for g in gaps]
+    x = -L / 2
+    for i, w in enumerate(widths):
+        cx = x + w / 2
+        twist = rng.uniform(-0.5, 0.5)
+        yaw = rng.uniform(-0.45, 0.45)          # board ends wander ~4 mm
+        t = TOP_T + rng.uniform(-0.0025, 0.0)
+        # The twist lifts one long edge by (w/2) sin(twist); push the board
+        # down by that much so no edge stands above the stringers.
+        lift = (w / 2) * math.sin(math.radians(abs(twist)))
+        off = rng.uniform(-0.0008, 0.0) - lift
+        dz = t - TOP_T + off
+        dy = rng.uniform(-0.004, 0.004)
+        length = Wd - rng.uniform(0.0, 0.008)
+        loc = (cx, dy, z_top0 + t / 2 + off)
+        if i == 0:
+            # Lead board with its -X/-Y corner split off along the grain.
+            hw, hl = w / 2, length / 2
+            # The split runs up the grain from the end, then snaps across.
+            outline = [(-hw + 0.061, -hl), (hw, -hl), (hw, hl), (-hw, hl), (-hw, -hl + 0.128),
+                       (-hw + 0.012, -hl + 0.113), (-hw + 0.021, -hl + 0.106), (-hw + 0.032, -hl + 0.099),
+                       (-hw + 0.045, -hl + 0.089), (-hw + 0.050, -hl + 0.071), (-hw + 0.056, -hl + 0.062),
+                       (-hw + 0.057, -hl + 0.036), (-hw + 0.062, -hl + 0.024), (-hw + 0.059, -hl + 0.011)]
+            kit.extrude(outline, t, loc, PINE, plane="xy", rot=(0, twist, yaw), bevel=0.0025, segments=1,
+                        name="top deck board")
+        else:
+            kit.box((w, length, t), loc, PINE, rot=(0, twist, yaw), bevel=0.0025, segments=1, name="top deck board")
+        for sy in STRINGERS_Y:
+            n = 3 if w > 0.12 else 2
+            for k in range(n):
+                nx = cx + (k - (n - 1) / 2) * (w * 0.55 / max(n - 1, 1))
+                if i == 0 and sy < 0 and k == 0:
+                    # Under the broken corner: the board split off its nail,
+                    # which stays in the stringer, bent over.
+                    bx, by = cx - w / 2 + 0.024, sy + 0.003
+                    kit.tube([(bx, by, z_top0 - 0.004), (bx, by, z_top0 + 0.009), (bx + 0.003, by - 0.001, z_top0 + 0.0125),
+                              (bx + 0.011, by - 0.003, z_top0 + 0.0145)], 0.0014, NAIL, verts=6, name="bent nail")
+                    continue
+                _nail(kit, nx, sy + rng.uniform(-0.008, 0.008), z_top0 + TOP_T + dz, rng)
+        if i < 6:
+            x += w + gaps[i]
+
+    # --- Bottom deck: ends (inner edge chamfered) and centre --------------
+    bw = 0.135
+    def bottom_board(cx, chamfer_side):
+        hw = bw / 2
+        c = 0.012
+        if chamfer_side > 0:      # chamfer on the +X top edge
+            o = [(-hw, 0), (hw, 0), (hw, BOT_T - c), (hw - c * 1.6, BOT_T), (-hw, BOT_T)]
+        elif chamfer_side < 0:
+            o = [(-hw, 0), (hw, 0), (hw, BOT_T), (-hw + c * 1.6, BOT_T), (-hw, BOT_T - c)]
+        else:
+            o = [(-hw, 0), (hw, 0), (hw, BOT_T), (-hw, BOT_T)]
+        # chamfer is on the bottom (entry) edge, so flip the profile upside down
+        o = [(u, BOT_T - v) for u, v in reversed(o)]
+        # boards ride 0.3 mm up on their nail heads, so the heads (not a
+        # coplanar face) touch z = 0
+        kit.extrude(o, Wd + rng.uniform(-0.004, 0.0), (cx, rng.uniform(-0.004, 0.004), 0.0003), PINE, plane="xz",
+                    rot=(0, 0, rng.uniform(-0.3, 0.3)), bevel=0.002, segments=1, name="bottom board")
+        for sy in STRINGERS_Y:
+            for k in (-1, 1):
+                kit.box((0.0084, 0.0084, 0.0012), (cx + k * bw * 0.25, sy + rng.uniform(-0.006, 0.006), 0.0006),
+                        NAIL, rot=(0, 0, 45), bevel=0.0, name="nail head under")
+    bottom_board(-L / 2 + bw / 2, +1)
+    bottom_board(0.0, 0)
+    bottom_board(L / 2 - bw / 2, -1)
+
+    # --- Metadata --------------------------------------------------------
+    kit.support("deck", (0, 0, H), (L, Wd))
+    kit.anchor("deck", (0, 0, H))
+    kit.collider((0, 0, H / 2), (L, Wd, H))
+    kit.tag("storage", "pallet", "pile", "pile_piece")
+    kit.pile("Crate", mass=2, palette="storage", states=["Upright", "Side"])
+
+    # Grain along every board and stringer; each on its own patch of texture
+    # so the deck does not read as one sheet cut into strips.
+    # (DoorVeneer is not seamless along V and a 1.0 m board is longer than
+    # the 0.8 m pine tile, so put each board's one seam over the centre
+    # stringer's nail line, and each stringer's at x = 0 under a deck board.)
+    grain.scatter_offsets(kit, seed=4841, slots=(PINE,), tile=(0.4, 0.8), seam_at=0.0)
+    grain.install(kit)

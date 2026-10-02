@@ -20,7 +20,8 @@ public sealed class FrontRoomsMapDebugWindow : EditorWindow
     static readonly Color ChunkLine = new Color(0f, 0f, 0f, .6f);
     static readonly Color HoverColor = new Color(.957f, .875f, .231f, .35f);
 
-    [SerializeField] MapSettings settings = new MapSettings();
+    [SerializeField] FrontRoomsLevelProfile profile;
+    [SerializeField] int previewSeed = 20261001;
     [SerializeField] int radius = 5;
     [SerializeField] float cellPixels = 10f;
     [SerializeField] Vector2 pan;
@@ -28,7 +29,7 @@ public sealed class FrontRoomsMapDebugWindow : EditorWindow
     [SerializeField] bool showSettings;
 
     FrontRoomsMapCache cache;
-    SerializedObject serialized;
+    SerializedObject profileObject;
     GridCoord hoverCell;
     bool hasHover;
     string status = "";
@@ -43,25 +44,43 @@ public sealed class FrontRoomsMapDebugWindow : EditorWindow
     void OnEnable()
     {
         wantsMouseMove = true;
-        serialized = new SerializedObject(this);
+        Undo.undoRedoPerformed += OnUndoRedo;
         Rebuild();
     }
 
-    void Rebuild() => cache = new FrontRoomsMapCache(settings);
+    void OnDisable() => Undo.undoRedoPerformed -= OnUndoRedo;
+
+    void OnUndoRedo()
+    {
+        Rebuild();
+        Repaint();
+    }
+
+    /// <summary>The level profile being previewed: the one picked here, else the project's.</summary>
+    FrontRoomsLevelProfile Profile
+    {
+        get
+        {
+            if (profile == null) profile = FrontRoomsLevelProfiles.Resolve();
+            return profile;
+        }
+    }
+
+    // The preview seed is this window's own; it is never written to the profile.
+    void Rebuild() => cache = new FrontRoomsMapCache(Profile.Generation(previewSeed));
 
     void OnGUI()
     {
         if (cache == null) Rebuild();
-        serialized.Update();
         var rebuild = false;
         using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
         {
             GUILayout.Label("Seed", GUILayout.Width(32));
-            var seed = EditorGUILayout.DelayedIntField(settings.seed, EditorStyles.toolbarTextField, GUILayout.Width(96));
-            if (seed != settings.seed) { settings.seed = seed; rebuild = true; }
+            var seed = EditorGUILayout.DelayedIntField(previewSeed, EditorStyles.toolbarTextField, GUILayout.Width(96));
+            if (seed != previewSeed) { previewSeed = seed; rebuild = true; }
             if (GUILayout.Button("New seed", EditorStyles.toolbarButton, GUILayout.Width(70)))
             {
-                settings.seed = Random.Range(int.MinValue, int.MaxValue);
+                previewSeed = Random.Range(int.MinValue, int.MaxValue);
                 rebuild = true;
             }
             GUILayout.Space(8f);
@@ -78,9 +97,13 @@ public sealed class FrontRoomsMapDebugWindow : EditorWindow
         }
         if (showSettings)
         {
+            var picked = (FrontRoomsLevelProfile)EditorGUILayout.ObjectField("Level profile", Profile, typeof(FrontRoomsLevelProfile), false);
+            if (picked != profile) { profile = picked; profileObject = null; rebuild = true; }
+            if (profileObject == null || profileObject.targetObject != Profile) profileObject = new SerializedObject(Profile);
+            profileObject.Update();
             EditorGUI.BeginChangeCheck();
-            EditorGUILayout.PropertyField(serialized.FindProperty("settings"), true);
-            if (EditorGUI.EndChangeCheck()) { serialized.ApplyModifiedProperties(); rebuild = true; }
+            EditorGUILayout.PropertyField(profileObject.FindProperty("generation"), new GUIContent("Generation (edits the profile asset)"), true);
+            if (EditorGUI.EndChangeCheck()) { profileObject.ApplyModifiedProperties(); rebuild = true; }
         }
         if (rebuild) Rebuild();
 

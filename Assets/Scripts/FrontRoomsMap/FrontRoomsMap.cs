@@ -104,8 +104,14 @@ namespace FrontRooms.Map
         // required connection or this roll opens it as a door or window.
         public float borderOpening = .15f;
 
-        // Columns are rare in the Backrooms: only tall halls get a few.
-        public float lowPillar = 0f, standardPillar = 0f, tallPillar = .06f;
+        // Columns stand on a world 6 m structural grid (cell corners whose
+        // indices are both even), only inside carved rooms of at least
+        // columnMinRoomCells on both sides, never in Low zones or corridors.
+        // A room that qualifies rolls once; if it hits, every grid corner
+        // inside it gets a column. Level 0 rooms take 0.6 m columns; Office
+        // rooms and tall halls 0.9 m, Office ones joined by bulkheads.
+        public int columnMinRoomCells = 3;
+        public float level0ColumnRooms = .25f, officeColumnRooms = .75f, tallColumnHalls = .7f;
 
         // Share of standard-height zones dressed as a Level 4 office.
         public float officeShare = .3f;
@@ -128,8 +134,8 @@ namespace FrontRooms.Map
     }
 
     /// <summary>
-    /// One generated chunk. East[i + j*4] separates local cell (i, j) from
-    /// (i+1, j); North[i + j*4] separates (i, j) from (i, j+1). Index 3 of a
+    /// One generated chunk. East[i + j*8] separates local cell (i, j) from
+    /// (i+1, j); North[i + j*8] separates (i, j) from (i, j+1). Index 7 of a
     /// row or column is the chunk border, and West/South repeat the borders
     /// owned by the neighbours so a chunk can be drawn or walked on its own.
     /// </summary>
@@ -144,9 +150,15 @@ namespace FrontRooms.Map
         public EdgeKind[] north = new EdgeKind[MapGrid.CellsPerChunk];
         public EdgeKind[] west = new EdgeKind[MapGrid.ChunkCells];
         public EdgeKind[] south = new EdgeKind[MapGrid.ChunkCells];
-        // Corners (0..4, 0..4), index i + j*5. Corners on the chunk border are
-        // shared with the neighbours and never change with the revision.
+        // Corners (0..8, 0..8), index i + j*9; corner (i, j) is the south-west
+        // corner of local cell (i, j). Columns only stand strictly inside
+        // rooms, so border corners never carry one.
         public bool[] pillar = new bool[(MapGrid.ChunkCells + 1) * (MapGrid.ChunkCells + 1)];
+        // Per corner, for columns: ColumnLarge (0.9 m, else 0.6 m), and
+        // ColumnBeamEast / ColumnBeamNorth for a bulkhead to the next column
+        // on the 6 m grid (two corners on).
+        public byte[] pillarStyle = new byte[(MapGrid.ChunkCells + 1) * (MapGrid.ChunkCells + 1)];
+        public const byte ColumnLarge = 1, ColumnBeamEast = 2, ColumnBeamNorth = 4;
         // The key of the zone whose site lies in this chunk. Tall zones are left
         // through windows and carry no key.
         public bool hasKey;
@@ -157,13 +169,25 @@ namespace FrontRooms.Map
         public CellRect[] rooms = new CellRect[0];
 
         public GridCoord Origin => MapGrid.ChunkOrigin(coord);
+
+        /// <summary>
+        /// True when no later room overlaps room r. Later rooms win overlaps,
+        /// so only such a room is one open rectangle: an earlier rect keeps
+        /// maze edges (walls, arches) where a later one cut into it.
+        /// </summary>
+        public bool RoomIntact(int r)
+        {
+            for (var k = r + 1; k < rooms.Length; k++)
+                if (rooms[r].Overlaps(rooms[k])) return false;
+            return true;
+        }
         public GridCoord Cell(int i, int j) => new GridCoord(coord.x * MapGrid.ChunkCells + i, coord.y * MapGrid.ChunkCells + j);
     }
 
     static class MapHash
     {
         public const int SiteX = 11, SiteZ = 13, Height = 17, EdgeEast = 23, EdgeNorth = 29,
-            GateEast = 31, GateNorth = 37, Tree = 41, Pillar = 43, ZoneTint = 47, Rooms = 53, Theme = 59;
+            GateEast = 31, GateNorth = 37, Tree = 41, Pillar = 43, ZoneTint = 47, Rooms = 53, Theme = 59, Columns = 61;
 
         static uint Mix(uint h)
         {
@@ -194,10 +218,10 @@ namespace FrontRooms.Map
 
     /// <summary>
     /// Deterministic, infinite map. Everything that two chunks share (zones,
-    /// heights, border edges, border pillars) is a pure function of the seed
-    /// and world coordinates, so neighbours agree no matter which is built
-    /// first. A chunk's revision only reshuffles its own interior walls and
-    /// pillars, which is how a dropped chunk can come back shifted.
+    /// heights, border edges) is a pure function of the seed and world
+    /// coordinates, so neighbours agree no matter which is built first. A
+    /// chunk's revision only reshuffles its own interior walls, rooms and
+    /// columns, which is how a dropped chunk can come back shifted.
     /// </summary>
     public sealed class FrontRoomsMapGenerator
     {
@@ -323,26 +347,55 @@ namespace FrontRooms.Map
             max = Math.Max(min, Math.Min(max, MapGrid.ChunkCells));
         }
 
-        float PillarChance(ZoneHeight height) => height == ZoneHeight.Low ? settings.lowPillar
-            : height == ZoneHeight.Tall ? settings.tallPillar : settings.standardPillar;
+        /// <summary>
+        /// True when every cell of the rect has the same ceiling height and
+        /// theme. A room may straddle two zones; if they match it is still
+        /// one space (the edges between them resolve as open room edges).
+        /// </summary>
+        public bool Uniform(MapChunk chunk, CellRect rect)
+        {
+            var first = ZoneOf(chunk.Cell(rect.x, rect.y));
+            for (var y = rect.y; y < rect.y + rect.h; y++)
+            for (var x = rect.x; x < rect.x + rect.w; x++)
+            {
+                var zone = ZoneOf(chunk.Cell(x, y));
+                if (zone.height != first.height || zone.theme != first.theme) return false;
+            }
+            return true;
+        }
+
+        /// <summary>True for a cell corner on the 6 m structural grid (both world indices even).</summary>
+        public static bool OnColumnGrid(GridCoord corner) => (corner.x & 1) == 0 && (corner.y & 1) == 0;
 
         /// <summary>
-        /// Whether a pillar stands on corner (x, y), the shared corner of cells
-        /// (x-1..x, y-1..y). The revision only applies to corners inside the
-        /// chunk; corners on a border must match the neighbour.
+        /// Columns of one chunk: every 6 m grid corner strictly inside a room
+        /// that qualifies and wins its roll. See MapSettings for the rule.
         /// </summary>
-        public bool PillarAt(GridCoord corner, int revision = 0)
+        void PlaceColumns(MapChunk chunk, int revision)
         {
-            var h = HeightOf(corner);
-            if (HeightOf(new GridCoord(corner.x - 1, corner.y)) != h) return false;
-            if (HeightOf(new GridCoord(corner.x, corner.y - 1)) != h) return false;
-            if (HeightOf(new GridCoord(corner.x - 1, corner.y - 1)) != h) return false;
-            var chunk = MapGrid.ChunkOf(corner);
-            var lx = corner.x - chunk.x * MapGrid.ChunkCells;
-            var ly = corner.y - chunk.y * MapGrid.ChunkCells;
-            var interior = lx > 0 && ly > 0;
-            var roll = MapHash.Unit(MapHash.Hash(settings.seed, corner.x, corner.y, MapHash.Pillar, interior ? revision : 0));
-            return roll < PillarChance(h);
+            const int n = MapGrid.ChunkCells;
+            for (var r = 0; r < chunk.rooms.Length; r++)
+            {
+                var rect = chunk.rooms[r];
+                if (rect.w < settings.columnMinRoomCells || rect.h < settings.columnMinRoomCells || !chunk.RoomIntact(r)) continue;
+                var zone = ZoneOf(chunk.Cell(rect.x, rect.y));
+                if (zone.height == ZoneHeight.Low || !Uniform(chunk, rect)) continue;
+                var office = zone.theme == ZoneTheme.Office;
+                var chance = zone.height == ZoneHeight.Tall ? settings.tallColumnHalls : office ? settings.officeColumnRooms : settings.level0ColumnRooms;
+                if (MapHash.Unit(MapHash.Hash(settings.seed, chunk.coord.x * 16 + r, chunk.coord.y, MapHash.Columns, revision)) >= chance) continue;
+                var style = office || zone.height == ZoneHeight.Tall ? MapChunk.ColumnLarge : (byte)0;
+                for (var j = rect.y + 1; j < rect.y + rect.h; j++)
+                for (var i = rect.x + 1; i < rect.x + rect.w; i++)
+                {
+                    if (!OnColumnGrid(chunk.Cell(i, j))) continue;
+                    chunk.pillar[i + j * (n + 1)] = true;
+                    var flags = style;
+                    // Office columns carry a bulkhead to the next column on the grid inside the same room.
+                    if (office && i + 2 < rect.x + rect.w) flags |= MapChunk.ColumnBeamEast;
+                    if (office && j + 2 < rect.y + rect.h) flags |= MapChunk.ColumnBeamNorth;
+                    chunk.pillarStyle[i + j * (n + 1)] = flags;
+                }
+            }
         }
 
         /// <summary>Build one chunk. Revision 0 is the first build; a higher revision reshuffles only the interior.</summary>
@@ -424,9 +477,7 @@ namespace FrontRooms.Map
                 chunk.west[k] = BorderEdge(chunk.Cell(-1, k), true);
                 chunk.south[k] = BorderEdge(chunk.Cell(k, -1), false);
             }
-            for (var j = 0; j <= n; j++)
-            for (var i = 0; i <= n; i++)
-                chunk.pillar[i + j * (n + 1)] = PillarAt(chunk.Cell(i, j), revision);
+            PlaceColumns(chunk, revision);
 
             PlaceKey(chunk);
             return chunk;

@@ -47,17 +47,23 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     const float TransitionAccelerationSeconds = .36f;
     const float DoorOpenSeconds = .9f;
     const float RecycleDistance = 8f;
-    const float RebaseThreshold = 256f;
+    // A multiple of every world-projected period (0.75, 1, 1.2, 8, 12.8 m).
+    const float RebaseThreshold = 192f;
     const float LogoDelay = .7f;
     const float LogoFadeSeconds = 4f;
     const float LogoExitSeconds = .55f;
     // Drop-ceiling grid in world space: 2' across X, 4' along Z. Both divide
-    // the 256 m rebase, so fixtures stay in their grid cells after a rebase.
-    const float GridX = 256f / 420f;
-    const float GridZ = 256f / 210f;
+    // the 192 m rebase, so fixtures stay in their grid cells after a rebase.
+    const float GridX = .6f;   // ceiling grid (metric module, LEVEL_MODULE_SPEC)
+    const float GridZ = 1.2f;
     const float TrofferWidth = GridX;
     const float TrofferLength = GridZ;
     static readonly float[] FixtureZ = { 1.7f, 4.55f, 7.4f, 10.25f };
+    // Troffer columns in 2' grid cells from the room's centreline. The centre
+    // column comes first so fixtures 0..3 are the shadow casters; the side
+    // columns light the walls the way a real drop-ceiling grid does.
+    static readonly int[] FixtureColumns = { 0, -6, 6 };
+    static int FixtureCount => FixtureColumns.Length * FixtureZ.Length;
     // Room-stream lights use a deterministic variation per sequence rather
     // than one global flash cue. The sequence is hashed, so recycling a pool
     // slot never repeats the same behaviour simply because it is the same
@@ -873,8 +879,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             // 2'x4' troffers: a painted-steel pan with the lens inset, one grid
             // cell each, grouped per lamp so a fixture, its light and its beam
             // move together when AlignFixtures snaps them to the world grid.
-            room.fixtures = new Transform[FixtureZ.Length];
-            for (var fixtureIndex = 0; fixtureIndex < FixtureZ.Length; fixtureIndex++)
+            room.fixtures = new Transform[FixtureCount];
+            for (var fixtureIndex = 0; fixtureIndex < FixtureCount; fixtureIndex++)
             {
                 var fixture = new GameObject("fluorescent fixture " + fixtureIndex).transform;
                 fixture.SetParent(room.root.transform, false);
@@ -896,10 +902,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 light.range = ProfileLightRange(room.rule);
                 light.intensity = ProfileLightIntensity(room.rule);
                 light.color = ProfileLightColor(room.rule);
-                // URP renders soft point-light shadows for every practical.
-                // Contact darkness under furniture, behind door leaves and in
-                // the corners is what sells a room lit only by its fixtures.
-                light.shadows = LightShadows.Soft;
+                // The centre column casts soft shadows: contact darkness under
+                // furniture, behind door leaves and in the corners. The side
+                // columns only fill, which keeps the shadow atlas at 4 maps a room.
+                light.shadows = fixtureIndex < FixtureZ.Length ? LightShadows.Soft : LightShadows.None;
                 light.shadowStrength = .92f;
                 light.shadowNearPlane = .1f;
                 light.bounceIntensity = diffuseCoefficient;
@@ -940,8 +946,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         for (var i = 0; i < room.fixtures.Length; i++)
         {
             if (room.fixtures[i] == null) continue;
-            var cellZ = (Mathf.Floor((origin.z + FixtureZ[i]) / GridZ) + .5f) * GridZ;
-            room.fixtures[i].localPosition = new Vector3(cellX - origin.x, 0f, cellZ - origin.z);
+            var column = FixtureColumns[i / FixtureZ.Length];
+            var cellZ = (Mathf.Floor((origin.z + FixtureZ[i % FixtureZ.Length]) / GridZ) + .5f) * GridZ;
+            room.fixtures[i].localPosition = new Vector3(cellX + column * GridX - origin.x, 0f, cellZ - origin.z);
         }
     }
 
@@ -1219,24 +1226,15 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             }
             else if (rule == RoomRule.Office)
             {
-                // Level 4: ordinary, low-density office objects. The centre
-                // lane remains open for threshold reading and pursuit.  The
-                // The furniture kit loads authored Blender/FBX models first;
-                // its controlled memory-bleed variants stay deterministic
-                // when a pooled room is recycled.
-                var officeFurniture = FrontRoomsOfficeFurniture.CreateMaterials(room.sequence);
-                FrontRoomsOfficeFurniture.Build(props.transform, room.sequence, officeFurniture);
-                // Level 4's windows are usually blacked out. This shallow
-                // panel reads as a sealed window at the edge of the room,
-                // while the central sightline stays clear for pursuit.
-                Box(props.transform, "office blacked-out window", new Vector3(-5.28f, 1.68f, 3.15f), new Vector3(.06f, 1.42f, 2.15f), officeDarkMaterial);
-                Box(props.transform, "office window frame top", new Vector3(-5.22f, 2.42f, 3.15f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
-                Box(props.transform, "office window frame bottom", new Vector3(-5.22f, .94f, 3.15f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
-                // The reference office reads with a sealed interior window
-                // on the right wall behind the copier/vending cluster.
-                Box(props.transform, "office right blacked-out window", new Vector3(5.28f, 1.68f, 7.35f), new Vector3(.06f, 1.42f, 2.15f), officeDarkMaterial);
-                Box(props.transform, "office right window frame top", new Vector3(5.22f, 2.42f, 7.35f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
-                Box(props.transform, "office right window frame bottom", new Vector3(5.22f, .94f, 7.35f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
+                // Level 4 from the Blender kit (FrontRoomsOfficeKit, the same
+                // layout the maze uses). The centre lane between the two doors
+                // stays clear for the title glide and the chase; Dress treats
+                // the strip's ends as doorways. Seeded by the sequence, so a
+                // recycled slot dresses the same way every time it shows it.
+                var half = RoomWidth * .5f - WallThickness * .5f;
+                var floor = new Rect(-half, .35f, half * 2f, RoomLength - .7f);
+                var lane = new Rect(-1.4f, .35f, 2.8f, RoomLength - .7f);
+                FrontRoomsOfficeKit.Dress(props.transform, floor, RoomHeight, 7919 * room.sequence + 104729, new[] { lane });
             }
             else if (rule == RoomRule.Run)
             {

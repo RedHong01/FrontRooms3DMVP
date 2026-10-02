@@ -1021,6 +1021,7 @@ MonoBehaviour:
     catchDistance: 0.7
     sprintNoiseRadius: 26
     doorNoiseRadius: 14
+  levelProfile: {fileID: 11400000, guid: 726f5ecc3eaf749f3a6b366658c4638c, type: 2}
   logoMotionVariation: 0
   defaultHdr: 1
   streamedRoomTemplate: {fileID: 0}

@@ -15,7 +15,7 @@ reproduces it. Research on 2026-10-01; implementation in URP 17.3.
   ([Wikipedia](https://en.wikipedia.org/wiki/The_Backrooms))
 - **The paper was never yellow.** The real wallpaper is a beige 1990s
   southwestern ikat chevron with pink and slate stripe bands. The "mono-yellow"
-  is a white-balance error in a Nikon Coolpix photo. Danny Vermette, the film's
+  is a white-balance error in a 2002 digital snapshot (a Sony Cyber-shot, per Wikipedia). Danny Vermette, the film's
   production designer: "It's just a bad photo. The white balance is off."
   ([Galerie](https://galeriemagazine.com/how-horror-hit-backrooms-terrorizes-viewers-with-design/),
   [The Credits](https://www.motionpictures.org/2026/06/how-production-designer-danny-vermette-made-backrooms-real-portals-platforms-practical-terror/))
@@ -28,7 +28,7 @@ reproduces it. Research on 2026-10-01; implementation in URP 17.3.
     practicals ("we didn't place a single light"), using short Astera Titan
     tubes, and printed the paper slightly more yellow so skin tones survive.
   - Image: wide lenses (18 mm or wider; "a 14mm looks normal"), a haze that
-    reads like a CRT, a "warm green-yellow" image, and deliberately not
+    reads like a CRT, a green-yellow cast (our reading, not a Cox quote), and deliberately not
     "cinematic" or "glossy".
   ([W Magazine](https://www.wmagazine.com/culture/backrooms-a24-movie-set-design-details-interview),
   [ShotDeck](https://community.shotdeck.com/articles/an-interview-with-backrooms-cinematographer-jeremy-cox/),
@@ -51,7 +51,7 @@ dressing:
 
 - painted drywall in greige with a knockdown texture;
 - quarter-turned 24" carpet tiles in blue-grey with flecks;
-- 2'×2' ceiling tiles with parabolic louvre troffers;
+- 2'×2' ceiling tiles with flat frosted (opal) troffer lenses — the film's fixtures and Red's target both show opal, not louvres;
 - fabric cubicle panels.
 
 ### Level ! (Run For Your Life)
@@ -81,7 +81,7 @@ replaced.
 ### Film look (`Resources/Rendering/FrontRoomsPost.asset`)
 
 ACES tonemapping and a soft warm bloom (halation on the tubes). White balance
-is +9 temperature and −7 tint toward green, for Cox's "warm green-yellow". The
+is +9 temperature and −7 tint toward green: FrontRooms' own stylistic choice (the film itself balanced 4000 K tubes at 4300 K; see research/office_and_film/01). The
 remaining settings in the profile are:
 
 | Setting | Value |
@@ -119,7 +119,7 @@ All of these are editable in the Inspector.
 |---|---|---|---|---|
 | Level 0 | CC0 recreation of the original chevron paper ([Wikimedia, CC0](https://commons.wikimedia.org/wiki/File:Backrooms_%27Chevron%27_Wallpaper.png)), graded to mono-yellow, with paper fibre, mottling, foxing and roll seams | sand loop-pile carpet | 2'×4' fissured tile with T-bar | prismatic K12 lens |
 | Exit | the same paper from a cold print run | cold-tinted carpet | 2'×4' tile | prismatic lens |
-| Office | greige knockdown drywall | quarter-turned 24" carpet tiles | 2'×2' tile | parabolic louvre |
+| Office | greige knockdown drywall | quarter-turned 24" carpet tiles | 2'×2' tile | flat opal lens + Office zone grade |
 | Run | white semi-gloss hospital paint | 12" VCT with chip pattern, heel scuffs and wax wear | white 2'×2' tile | red emissive EXIT signs |
 | Shared | oak veneer doors, enamel steel (troffer pans), vinyl cove base | | | |
 

@@ -36,6 +36,7 @@ public static class FrontRoomsLookdevCapture
         var hunter = game.transform.Find("Hunter");
         var hunterWasActive = hunter != null && hunter.gameObject.activeSelf;
         if (hunter != null) hunter.gameObject.SetActive(false);
+        FrontRoomsLook.ApplyAmbient();
         var volume = FrontRoomsPostStack.Ensure(null);
         if (volume != null) volume.gameObject.hideFlags = HideFlags.DontSave;
 

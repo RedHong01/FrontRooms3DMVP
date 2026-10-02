@@ -1,0 +1,49 @@
+{
+    "verdict": "PASS · ended by caught",
+    "seed": 20388,
+    "playSeconds": 34.98206329345703,
+    "distanceWalked": 117.45361328125,
+    "cellsVisited": 41,
+    "zonesVisited": 4,
+    "maxChunksBuilt": 25,
+    "routes": 2,
+    "doorsOpened": 2,
+    "keysTaken": 1,
+    "relayReleasedAt": 3.0995521545410158,
+    "closestRelayMetres": 0.645294725894928,
+    "relayFinalState": "Chase",
+    "relayDoorsBroken": 1,
+    "relayRelays": 1,
+    "relayGhosts": 0,
+    "caught": true,
+    "averageFps": 58.96147537231445,
+    "worstFrameMs": 881.7676391601563,
+    "p95FrameMs": 16.81062889099121,
+    "p99FrameMs": 16.865957260131837,
+    "frameSpikes": [
+        "3.0 s: 882 ms, zone LEVEL 4 / OFFICE, chunks 25"
+    ],
+    "officeRoomsDressed": 11,
+    "errors": 0,
+    "errorLog": [],
+    "relayStates": [
+        "0.1 s Dormant",
+        "3.1 s Listen",
+        "5.0 s Hunt",
+        "18.9 s BreakDoor",
+        "21.6 s Hunt",
+        "22.4 s Search",
+        "24.9 s Listen",
+        "26.9 s Hunt",
+        "34.7 s Chase"
+    ],
+    "relayGhostLog": [],
+    "frames": [
+        "00_title.png",
+        "01_play_1s.png",
+        "02_relay.png",
+        "03_play_10s.png",
+        "04_play_19s.png",
+        "05_play_28s.png"
+    ]
+}
