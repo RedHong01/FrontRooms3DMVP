@@ -173,6 +173,21 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         return camera;
     }
 
+    // A standalone player can restore a serialized camera's enabled/viewport
+    // state from an earlier editor session or a display-mode change. Keep the
+    // runtime output deterministic: one active camera, full screen viewport,
+    // and no off-screen target texture. This is intentionally a no-op for the
+    // normal scene camera and does not alter its lens, clipping, or rendering
+    // quality settings.
+    static void EnsureRuntimeCamera(Camera camera)
+    {
+        if (camera == null) return;
+        if (!camera.gameObject.activeSelf) camera.gameObject.SetActive(true);
+        camera.enabled = true;
+        camera.rect = new Rect(0f, 0f, 1f, 1f);
+        camera.targetTexture = null;
+    }
+
     /// <summary>The serialized Relay: an editable rig that the hunter brain drives at runtime.</summary>
     public static Transform CreateHunter(Transform parent)
     {
@@ -240,6 +255,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         InitializeFonts();
         cam = GetComponentInChildren<Camera>(true);
         if (cam == null) cam = CreateCamera(transform);
+        EnsureRuntimeCamera(cam);
         BindHunter();
         BuildMaterials();
         hdrEnabled = PlayerPrefs.GetInt(HdrPreferenceKey, defaultHdr ? 1 : 0) != 0;
@@ -253,7 +269,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             restart = false;
             StartCanonicalStreamedRestart();
         }
-        Log("READY · manual title, first-person");
+        Log("READY · manual title, first-person · display " + Screen.width + "x" + Screen.height
+            + " " + Screen.fullScreenMode + " · camera " + (cam != null && cam.enabled ? "active" : "missing"));
     }
 
     static Color C(string hex) { ColorUtility.TryParseHtmlString("#" + hex, out var c); return c; }

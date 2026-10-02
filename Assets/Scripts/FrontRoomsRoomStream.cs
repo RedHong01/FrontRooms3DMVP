@@ -17,10 +17,15 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     public const float RoomHeight = 2.9f;
     public const float RoomLength = 12f;
     const float DoorWidth = 2.4f;
-    // Leave only a small construction tolerance below the header. The old
-    // 2.4m leaf stopped 0.26m below the 2.66m header bottom.
+    // Leave a small jamb clearance for the closed leaves and for the hinge
+    // side of the slab while it swings open. The opening remains 2.4m wide,
+    // while the ordinary double door occupies 2.24m of it.
+    const float DoorLeafWidth = 1.12f;
+    const float DoorLeafPivotX = 1.12f;
+    // Keep a small construction tolerance below the 2.66m header bottom.
+    // A full-height 2.88m leaf visibly intersected the header slab.
     const float DoorHeaderHeight = .24f;
-    const float DoorLeafHeight = RoomHeight - .02f;
+    const float DoorLeafHeight = RoomHeight - DoorHeaderHeight - .04f;
     const float WallThickness = .26f;
     // The rear seal belongs to the room behind a threshold. Keep it just
     // inside the next room so it cannot sit on the same plane as the door
@@ -894,17 +899,17 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         // layered jamb/reveal/header pieces from the prototype; their exposed
         // edges made the threshold look like a sci-fi portal.
         var leftPivot = new GameObject("double door left hinge").transform;
-        leftPivot.SetParent(room.root.transform, false); leftPivot.localPosition = new Vector3(-1.2f, 0f, RoomLength - .08f);
+        leftPivot.SetParent(room.root.transform, false); leftPivot.localPosition = new Vector3(-DoorLeafPivotX, 0f, RoomLength - .08f);
         var rightPivot = new GameObject("double door right hinge").transform;
-        rightPivot.SetParent(room.root.transform, false); rightPivot.localPosition = new Vector3(1.2f, 0f, RoomLength - .08f);
-        var left = Box(leftPivot, "double door left", new Vector3(.6f, DoorLeafHeight * .5f, 0f), new Vector3(1.2f, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
-        var right = Box(rightPivot, "double door right", new Vector3(-.6f, DoorLeafHeight * .5f, 0f), new Vector3(1.2f, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
+        rightPivot.SetParent(room.root.transform, false); rightPivot.localPosition = new Vector3(DoorLeafPivotX, 0f, RoomLength - .08f);
+        var left = Box(leftPivot, "double door left", new Vector3(DoorLeafWidth * .5f, DoorLeafHeight * .5f, 0f), new Vector3(DoorLeafWidth, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
+        var right = Box(rightPivot, "double door right", new Vector3(-DoorLeafWidth * .5f, DoorLeafHeight * .5f, 0f), new Vector3(DoorLeafWidth, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
         Box(leftPivot, "left door handle", new Vector3(1.02f, 1.22f, -.10f), new Vector3(.055f, .18f, .08f), frameMaterial);
         Box(rightPivot, "right door handle", new Vector3(-1.02f, 1.22f, -.10f), new Vector3(.055f, .18f, .08f), frameMaterial);
         // The leaf itself supplies the dark reveal. The former full-height
         // gasket strips read as exposed wireframe when the door is closed, so
-        // keep the visual seam implicit in the leaf and retain only the
-        // handles and jamb geometry.
+        // keep the visual seam implicit in the leaf and retain only the small
+        // handles.
         room.leftDoor = leftPivot; room.rightDoor = rightPivot;
         var audioObject = new GameObject("door creak / spatial");
         audioObject.transform.SetParent(room.root.transform, false);
@@ -1223,7 +1228,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         // stream and title mark.
         var t = Mathf.Clamp01(room.doorProgress);
         t = t * t * (3f - 2f * t);
-        var angle = 94f * t;
+        // Keep the leaf just shy of a right angle. At 94 degrees the cosine
+        // becomes negative and the inner edge sweeps back through the side
+        // wall return; 88 degrees keeps the complete leaf inside the opening
+        // throughout the hinge animation while still reading fully open.
+        var angle = 88f * t;
         room.leftDoor.localRotation = Quaternion.Euler(0f, -angle, 0f);
         room.rightDoor.localRotation = Quaternion.Euler(0f, angle, 0f);
     }
