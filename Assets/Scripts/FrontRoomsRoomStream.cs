@@ -22,6 +22,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     // while the ordinary double door occupies 2.24m of it.
     const float DoorLeafWidth = 1.12f;
     const float DoorLeafPivotX = 1.12f;
+    // Keep the threshold return almost flush with the door plane. A deep
+    // return leaves a dark inner side visible when the leaf is open, which
+    // reads as looking into a hollow model instead of a normal doorway.
+    const float DoorWallDepth = .04f;
+    const float DoorLeafDepth = .08f;
     // Keep a small construction tolerance below the 2.66m header bottom.
     // A full-height 2.88m leaf visibly intersected the header slab.
     const float DoorHeaderHeight = .24f;
@@ -68,6 +73,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         public Transform entry;
         public Transform leftDoor;
         public Transform rightDoor;
+        // The analytical mover normally avoids physics queries. Keep the
+        // doorway colliders explicitly so a player cannot step into a swung
+        // leaf or the thin wall returns and then see their internal faces.
+        public BoxCollider[] doorwayColliders;
         public GameObject rearSeal;
         public int sequence;
         public RoomRule rule;
@@ -414,6 +423,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         var passable = room.doorOpen || (room.doorOpening && room.doorProgress > .65f);
         if (candidate.z > room.endZ - BoundaryMargin && !passable)
             candidate.z = room.endZ - BoundaryMargin;
+        ResolveDoorwayOverlap(room, passable, ref candidate);
         streamCamera.transform.position = candidate;
         movementScratch[0] = candidate;
         return movementScratch[0];
@@ -887,30 +897,63 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         var sideWallWidth = (RoomWidth - DoorWidth) * .5f;
         var sideWallOffset = DoorWidth * .5f + sideWallWidth * .5f;
         var roomWall = ProfileMaterial(profileWallMaterials, room.rule, wallMaterial);
-        // Keep the threshold nearly flush with the paper plane. A full wall
-        // thickness at the opening exposes dark side faces when the player is
-        // close, which reads as a portal frame instead of the ordinary door in
-        // the source room.
-        const float doorWallDepth = .08f;
-        Box(room.root.transform, "door wall return left", new Vector3(-sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, doorWallDepth), roomWall);
-        Box(room.root.transform, "door wall return right", new Vector3(sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, doorWallDepth), roomWall);
-        Box(room.root.transform, "door wall above", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, RoomLength), new Vector3(DoorWidth, DoorHeaderHeight, doorWallDepth), roomWall);
+        // Keep the threshold return nearly flush with the paper plane. A deep
+        // return exposes its unlit inner side when the door opens, which reads
+        // as looking into a hollow model instead of a normal doorway.
+        var leftReturn = Box(room.root.transform, "door wall return left", new Vector3(-sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, DoorWallDepth), roomWall);
+        var rightReturn = Box(room.root.transform, "door wall return right", new Vector3(sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, DoorWallDepth), roomWall);
+        Box(room.root.transform, "door wall above", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, RoomLength), new Vector3(DoorWidth, DoorHeaderHeight, DoorWallDepth), roomWall);
+        // The return's inner X-facing sides are almost unlit at the threshold
+        // and can read as a black hollow shell from a close camera angle.
+        // Add a deliberately front-facing paper plane one millimetre forward
+        // of the return. It preserves the wallpaper and removes the apparent
+        // X/inside lines without making the doorway a layered portal.
+        var revealZ = RoomLength - DoorWallDepth * .5f - .002f;
+        var outsideRevealZ = RoomLength + DoorWallDepth * .5f + .002f;
+        var leftRevealSize = new Vector2(sideWallWidth, RoomHeight);
+        var rightRevealSize = leftRevealSize;
+        var headerRevealSize = new Vector2(DoorWidth, DoorHeaderHeight);
+        InteriorReveal(room.root.transform, "door reveal left", new Vector3(-sideWallOffset, RoomHeight * .5f, revealZ), leftRevealSize, roomWall, true);
+        InteriorReveal(room.root.transform, "door reveal right", new Vector3(sideWallOffset, RoomHeight * .5f, revealZ), rightRevealSize, roomWall, true);
+        InteriorReveal(room.root.transform, "door reveal header", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, revealZ), headerRevealSize, roomWall, true);
+        // The stream can be viewed from either side after a handoff or a
+        // Relay door break. A matching outward-facing cap prevents the far
+        // side from becoming an apparent X-ray when the player looks back.
+        InteriorReveal(room.root.transform, "door reveal left / far side", new Vector3(-sideWallOffset, RoomHeight * .5f, outsideRevealZ), leftRevealSize, roomWall, false);
+        InteriorReveal(room.root.transform, "door reveal right / far side", new Vector3(sideWallOffset, RoomHeight * .5f, outsideRevealZ), rightRevealSize, roomWall, false);
+        InteriorReveal(room.root.transform, "door reveal header / far side", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, outsideRevealZ), headerRevealSize, roomWall, false);
         // The source-room door is an ordinary, flush double door. Avoid the
         // layered jamb/reveal/header pieces from the prototype; their exposed
         // edges made the threshold look like a sci-fi portal.
         var leftPivot = new GameObject("double door left hinge").transform;
-        leftPivot.SetParent(room.root.transform, false); leftPivot.localPosition = new Vector3(-DoorLeafPivotX, 0f, RoomLength - .08f);
+        var doorPlaneZ = RoomLength - DoorWallDepth * .5f - .005f;
+        leftPivot.SetParent(room.root.transform, false); leftPivot.localPosition = new Vector3(-DoorLeafPivotX, 0f, doorPlaneZ);
         var rightPivot = new GameObject("double door right hinge").transform;
-        rightPivot.SetParent(room.root.transform, false); rightPivot.localPosition = new Vector3(DoorLeafPivotX, 0f, RoomLength - .08f);
-        var left = Box(leftPivot, "double door left", new Vector3(DoorLeafWidth * .5f, DoorLeafHeight * .5f, 0f), new Vector3(DoorLeafWidth, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
-        var right = Box(rightPivot, "double door right", new Vector3(-DoorLeafWidth * .5f, DoorLeafHeight * .5f, 0f), new Vector3(DoorLeafWidth, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
-        Box(leftPivot, "left door handle", new Vector3(1.02f, 1.22f, -.10f), new Vector3(.055f, .18f, .08f), frameMaterial);
-        Box(rightPivot, "right door handle", new Vector3(-1.02f, 1.22f, -.10f), new Vector3(.055f, .18f, .08f), frameMaterial);
+        rightPivot.SetParent(room.root.transform, false); rightPivot.localPosition = new Vector3(DoorLeafPivotX, 0f, doorPlaneZ);
+        var left = Box(leftPivot, "double door left", new Vector3(DoorLeafWidth * .5f, DoorLeafHeight * .5f, 0f), new Vector3(DoorLeafWidth, DoorLeafHeight, DoorLeafDepth), doorMaterial ?? wallMaterial);
+        var right = Box(rightPivot, "double door right", new Vector3(-DoorLeafWidth * .5f, DoorLeafHeight * .5f, 0f), new Vector3(DoorLeafWidth, DoorLeafHeight, DoorLeafDepth), doorMaterial ?? wallMaterial);
+        // Mount a shallow bar just outside each leaf face. The old single
+        // handle sat on only the camera-facing side, so looking back through
+        // a threshold made it appear to intersect the slab. A matching rear
+        // bar keeps the hardware attached from either side of the doorway.
+        const float handleDepth = .045f;
+        var handleOffset = DoorLeafDepth * .5f + handleDepth * .5f + .006f;
+        Box(leftPivot, "left door handle / near", new Vector3(1.02f, 1.22f, -handleOffset), new Vector3(.055f, .18f, handleDepth), frameMaterial);
+        Box(leftPivot, "left door handle / far", new Vector3(1.02f, 1.22f, handleOffset), new Vector3(.055f, .18f, handleDepth), frameMaterial);
+        Box(rightPivot, "right door handle / near", new Vector3(-1.02f, 1.22f, -handleOffset), new Vector3(.055f, .18f, handleDepth), frameMaterial);
+        Box(rightPivot, "right door handle / far", new Vector3(-1.02f, 1.22f, handleOffset), new Vector3(.055f, .18f, handleDepth), frameMaterial);
         // The leaf itself supplies the dark reveal. The former full-height
         // gasket strips read as exposed wireframe when the door is closed, so
         // keep the visual seam implicit in the leaf and retain only the small
         // handles.
         room.leftDoor = leftPivot; room.rightDoor = rightPivot;
+        room.doorwayColliders = new[]
+        {
+            leftReturn.GetComponent<BoxCollider>(),
+            rightReturn.GetComponent<BoxCollider>(),
+            left.GetComponent<BoxCollider>(),
+            right.GetComponent<BoxCollider>()
+        };
         var audioObject = new GameObject("door creak / spatial");
         audioObject.transform.SetParent(room.root.transform, false);
         audioObject.transform.localPosition = new Vector3(0f, RoomHeight * .42f, RoomLength);
@@ -927,6 +970,45 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         room.doorAudio = audio;
         room.doorProgress = 0f; room.doorOpening = false; room.doorOpen = false; room.doorSoundPlayed = false;
         ApplyDoorPose(room);
+    }
+
+    void ResolveDoorwayOverlap(RoomSlot room, bool doorPassable, ref Vector3 candidate)
+    {
+        if (room == null || room.doorwayColliders == null) return;
+        const float playerRadius = .18f;
+        var leafOpen = room.leftDoor != null
+            && Quaternion.Angle(room.leftDoor.localRotation, Quaternion.identity) > 1f;
+        // Only swung leaves need a transform sync; the return colliders are
+        // static and their cached bounds remain valid between door motions.
+        if (leafOpen) Physics.SyncTransforms();
+        for (var i = 0; i < room.doorwayColliders.Length; i++)
+        {
+            // A closed leaf is already handled by the threshold clamp above.
+            // Applying its AABB while closed would overlap the two leaves at
+            // the centre seam and incorrectly block a straight-on approach.
+            if (i >= 2 && (!doorPassable || !leafOpen)) continue;
+            var collider = room.doorwayColliders[i];
+            if (collider == null || !collider.enabled || !collider.gameObject.activeInHierarchy) continue;
+            var bounds = collider.bounds;
+            var minX = bounds.min.x - playerRadius;
+            var maxX = bounds.max.x + playerRadius;
+            var minZ = bounds.min.z - playerRadius;
+            var maxZ = bounds.max.z + playerRadius;
+            if (candidate.x <= minX || candidate.x >= maxX || candidate.z <= minZ || candidate.z >= maxZ) continue;
+
+            // Resolve along the shallowest penetration. This keeps the
+            // doorway aperture usable while stopping the camera from entering
+            // a leaf or a return and revealing its interior faces.
+            var pushLeft = candidate.x - minX;
+            var pushRight = maxX - candidate.x;
+            var pushBack = candidate.z - minZ;
+            var pushForward = maxZ - candidate.z;
+            var smallest = Mathf.Min(Mathf.Min(pushLeft, pushRight), Mathf.Min(pushBack, pushForward));
+            if (smallest == pushLeft) candidate.x = minX;
+            else if (smallest == pushRight) candidate.x = maxX;
+            else if (smallest == pushBack) candidate.z = minZ;
+            else candidate.z = maxZ;
+        }
     }
 
     static Material ProfileMaterial(Material[] materials, RoomRule rule, Material fallback)
@@ -1228,10 +1310,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         // stream and title mark.
         var t = Mathf.Clamp01(room.doorProgress);
         t = t * t * (3f - 2f * t);
-        // Keep the leaf just shy of a right angle. At 94 degrees the cosine
-        // becomes negative and the inner edge sweeps back through the side
-        // wall return; 88 degrees keeps the complete leaf inside the opening
-        // throughout the hinge animation while still reading fully open.
+        // Stop just shy of a right angle. This keeps a small construction
+        // margin for the thin slab and avoids any floating-point sweep into
+        // the side return while still reading fully open.
         var angle = 88f * t;
         room.leftDoor.localRotation = Quaternion.Euler(0f, -angle, 0f);
         room.rightDoor.localRotation = Quaternion.Euler(0f, angle, 0f);
@@ -1259,6 +1340,43 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         var collider = box.AddComponent<BoxCollider>();
         collider.size = scale;
         return box;
+    }
+
+    GameObject InteriorReveal(Transform parent, string name, Vector3 localPosition, Vector2 size, Material material, bool faceBack)
+    {
+        var reveal = new GameObject(name);
+        reveal.transform.SetParent(parent, false);
+        reveal.transform.localPosition = localPosition;
+        var meshFilter = reveal.AddComponent<MeshFilter>();
+        var meshRenderer = reveal.AddComponent<MeshRenderer>();
+        var hx = size.x * .5f;
+        var hy = size.y * .5f;
+        var mesh = new Mesh { name = "Doorway interior reveal" };
+        mesh.SetVertices(faceBack
+            ? new[]
+            {
+                new Vector3(hx, -hy, 0f), new Vector3(-hx, -hy, 0f),
+                new Vector3(-hx, hy, 0f), new Vector3(hx, hy, 0f)
+            }
+            : new[]
+            {
+                new Vector3(-hx, -hy, 0f), new Vector3(hx, -hy, 0f),
+                new Vector3(hx, hy, 0f), new Vector3(-hx, hy, 0f)
+            });
+        var normal = faceBack ? Vector3.back : Vector3.forward;
+        mesh.SetNormals(new[] { normal, normal, normal, normal });
+        mesh.SetUVs(0, new[]
+        {
+            new Vector2(0f, 0f), new Vector2(size.x, 0f),
+            new Vector2(size.x, size.y), new Vector2(0f, size.y)
+        });
+        mesh.SetTriangles(new[] { 0, 1, 2, 0, 2, 3 }, 0);
+        mesh.RecalculateBounds();
+        meshRenderer.sharedMaterial = material;
+        meshRenderer.receiveShadows = false;
+        meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        meshFilter.sharedMesh = mesh;
+        return reveal;
     }
 
     Material darkMatOr(Material fallback)
