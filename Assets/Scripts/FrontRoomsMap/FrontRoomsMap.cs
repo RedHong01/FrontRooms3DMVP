@@ -1,0 +1,452 @@
+using System;
+using System.Collections.Generic;
+
+namespace FrontRooms.Map
+{
+    /// <summary>What separates two neighbouring cells.</summary>
+    public enum EdgeKind : byte { Open, Arch, Wall, Door, Window }
+
+    /// <summary>
+    /// Ceiling class of a zone. Where two heights meet, the taller side decides
+    /// the exit: a door into a standard zone, a window into a tall one.
+    /// </summary>
+    public enum ZoneHeight : byte { Low, Standard, Tall }
+
+    [Serializable]
+    public struct GridCoord : IEquatable<GridCoord>
+    {
+        public int x;
+        public int y;
+
+        public GridCoord(int x, int y) { this.x = x; this.y = y; }
+
+        public bool Equals(GridCoord other) => x == other.x && y == other.y;
+        public override bool Equals(object obj) => obj is GridCoord other && Equals(other);
+        public override int GetHashCode() => unchecked(x * 73856093 ^ y * 19349663);
+        public static bool operator ==(GridCoord a, GridCoord b) => a.Equals(b);
+        public static bool operator !=(GridCoord a, GridCoord b) => !a.Equals(b);
+        public static GridCoord operator +(GridCoord a, GridCoord b) => new GridCoord(a.x + b.x, a.y + b.y);
+        public override string ToString() => "(" + x + ", " + y + ")";
+    }
+
+    /// <summary>
+    /// World layout of the map. A cell is a 6 m square; a chunk is 4 x 4 cells
+    /// (24 m) and is the unit that is built and dropped around the player.
+    /// Cell (x, y) covers world X [x*6, x*6+6) and Z [y*6, y*6+6).
+    /// </summary>
+    public static class MapGrid
+    {
+        public const float CellSize = 6f;
+        public const int ChunkCells = 4;
+        public const int CellsPerChunk = ChunkCells * ChunkCells;
+        public const float ChunkSize = CellSize * ChunkCells;
+
+        public static int FloorDiv(int a, int b) => a >= 0 ? a / b : -((-a + b - 1) / b);
+        public static GridCoord ChunkOf(GridCoord cell) => new GridCoord(FloorDiv(cell.x, ChunkCells), FloorDiv(cell.y, ChunkCells));
+        public static GridCoord ChunkOrigin(GridCoord chunk) => new GridCoord(chunk.x * ChunkCells, chunk.y * ChunkCells);
+        public static int LocalIndex(int i, int j) => i + j * ChunkCells;
+
+        public static float CeilingHeight(ZoneHeight height)
+        {
+            switch (height)
+            {
+                case ZoneHeight.Low: return 2.4f;
+                case ZoneHeight.Tall: return 5.4f;
+                default: return 2.9f;
+            }
+        }
+
+        public static bool Passable(EdgeKind kind) => kind != EdgeKind.Wall;
+    }
+
+    /// <summary>Designer-facing generation numbers. Every value is a share or a chance from 0 to 1.</summary>
+    [Serializable]
+    public sealed class MapSettings
+    {
+        public int seed = 20261001;
+
+        // Zone heights. The design plan raises the tall share with each tier.
+        public float lowShare = .35f;
+        public float standardShare = .55f;
+        public float tallShare = .10f;
+
+        // Inside a zone (or between two zones of the same height). Edges on the
+        // chunk's spanning tree are never walls, so these never cut a cell off.
+        public float lowWall = .08f, lowArch = .10f;
+        public float standardWall = .38f, standardArch = .32f;
+        public float tallWall = .03f, tallArch = .05f;
+
+        // Where the ceiling height changes, an edge is a wall unless it is the
+        // required connection or this roll opens it as a door or window.
+        public float borderOpening = .22f;
+
+        // Pillars stand on cell corners where all four cells share a height.
+        public float lowPillar = .30f, standardPillar = .08f, tallPillar = .55f;
+
+        public MapSettings Clone() => (MapSettings)MemberwiseClone();
+    }
+
+    /// <summary>
+    /// A zone is the set of cells nearest to one site. Every chunk owns exactly
+    /// one site, so a zone is named by the chunk its site lies in.
+    /// </summary>
+    [Serializable]
+    public struct ZoneInfo
+    {
+        public GridCoord id;
+        public ZoneHeight height;
+        public float siteX;
+        public float siteZ;
+    }
+
+    /// <summary>
+    /// One generated chunk. East[i + j*4] separates local cell (i, j) from
+    /// (i+1, j); North[i + j*4] separates (i, j) from (i, j+1). Index 3 of a
+    /// row or column is the chunk border, and West/South repeat the borders
+    /// owned by the neighbours so a chunk can be drawn or walked on its own.
+    /// </summary>
+    [Serializable]
+    public sealed class MapChunk
+    {
+        public GridCoord coord;
+        public int revision;
+        public GridCoord[] zone = new GridCoord[MapGrid.CellsPerChunk];
+        public ZoneHeight[] height = new ZoneHeight[MapGrid.CellsPerChunk];
+        public EdgeKind[] east = new EdgeKind[MapGrid.CellsPerChunk];
+        public EdgeKind[] north = new EdgeKind[MapGrid.CellsPerChunk];
+        public EdgeKind[] west = new EdgeKind[MapGrid.ChunkCells];
+        public EdgeKind[] south = new EdgeKind[MapGrid.ChunkCells];
+        // Corners (0..4, 0..4), index i + j*5. Corners on the chunk border are
+        // shared with the neighbours and never change with the revision.
+        public bool[] pillar = new bool[(MapGrid.ChunkCells + 1) * (MapGrid.ChunkCells + 1)];
+        // The key of the zone whose site lies in this chunk. Tall zones are left
+        // through windows and carry no key.
+        public bool hasKey;
+        public GridCoord keyCell;
+        public ZoneInfo ownZone;
+
+        public GridCoord Origin => MapGrid.ChunkOrigin(coord);
+        public GridCoord Cell(int i, int j) => new GridCoord(coord.x * MapGrid.ChunkCells + i, coord.y * MapGrid.ChunkCells + j);
+    }
+
+    static class MapHash
+    {
+        public const int SiteX = 11, SiteZ = 13, Height = 17, EdgeEast = 23, EdgeNorth = 29,
+            GateEast = 31, GateNorth = 37, Tree = 41, Pillar = 43, ZoneTint = 47;
+
+        static uint Mix(uint h)
+        {
+            unchecked
+            {
+                h ^= h >> 16; h *= 0x7feb352du;
+                h ^= h >> 15; h *= 0x846ca68bu;
+                h ^= h >> 16;
+                return h;
+            }
+        }
+
+        public static uint Hash(int seed, int a, int b, int salt, int revision = 0)
+        {
+            unchecked
+            {
+                var h = Mix((uint)seed ^ 0x9e3779b9u);
+                h = Mix(h ^ (uint)a * 0x85ebca6bu);
+                h = Mix(h ^ (uint)b * 0xc2b2ae35u);
+                h = Mix(h ^ (uint)salt * 0x27d4eb2fu);
+                h = Mix(h ^ (uint)revision * 0x165667b1u);
+                return h;
+            }
+        }
+
+        public static float Unit(uint h) => (h >> 8) * (1f / 16777216f);
+    }
+
+    /// <summary>
+    /// Deterministic, infinite map. Everything that two chunks share (zones,
+    /// heights, border edges, border pillars) is a pure function of the seed
+    /// and world coordinates, so neighbours agree no matter which is built
+    /// first. A chunk's revision only reshuffles its own interior walls and
+    /// pillars, which is how a dropped chunk can come back shifted.
+    /// </summary>
+    public sealed class FrontRoomsMapGenerator
+    {
+        readonly MapSettings settings;
+        readonly Dictionary<GridCoord, ZoneInfo> zones = new Dictionary<GridCoord, ZoneInfo>();
+        readonly Dictionary<GridCoord, GridCoord> cellZone = new Dictionary<GridCoord, GridCoord>();
+        readonly int[] stack = new int[MapGrid.CellsPerChunk];
+        readonly bool[] visited = new bool[MapGrid.CellsPerChunk];
+        readonly int[] choices = new int[4];
+
+        public FrontRoomsMapGenerator(MapSettings settings)
+        {
+            this.settings = (settings ?? new MapSettings()).Clone();
+        }
+
+        public int Seed => settings.seed;
+        public MapSettings Settings => settings.Clone();
+
+        /// <summary>The zone whose site lies in this chunk.</summary>
+        public ZoneInfo Zone(GridCoord siteChunk)
+        {
+            if (zones.TryGetValue(siteChunk, out var zone)) return zone;
+            var seed = settings.seed;
+            zone.id = siteChunk;
+            // Keep sites off the chunk edge so zones do not collapse into slivers.
+            zone.siteX = (siteChunk.x + .15f + .7f * MapHash.Unit(MapHash.Hash(seed, siteChunk.x, siteChunk.y, MapHash.SiteX))) * MapGrid.ChunkSize;
+            zone.siteZ = (siteChunk.y + .15f + .7f * MapHash.Unit(MapHash.Hash(seed, siteChunk.x, siteChunk.y, MapHash.SiteZ))) * MapGrid.ChunkSize;
+            var roll = MapHash.Unit(MapHash.Hash(seed, siteChunk.x, siteChunk.y, MapHash.Height));
+            var total = Math.Max(1e-4f, settings.lowShare + settings.standardShare + settings.tallShare);
+            roll *= total;
+            zone.height = roll < settings.lowShare ? ZoneHeight.Low
+                : roll < settings.lowShare + settings.standardShare ? ZoneHeight.Standard
+                : ZoneHeight.Tall;
+            zones[siteChunk] = zone;
+            return zone;
+        }
+
+        /// <summary>The zone a cell belongs to: the nearest site to the cell centre.</summary>
+        public ZoneInfo ZoneOf(GridCoord cell)
+        {
+            if (cellZone.TryGetValue(cell, out var id)) return Zone(id);
+            var chunk = MapGrid.ChunkOf(cell);
+            var cx = (cell.x + .5f) * MapGrid.CellSize;
+            var cz = (cell.y + .5f) * MapGrid.CellSize;
+            var best = float.MaxValue;
+            var bestId = chunk;
+            // A cell's own site is at most ~34 m away; anything two chunks out
+            // starts 24 m away, so a 5 x 5 search can never miss the nearest.
+            for (var dy = -2; dy <= 2; dy++)
+            for (var dx = -2; dx <= 2; dx++)
+            {
+                var candidate = Zone(new GridCoord(chunk.x + dx, chunk.y + dy));
+                var ex = candidate.siteX - cx;
+                var ez = candidate.siteZ - cz;
+                var d = ex * ex + ez * ez;
+                if (d < best - 1e-4f || (Math.Abs(d - best) <= 1e-4f && Less(candidate.id, bestId)))
+                {
+                    best = d;
+                    bestId = candidate.id;
+                }
+            }
+            cellZone[cell] = bestId;
+            return Zone(bestId);
+        }
+
+        public ZoneHeight HeightOf(GridCoord cell) => ZoneOf(cell).height;
+
+        static bool Less(GridCoord a, GridCoord b) => a.x < b.x || (a.x == b.x && a.y < b.y);
+
+        /// <summary>
+        /// An edge on a chunk border, between a cell and its east or north
+        /// neighbour in the next chunk. Each border has one required opening,
+        /// so every chunk always connects to all four neighbours.
+        /// </summary>
+        public EdgeKind BorderEdge(GridCoord cell, bool east)
+        {
+            var chunk = MapGrid.ChunkOf(cell);
+            var seed = settings.seed;
+            var local = east ? cell.y - chunk.y * MapGrid.ChunkCells : cell.x - chunk.x * MapGrid.ChunkCells;
+            var gate = (int)(MapHash.Hash(seed, chunk.x, chunk.y, east ? MapHash.GateEast : MapHash.GateNorth) % MapGrid.ChunkCells);
+            var other = east ? new GridCoord(cell.x + 1, cell.y) : new GridCoord(cell.x, cell.y + 1);
+            var roll = MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, east ? MapHash.EdgeEast : MapHash.EdgeNorth));
+            return Resolve(cell, other, local == gate, roll);
+        }
+
+        EdgeKind Resolve(GridCoord a, GridCoord b, bool required, float roll)
+        {
+            var ha = HeightOf(a);
+            var hb = HeightOf(b);
+            if (ha != hb)
+            {
+                var exit = ha == ZoneHeight.Tall || hb == ZoneHeight.Tall ? EdgeKind.Window : EdgeKind.Door;
+                return required || roll < settings.borderOpening ? exit : EdgeKind.Wall;
+            }
+            Interior(ha, out var wall, out var arch);
+            if (required) return roll < arch / Math.Max(1e-4f, 1f - wall) ? EdgeKind.Arch : EdgeKind.Open;
+            return roll < wall ? EdgeKind.Wall : roll < wall + arch ? EdgeKind.Arch : EdgeKind.Open;
+        }
+
+        void Interior(ZoneHeight height, out float wall, out float arch)
+        {
+            switch (height)
+            {
+                case ZoneHeight.Low: wall = settings.lowWall; arch = settings.lowArch; break;
+                case ZoneHeight.Tall: wall = settings.tallWall; arch = settings.tallArch; break;
+                default: wall = settings.standardWall; arch = settings.standardArch; break;
+            }
+        }
+
+        float PillarChance(ZoneHeight height) => height == ZoneHeight.Low ? settings.lowPillar
+            : height == ZoneHeight.Tall ? settings.tallPillar : settings.standardPillar;
+
+        /// <summary>
+        /// Whether a pillar stands on corner (x, y), the shared corner of cells
+        /// (x-1..x, y-1..y). The revision only applies to corners inside the
+        /// chunk; corners on a border must match the neighbour.
+        /// </summary>
+        public bool PillarAt(GridCoord corner, int revision = 0)
+        {
+            var h = HeightOf(corner);
+            if (HeightOf(new GridCoord(corner.x - 1, corner.y)) != h) return false;
+            if (HeightOf(new GridCoord(corner.x, corner.y - 1)) != h) return false;
+            if (HeightOf(new GridCoord(corner.x - 1, corner.y - 1)) != h) return false;
+            var chunk = MapGrid.ChunkOf(corner);
+            var lx = corner.x - chunk.x * MapGrid.ChunkCells;
+            var ly = corner.y - chunk.y * MapGrid.ChunkCells;
+            var interior = lx > 0 && ly > 0;
+            var roll = MapHash.Unit(MapHash.Hash(settings.seed, corner.x, corner.y, MapHash.Pillar, interior ? revision : 0));
+            return roll < PillarChance(h);
+        }
+
+        /// <summary>Build one chunk. Revision 0 is the first build; a higher revision reshuffles only the interior.</summary>
+        public MapChunk Generate(GridCoord coord, int revision = 0)
+        {
+            const int n = MapGrid.ChunkCells;
+            var seed = settings.seed;
+            var chunk = new MapChunk { coord = coord, revision = revision, ownZone = Zone(coord) };
+            for (var j = 0; j < n; j++)
+            for (var i = 0; i < n; i++)
+            {
+                var zone = ZoneOf(chunk.Cell(i, j));
+                chunk.zone[MapGrid.LocalIndex(i, j)] = zone.id;
+                chunk.height[MapGrid.LocalIndex(i, j)] = zone.height;
+            }
+
+            // A random spanning tree over the 16 cells: its edges are never
+            // walls, so every cell of the chunk stays reachable.
+            var treeEast = new bool[MapGrid.CellsPerChunk];
+            var treeNorth = new bool[MapGrid.CellsPerChunk];
+            var rng = MapHash.Hash(seed, coord.x, coord.y, MapHash.Tree, revision) | 1u;
+            Array.Clear(visited, 0, visited.Length);
+            var top = 0;
+            var start = (int)(Next(ref rng) % MapGrid.CellsPerChunk);
+            stack[top++] = start;
+            visited[start] = true;
+            while (top > 0)
+            {
+                var current = stack[top - 1];
+                int ci = current % n, cj = current / n, count = 0;
+                if (ci + 1 < n && !visited[current + 1]) choices[count++] = current + 1;
+                if (ci > 0 && !visited[current - 1]) choices[count++] = current - 1;
+                if (cj + 1 < n && !visited[current + n]) choices[count++] = current + n;
+                if (cj > 0 && !visited[current - n]) choices[count++] = current - n;
+                if (count == 0) { top--; continue; }
+                var next = choices[(int)(Next(ref rng) % (uint)count)];
+                if (next == current + 1) treeEast[current] = true;
+                else if (next == current - 1) treeEast[next] = true;
+                else if (next == current + n) treeNorth[current] = true;
+                else treeNorth[next] = true;
+                visited[next] = true;
+                stack[top++] = next;
+            }
+
+            for (var j = 0; j < n; j++)
+            for (var i = 0; i < n; i++)
+            {
+                var index = MapGrid.LocalIndex(i, j);
+                var cell = chunk.Cell(i, j);
+                chunk.east[index] = i < n - 1
+                    ? Resolve(cell, new GridCoord(cell.x + 1, cell.y), treeEast[index], MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, MapHash.EdgeEast, revision)))
+                    : BorderEdge(cell, true);
+                chunk.north[index] = j < n - 1
+                    ? Resolve(cell, new GridCoord(cell.x, cell.y + 1), treeNorth[index], MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, MapHash.EdgeNorth, revision)))
+                    : BorderEdge(cell, false);
+            }
+            for (var k = 0; k < n; k++)
+            {
+                chunk.west[k] = BorderEdge(chunk.Cell(-1, k), true);
+                chunk.south[k] = BorderEdge(chunk.Cell(k, -1), false);
+            }
+            for (var j = 0; j <= n; j++)
+            for (var i = 0; i <= n; i++)
+                chunk.pillar[i + j * (n + 1)] = PillarAt(chunk.Cell(i, j), revision);
+
+            PlaceKey(chunk);
+            return chunk;
+        }
+
+        /// <summary>
+        /// The zone's key goes in the zone cell nearest its site. The search
+        /// covers the 5 x 5 chunks around the site, which contains every cell
+        /// that can belong to the zone.
+        /// </summary>
+        void PlaceKey(MapChunk chunk)
+        {
+            var zone = chunk.ownZone;
+            chunk.hasKey = false;
+            if (zone.height == ZoneHeight.Tall) return;
+            var best = float.MaxValue;
+            for (var y = (chunk.coord.y - 2) * MapGrid.ChunkCells; y < (chunk.coord.y + 3) * MapGrid.ChunkCells; y++)
+            for (var x = (chunk.coord.x - 2) * MapGrid.ChunkCells; x < (chunk.coord.x + 3) * MapGrid.ChunkCells; x++)
+            {
+                var cell = new GridCoord(x, y);
+                if (ZoneOf(cell).id != zone.id) continue;
+                var ex = (x + .5f) * MapGrid.CellSize - zone.siteX;
+                var ez = (y + .5f) * MapGrid.CellSize - zone.siteZ;
+                var d = ex * ex + ez * ez;
+                if (d >= best) continue;
+                best = d;
+                chunk.keyCell = cell;
+                chunk.hasKey = true;
+            }
+        }
+
+        static uint Next(ref uint state)
+        {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            return state;
+        }
+    }
+
+    /// <summary>
+    /// The chunks currently built, keyed by coordinate. The runtime streams
+    /// through this; the debug map and the verification read it the same way.
+    /// </summary>
+    public sealed class FrontRoomsMapCache
+    {
+        readonly Dictionary<GridCoord, MapChunk> chunks = new Dictionary<GridCoord, MapChunk>();
+        readonly Dictionary<GridCoord, int> revisions = new Dictionary<GridCoord, int>();
+
+        public FrontRoomsMapCache(MapSettings settings) { Generator = new FrontRoomsMapGenerator(settings); }
+
+        public FrontRoomsMapGenerator Generator { get; }
+        public int Count => chunks.Count;
+        public IEnumerable<MapChunk> Built => chunks.Values;
+
+        public MapChunk Get(GridCoord coord)
+        {
+            if (chunks.TryGetValue(coord, out var chunk)) return chunk;
+            revisions.TryGetValue(coord, out var revision);
+            chunk = Generator.Generate(coord, revision);
+            chunks[coord] = chunk;
+            return chunk;
+        }
+
+        public bool IsBuilt(GridCoord coord) => chunks.ContainsKey(coord);
+        public void Drop(GridCoord coord) => chunks.Remove(coord);
+
+        /// <summary>Drop a chunk and make its next build a different interior.</summary>
+        public void Shift(GridCoord coord)
+        {
+            revisions.TryGetValue(coord, out var revision);
+            revisions[coord] = revision + 1;
+            chunks.Remove(coord);
+        }
+
+        /// <summary>The edge between two side-by-side cells.</summary>
+        public EdgeKind Edge(GridCoord a, GridCoord b)
+        {
+            if (b.x < a.x || b.y < a.y) { var t = a; a = b; b = t; }
+            var east = b.x == a.x + 1 && b.y == a.y;
+            if (!east && !(b.x == a.x && b.y == a.y + 1)) throw new ArgumentException("Cells " + a + " and " + b + " are not neighbours.");
+            var chunk = Get(MapGrid.ChunkOf(a));
+            var o = chunk.Origin;
+            var index = MapGrid.LocalIndex(a.x - o.x, a.y - o.y);
+            return east ? chunk.east[index] : chunk.north[index];
+        }
+
+        public ZoneInfo ZoneOf(GridCoord cell) => Generator.ZoneOf(cell);
+    }
+}
