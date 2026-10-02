@@ -14,6 +14,73 @@ public static class FrontRoomsFilmMesh
 {
     static readonly Dictionary<string, Mesh> Cache = new Dictionary<string, Mesh>();
 
+    /// <summary>
+    /// A flat, six-face box for architectural slabs. Structural surfaces need
+    /// exact planar normals: beveling a twelve-metre wall creates long
+    /// interpolated triangles that can catch point-light shadows as diagonal
+    /// "wireframe" lines. Faces are duplicated so each plane has a stable
+    /// normal, while UVs remain in metre space like the dressed mesh.
+    /// </summary>
+    public static Mesh GetPlanarBox(Vector3 size)
+    {
+        size.x = Mathf.Max(.01f, size.x);
+        size.y = Mathf.Max(.01f, size.y);
+        size.z = Mathf.Max(.01f, size.z);
+        var key = string.Format("planar|{0:0.000}|{1:0.000}|{2:0.000}", size.x, size.y, size.z);
+        if (Cache.TryGetValue(key, out var cached) && cached != null) return cached;
+
+        var hx = size.x * .5f;
+        var hy = size.y * .5f;
+        var hz = size.z * .5f;
+        var vertices = new List<Vector3>(24);
+        var normals = new List<Vector3>(24);
+        var uvs = new List<Vector2>(24);
+        var triangles = new List<int>(36);
+
+        AddPlanarFace(vertices, normals, uvs, triangles,
+            new Vector3(-hx, -hy, hz), new Vector3(hx, -hy, hz), new Vector3(hx, hy, hz), new Vector3(-hx, hy, hz),
+            Vector3.forward, new Vector2(size.x, size.y));
+        AddPlanarFace(vertices, normals, uvs, triangles,
+            new Vector3(hx, -hy, -hz), new Vector3(-hx, -hy, -hz), new Vector3(-hx, hy, -hz), new Vector3(hx, hy, -hz),
+            Vector3.back, new Vector2(size.x, size.y));
+        AddPlanarFace(vertices, normals, uvs, triangles,
+            new Vector3(-hx, -hy, -hz), new Vector3(-hx, -hy, hz), new Vector3(-hx, hy, hz), new Vector3(-hx, hy, -hz),
+            Vector3.left, new Vector2(size.z, size.y));
+        AddPlanarFace(vertices, normals, uvs, triangles,
+            new Vector3(hx, -hy, hz), new Vector3(hx, -hy, -hz), new Vector3(hx, hy, -hz), new Vector3(hx, hy, hz),
+            Vector3.right, new Vector2(size.z, size.y));
+        AddPlanarFace(vertices, normals, uvs, triangles,
+            new Vector3(-hx, hy, hz), new Vector3(hx, hy, hz), new Vector3(hx, hy, -hz), new Vector3(-hx, hy, -hz),
+            Vector3.up, new Vector2(size.x, size.z));
+        AddPlanarFace(vertices, normals, uvs, triangles,
+            new Vector3(-hx, -hy, -hz), new Vector3(hx, -hy, -hz), new Vector3(hx, -hy, hz), new Vector3(-hx, -hy, hz),
+            Vector3.down, new Vector2(size.x, size.z));
+
+        var mesh = new Mesh { name = "Film planar box " + key, hideFlags = HideFlags.DontSave };
+        mesh.SetVertices(vertices);
+        mesh.SetNormals(normals);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(triangles, 0);
+        mesh.RecalculateBounds();
+        try { mesh.RecalculateTangents(); } catch (Exception) { /* optional on older importers */ }
+        Cache[key] = mesh;
+        return mesh;
+    }
+
+    static void AddPlanarFace(List<Vector3> vertices, List<Vector3> normals, List<Vector2> uvs,
+        List<int> triangles, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal, Vector2 uvSize)
+    {
+        var start = vertices.Count;
+        vertices.Add(a); vertices.Add(b); vertices.Add(c); vertices.Add(d);
+        normals.Add(normal); normals.Add(normal); normals.Add(normal); normals.Add(normal);
+        uvs.Add(new Vector2(0f, 0f));
+        uvs.Add(new Vector2(uvSize.x, 0f));
+        uvs.Add(new Vector2(uvSize.x, uvSize.y));
+        uvs.Add(new Vector2(0f, uvSize.y));
+        triangles.Add(start); triangles.Add(start + 1); triangles.Add(start + 2);
+        triangles.Add(start); triangles.Add(start + 2); triangles.Add(start + 3);
+    }
+
     public static Mesh GetBeveledBox(Vector3 size, float requestedBevel)
     {
         size.x = Mathf.Max(.01f, size.x);

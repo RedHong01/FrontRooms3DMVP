@@ -57,7 +57,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     UiVectorImage vectorLogoLeftAsset, vectorLogoS1Asset, vectorLogoS2Asset;
     readonly List<UiVisualElement> vectorLogoLetterMasks = new List<UiVisualElement>();
     readonly List<float> vectorLogoLetterWidths = new List<float>();
-    UiVisualElement vectorLogoSolidSMask;
     bool vectorLogoActive;
     Material whiteLogoMaterial;
     Sprite brandLogo;
@@ -271,6 +270,21 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         return m;
     }
 
+    // A soft, antialiased stroke used by the printed wallpaper glyphs. Keeping
+    // the motif as a color modulation (rather than geometry) avoids turning the
+    // paper into a wireframe when the wall catches a grazing light.
+    static float PrintedStroke(float px, float py, float x1, float y1, float x2, float y2, float width)
+    {
+        var vx = x2 - x1;
+        var vy = y2 - y1;
+        var lengthSq = vx * vx + vy * vy;
+        var t = lengthSq > .0001f ? Mathf.Clamp01(((px - x1) * vx + (py - y1) * vy) / lengthSq) : 0f;
+        var dx = px - (x1 + vx * t);
+        var dy = py - (y1 + vy * t);
+        var distance = Mathf.Sqrt(dx * dx + dy * dy);
+        return 1f - Mathf.SmoothStep(width, width + 1.15f, distance);
+    }
+
     Texture2D WallpaperTexture(Color baseColor, Color patternColor, int style)
     {
         // The film's wall is a printed, slightly warm beige under fluorescent
@@ -283,7 +297,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         tex.wrapMode = TextureWrapMode.Repeat;
         tex.filterMode = FilterMode.Trilinear;
         tex.anisoLevel = 4;
-        tex.mipMapBias = -0.35f;
+        tex.mipMapBias = -0.55f;
         var pixels = new Color[size * size];
         for (var y = 0; y < size; y++)
             for (var x = 0; x < size; x++)
@@ -292,24 +306,42 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                     + Mathf.Sin((y + style * 17) * .11f) * .008f;
                 var v = 0.965f + fiber;
                 var c = baseColor * v;
-                var shiftedX = x + style * 19;
-                var seam = shiftedX % 112 == 0 || shiftedX % 112 == 1;
                 var pattern = 0f;
                 var variant = ((style % 3) + 3) % 3;
                 if (variant == 0)
                 {
-                    // The classic Level 0 wallpaper is a narrow, vertical
-                    // arrow/chevron print. Draw it explicitly instead of a
-                    // generic diamond so the motif survives mipmapping and is
-                    // recognisable from the first-person distance.
-                    var cellX = Mathf.Repeat(x + style * 11f, 48f);
-                    var cellY = Mathf.Repeat(y + style * 17f, 64f);
-                    var arrowCenter = 24f;
-                    var leftArrow = cellY > 8f && cellY < 54f && Mathf.Abs(cellX - (arrowCenter - cellY * .22f)) < 1.7f;
-                    var rightArrow = cellY > 8f && cellY < 54f && Mathf.Abs(cellX - (arrowCenter + cellY * .22f)) < 1.7f;
-                    var arrowTip = cellY > 3f && cellY < 15f && Mathf.Abs(cellX - arrowCenter) < 1.55f;
-                    var pin = cellY > 52f && Mathf.Abs(cellX - arrowCenter) < 1.2f;
-                    pattern = (leftArrow || rightArrow || arrowTip ? .46f : 0f) + (pin ? .18f : 0f);
+                    // Level 0's recognizable print is a very fine, repeated
+                    // vertical chevron/diamond glyph. The reference motif is
+                    // two quiet ink tones on yellow paper: it should read as a
+                    // woven print at a glance, not as dark V-shaped geometry.
+                    // Use a larger source glyph and a tighter world repeat.
+                    // This keeps the diagonal strokes above the trilinear
+                    // mip footprint at first-person distance while preserving
+                    // the small, period-wallpaper rhythm in metres.
+                    var cellW = 96f;
+                    var cellH = 128f;
+                    var cellX = Mathf.Repeat(x + style * 11f, cellW);
+                    var cellY = Mathf.Repeat(y + style * 17f, cellH);
+                    var center = cellW * .5f;
+                    // Outer broken diamond and its inner echo. Short strokes
+                    // keep adjacent repeats visually separated at wall scale.
+                    var outer = 0f;
+                    outer = Mathf.Max(outer, PrintedStroke(cellX, cellY, center, 10f, center - 22f, 42f, 9.0f));
+                    outer = Mathf.Max(outer, PrintedStroke(cellX, cellY, center, 10f, center + 22f, 42f, 9.0f));
+                    outer = Mathf.Max(outer, PrintedStroke(cellX, cellY, center - 22f, 42f, center, 74f, 9.0f));
+                    outer = Mathf.Max(outer, PrintedStroke(cellX, cellY, center + 22f, 42f, center, 74f, 9.0f));
+                    var inner = 0f;
+                    inner = Mathf.Max(inner, PrintedStroke(cellX, cellY, center, 22f, center - 12f, 42f, 5.5f));
+                    inner = Mathf.Max(inner, PrintedStroke(cellX, cellY, center, 22f, center + 12f, 42f, 5.5f));
+                    inner = Mathf.Max(inner, PrintedStroke(cellX, cellY, center - 12f, 42f, center, 60f, 5.5f));
+                    inner = Mathf.Max(inner, PrintedStroke(cellX, cellY, center + 12f, 42f, center, 60f, 5.5f));
+                    // The tiny stem and dot are what make the print feel like
+                    // paper from the period instead of a modern logo.
+                    var stem = cellX > center - 3.5f && cellX < center + 3.5f && cellY > 76f && cellY < 112f ? .78f : 0f;
+                    var dotDx = cellX - center;
+                    var dotDy = cellY - 118f;
+                    var dot = Mathf.Clamp01(1f - Mathf.Sqrt(dotDx * dotDx + dotDy * dotDy) / 4.2f);
+                    pattern = outer * .80f + inner * .34f + stem * .20f + dot * .12f;
                 }
                 else if (variant == 1)
                 {
@@ -327,8 +359,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                         || Mathf.Abs(Mathf.Repeat(x - y + 88f, 88f) - 44f) < 2.3f;
                     pattern = diamond ? .08f : 0f;
                 }
-                if (seam) c = Color.Lerp(c, patternColor, .34f);
-                else if (pattern > 0f) c = Color.Lerp(c, patternColor, pattern);
+                if (pattern > 0f) c = Color.Lerp(c, patternColor, Mathf.Clamp01(pattern));
                 pixels[y * size + x] = new Color(c.r, c.g, c.b, 1f);
             }
         // Keep this generated source readable until the paired micro-normal is
@@ -402,15 +433,20 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Material TexturedMat(string name, Color baseColor, Texture2D texture, Vector2 scale, bool emission = false)
     {
         var m = Mat(name, baseColor, emission);
+        // The generated texture already contains the authored base color and
+        // printed ink. Multiplying that albedo a second time through the
+        // material tint crushed the paper contrast in the built player and
+        // made the chevron print disappear at corridor distance.
+        m.color = Color.white;
         m.mainTexture = texture;
         m.mainTextureScale = scale;
         var carpet = name.IndexOf("Carpet", StringComparison.OrdinalIgnoreCase) >= 0;
-        var normal = NormalFromAlbedo(texture, carpet ? 9.5f : 5.5f);
+        var normal = NormalFromAlbedo(texture, carpet ? 9.5f : 2.4f);
         if (normal != null && m.HasProperty("_BumpMap"))
         {
             m.EnableKeyword("_NORMALMAP");
             m.SetTexture("_BumpMap", normal);
-            m.SetFloat("_BumpScale", carpet ? .34f : .17f);
+            m.SetFloat("_BumpScale", carpet ? .34f : .08f);
         }
         m.SetFloat("_Metallic", 0f);
         m.SetFloat("_Glossiness", carpet ? .18f : .09f);
@@ -433,9 +469,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // FilmSurface meshes expose metre-space UVs. Keep the printed motif at
         // roughly 2 m wide and the carpet weave at a few centimetres instead of
         // stretching a default Cube's 0..1 UVs across the whole slab.
-        var paperRepeat = new Vector2(.48f, .42f);
-        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("C5BB7B"), WallpaperTexture(C("C5BB7B"), C("898348"), 0), paperRepeat);
-        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("C2B875"), WallpaperTexture(C("C2B875"), C("878047"), 0), paperRepeat);
+        var paperRepeat = new Vector2(.62f, .52f);
+        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("C5BB7B"), WallpaperTexture(C("C5BB7B"), C("788277"), 0), paperRepeat);
+        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("C2B875"), WallpaperTexture(C("C2B875"), C("788277"), 0), paperRepeat);
         wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office / woven beige", C("B7AE94"), WallpaperTexture(C("B7AE94"), C("87806E"), 2), paperRepeat);
         wallMats[RoomRule.Run] = TexturedMat("Wall / run / chalky utility", C("766B60"), WallpaperTexture(C("766B60"), C("554B45"), 5), paperRepeat);
         wallMats[RoomRule.Exit] = TexturedMat("Wallpaper / exit", C("5D7770"), WallpaperTexture(C("5D7770"), C("334B46"), 4), paperRepeat);
@@ -456,7 +492,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         ceilingMat = ceilingMats[RoomRule.Lobby];
         trimMat = Mat("Aged wall trim", C("716440"));
         fixtureMat = Mat("Fluorescent diffuser", C("F7F2D8"), true);
-        darkMat = Mat("Door and furniture", C("252525"));
+        darkMat = Mat("Door and furniture", C("4B463C"));
         if (Application.isPlaying) return;
         foreach (var material in new[] { trimMat, fixtureMat, darkMat }) previewAssets.Add(material);
         foreach (var set in new[] { wallMats, floorMats, ceilingMats })
@@ -877,7 +913,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // available for later variants, but are not used by this title motion.
         vectorLogoLetterMasks.Clear();
         vectorLogoLetterWidths.Clear();
-        vectorLogoSolidSMask = null;
         vectorLogoLeftImage = VectorLogoImage("SVG complete wordmark", leftAsset, 8f, 17.6f);
         vectorLogoRoot.Add(vectorLogoLeftImage);
 

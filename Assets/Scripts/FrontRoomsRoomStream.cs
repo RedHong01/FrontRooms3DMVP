@@ -816,32 +816,24 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             Box(room.root.transform, "right wallpaper wall", new Vector3(RoomWidth * .5f, RoomHeight * .5f, RoomLength * .5f), new Vector3(WallThickness, RoomHeight, RoomLength), roomWall);
             Box(room.root.transform, "left baseboard", new Vector3(-RoomWidth * .5f + .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? roomWall);
             Box(room.root.transform, "right baseboard", new Vector3(RoomWidth * .5f - .15f, .18f, RoomLength * .5f), new Vector3(.08f, .16f, RoomLength), trimMaterial ?? roomWall);
-            // Real paper is installed in drops. These narrow shadow seams are
-            // deliberately shallow and shared across the room pool; they give
-            // the long walls a believable installation rhythm without adding a
-            // high-frequency decal or another texture sample.
-            for (var seam = 1; seam < 6; seam++)
-            {
-                var seamZ = seam * 2.25f;
-                Box(room.root.transform, "wallpaper drop seam " + seam + " left", new Vector3(-RoomWidth * .5f + .006f, RoomHeight * .5f, seamZ), new Vector3(.012f, RoomHeight - .12f, .018f), trimMaterial ?? roomWall);
-                Box(room.root.transform, "wallpaper drop seam " + seam + " right", new Vector3(RoomWidth * .5f - .006f, RoomHeight * .5f, seamZ), new Vector3(.012f, RoomHeight - .12f, .018f), trimMaterial ?? roomWall);
-            }
-            // A recessed acoustic-tile grid catches the fluorescent spill and
-            // makes the ceiling read as a built room rather than one slab.
-            for (var tile = 1; tile < 10; tile++)
-                Box(room.root.transform, "ceiling tile joint Z " + tile, new Vector3(0f, RoomHeight + .003f, tile * 1.2f), new Vector3(RoomWidth - .24f, .012f, .014f), trimMaterial ?? roomCeiling);
-            for (var tile = -2; tile <= 2; tile++)
-                Box(room.root.transform, "ceiling tile joint X " + tile, new Vector3(tile * 2.3f, RoomHeight + .004f, RoomLength * .5f), new Vector3(.014f, .012f, RoomLength - .24f), trimMaterial ?? roomCeiling);
-            // Two short fixtures create a believable falloff across the 12 m
-            // slice while staying inside the fixed four-room WebGL pool.
+            // Paper-drop variation is carried by the printed texture. Raised
+            // seam strips created another family of overlapping edge lines in
+            // the first-person view, so keep the wall face continuous here.
+            // Do not model the acoustic-tile seams as raised boxes. In a
+            // first-person corridor those long X/Y lines converge toward the
+            // vanishing point and read as exposed wireframe. The planar
+            // ceiling and the fixture housings retain the tile impression;
+            // micro variation stays in the ceiling material instead.
+            // Four simple recessed fluorescent panels create the practical
+            // rhythm from the reference. Keep the edge profile closed and
+            // shallow: the old housing/end-cap stack exposed overlapping
+            // strips that read as a wireframe at the first-person angle.
             var fixtureZ = new[] { 1.7f, 4.55f, 7.4f, 10.25f };
             for (var fixtureIndex = 0; fixtureIndex < fixtureZ.Length; fixtureIndex++)
             {
                 var fixtureZPosition = fixtureZ[fixtureIndex];
-                Box(room.root.transform, "fluorescent housing " + fixtureIndex, new Vector3(0f, RoomHeight - .075f, fixtureZPosition), new Vector3(1.98f, .13f, .44f), darkMatOr(roomCeiling));
-                Box(room.root.transform, "fluorescent diffuser " + fixtureIndex, new Vector3(0f, RoomHeight - .145f, fixtureZPosition), new Vector3(1.73f, .045f, .27f), fixtureMaterial ?? roomCeiling);
-                Box(room.root.transform, "fluorescent end cap L " + fixtureIndex, new Vector3(-.94f, RoomHeight - .08f, fixtureZPosition), new Vector3(.06f, .16f, .48f), trimMaterial ?? roomCeiling);
-                Box(room.root.transform, "fluorescent end cap R " + fixtureIndex, new Vector3(.94f, RoomHeight - .08f, fixtureZPosition), new Vector3(.06f, .16f, .48f), trimMaterial ?? roomCeiling);
+                Box(room.root.transform, "fluorescent recessed pan " + fixtureIndex, new Vector3(0f, RoomHeight - .042f, fixtureZPosition), new Vector3(1.94f, .07f, .40f), darkMatOr(roomCeiling));
+                Box(room.root.transform, "fluorescent diffuser " + fixtureIndex, new Vector3(0f, RoomHeight - .083f, fixtureZPosition), new Vector3(1.70f, .026f, .25f), fixtureMaterial ?? roomCeiling);
                 var lightObject = new GameObject("fluorescent light " + fixtureIndex);
                 lightObject.transform.SetParent(room.root.transform, false);
                 lightObject.transform.localPosition = new Vector3(0f, RoomHeight - .38f, fixtureZ[fixtureIndex]);
@@ -852,11 +844,13 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 light.type = LightType.Point; light.range = room.rule == RoomRule.Run ? 7.1f : room.rule == RoomRule.Office ? 8.4f : 8.2f;
                 light.intensity = room.rule == RoomRule.Run ? .56f : room.rule == RoomRule.Office ? .68f : .64f;
                 light.color = ProfileLightColor(room.rule);
-                // Only the two near fixtures receive dynamic shadows. The
-                // other practicals still contribute through their emissive
-                // diffusers and point falloff, keeping WebGL shadow cost low.
-                light.shadows = fixtureIndex % 2 == 0 ? LightShadows.Soft : LightShadows.None;
-                light.shadowStrength = .24f;
+                // Keep practicals shadowless. Point-light cube shadow seams
+                // can project long diagonal boundaries across the planar
+                // ceiling in the built-in renderer; the directional fill and
+                // the physical fixture housings supply depth without that
+                // wireframe-looking artifact.
+                light.shadows = LightShadows.None;
+                light.shadowStrength = 0f;
                 light.bounceIntensity = .28f;
             }
             room.entry = CreateEntry(room.root.transform);
@@ -888,27 +882,29 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         var sideWallWidth = (RoomWidth - DoorWidth) * .5f;
         var sideWallOffset = DoorWidth * .5f + sideWallWidth * .5f;
         var roomWall = ProfileMaterial(profileWallMaterials, room.rule, wallMaterial);
-        Box(room.root.transform, "door wall return left", new Vector3(-sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), roomWall);
-        Box(room.root.transform, "door wall return right", new Vector3(sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, WallThickness), roomWall);
-        Box(room.root.transform, "door wall above", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, RoomLength), new Vector3(DoorWidth, DoorHeaderHeight, WallThickness), roomWall);
-        Box(room.root.transform, "door frame left", new Vector3(-1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
-        Box(room.root.transform, "door frame right", new Vector3(1.45f, RoomHeight * .5f, RoomLength), new Vector3(.22f, RoomHeight, .22f), frameMaterial);
-        Box(room.root.transform, "door frame header", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, RoomLength), new Vector3(3.12f, DoorHeaderHeight, .22f), frameMaterial);
-        // The frame has a reveal and a threshold so the doorway owns a real
-        // thickness in the light, instead of reading as a flat black card.
-        Box(room.root.transform, "door jamb reveal left", new Vector3(-1.34f, 1.32f, RoomLength - .12f), new Vector3(.10f, 2.52f, .34f), doorMaterial ?? frameMaterial);
-        Box(room.root.transform, "door jamb reveal right", new Vector3(1.34f, 1.32f, RoomLength - .12f), new Vector3(.10f, 2.52f, .34f), doorMaterial ?? frameMaterial);
-        Box(room.root.transform, "door threshold", new Vector3(0f, .055f, RoomLength - .13f), new Vector3(2.72f, .11f, .38f), frameMaterial);
+        // Keep the threshold nearly flush with the paper plane. A full wall
+        // thickness at the opening exposes dark side faces when the player is
+        // close, which reads as a portal frame instead of the ordinary door in
+        // the source room.
+        const float doorWallDepth = .08f;
+        Box(room.root.transform, "door wall return left", new Vector3(-sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, doorWallDepth), roomWall);
+        Box(room.root.transform, "door wall return right", new Vector3(sideWallOffset, RoomHeight * .5f, RoomLength), new Vector3(sideWallWidth, RoomHeight, doorWallDepth), roomWall);
+        Box(room.root.transform, "door wall above", new Vector3(0f, RoomHeight - DoorHeaderHeight * .5f, RoomLength), new Vector3(DoorWidth, DoorHeaderHeight, doorWallDepth), roomWall);
+        // The source-room door is an ordinary, flush double door. Avoid the
+        // layered jamb/reveal/header pieces from the prototype; their exposed
+        // edges made the threshold look like a sci-fi portal.
         var leftPivot = new GameObject("double door left hinge").transform;
-        leftPivot.SetParent(room.root.transform, false); leftPivot.localPosition = new Vector3(-1.2f, 0f, RoomLength);
+        leftPivot.SetParent(room.root.transform, false); leftPivot.localPosition = new Vector3(-1.2f, 0f, RoomLength - .08f);
         var rightPivot = new GameObject("double door right hinge").transform;
-        rightPivot.SetParent(room.root.transform, false); rightPivot.localPosition = new Vector3(1.2f, 0f, RoomLength);
+        rightPivot.SetParent(room.root.transform, false); rightPivot.localPosition = new Vector3(1.2f, 0f, RoomLength - .08f);
         var left = Box(leftPivot, "double door left", new Vector3(.6f, DoorLeafHeight * .5f, 0f), new Vector3(1.2f, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
         var right = Box(rightPivot, "double door right", new Vector3(-.6f, DoorLeafHeight * .5f, 0f), new Vector3(1.2f, DoorLeafHeight, .14f), doorMaterial ?? wallMaterial);
         Box(leftPivot, "left door handle", new Vector3(1.02f, 1.22f, -.10f), new Vector3(.055f, .18f, .08f), frameMaterial);
         Box(rightPivot, "right door handle", new Vector3(-1.02f, 1.22f, -.10f), new Vector3(.055f, .18f, .08f), frameMaterial);
-        Box(leftPivot, "left door gasket", new Vector3(.60f, DoorLeafHeight * .5f, -.085f), new Vector3(1.04f, DoorLeafHeight - .16f, .025f), trimMaterial ?? frameMaterial);
-        Box(rightPivot, "right door gasket", new Vector3(-.60f, DoorLeafHeight * .5f, -.085f), new Vector3(1.04f, DoorLeafHeight - .16f, .025f), trimMaterial ?? frameMaterial);
+        // The leaf itself supplies the dark reveal. The former full-height
+        // gasket strips read as exposed wireframe when the door is closed, so
+        // keep the visual seam implicit in the leaf and retain only the
+        // handles and jamb geometry.
         room.leftDoor = leftPivot; room.rightDoor = rightPivot;
         var audioObject = new GameObject("door creak / spatial");
         audioObject.transform.SetParent(room.root.transform, false);
@@ -1241,7 +1237,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         box.transform.localScale = Vector3.one;
         var meshFilter = box.AddComponent<MeshFilter>();
         var meshRenderer = box.AddComponent<MeshRenderer>();
-        meshFilter.sharedMesh = FrontRoomsFilmMesh.GetBeveledBox(scale, Mathf.Min(.035f, Mathf.Min(scale.x, Mathf.Min(scale.y, scale.z)) * .16f));
+        var structural = name.IndexOf("wall", StringComparison.OrdinalIgnoreCase) >= 0
+            || name.IndexOf("ceiling", StringComparison.OrdinalIgnoreCase) >= 0
+            || name.IndexOf("carpet floor", StringComparison.OrdinalIgnoreCase) >= 0
+            || name.IndexOf("rear boundary", StringComparison.OrdinalIgnoreCase) >= 0
+            || name.IndexOf("fluorescent", StringComparison.OrdinalIgnoreCase) >= 0;
+        meshFilter.sharedMesh = structural
+            ? FrontRoomsFilmMesh.GetPlanarBox(scale)
+            : FrontRoomsFilmMesh.GetBeveledBox(scale, Mathf.Min(.035f, Mathf.Min(scale.x, Mathf.Min(scale.y, scale.z)) * .16f));
         meshRenderer.sharedMaterial = material;
         var collider = box.AddComponent<BoxCollider>();
         collider.size = scale;
