@@ -105,7 +105,11 @@ public static class FrontRoomsOfficeFurniture
         instance.name = assetName + " / authored FBX";
         instance.transform.localPosition = position;
         instance.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
-        instance.transform.localScale = scale;
+        // Unity's FBX importer keeps the Blender metre-to-centimetre root
+        // factor on these assets. Preserve that 100x root scale when
+        // instantiating; setting it to Vector3.one would collapse the mesh to
+        // one hundredth of its authored size.
+        instance.transform.localScale = scale * 100f;
         ApplyImportedMaterials(instance, m);
         return true;
     }

@@ -1221,9 +1221,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             {
                 // Level 4: ordinary, low-density office objects. The centre
                 // lane remains open for threshold reading and pursuit.  The
-                // furniture kit is code-authored so its proportions, UVs and
-                // controlled memory-bleed variants stay deterministic when a
-                // pooled room is recycled.
+                // The furniture kit loads authored Blender/FBX models first;
+                // its controlled memory-bleed variants stay deterministic
+                // when a pooled room is recycled.
                 var officeFurniture = FrontRoomsOfficeFurniture.CreateMaterials(room.sequence);
                 FrontRoomsOfficeFurniture.Build(props.transform, room.sequence, officeFurniture);
                 // Level 4's windows are usually blacked out. This shallow
@@ -1232,6 +1232,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 Box(props.transform, "office blacked-out window", new Vector3(-5.28f, 1.68f, 3.15f), new Vector3(.06f, 1.42f, 2.15f), officeDarkMaterial);
                 Box(props.transform, "office window frame top", new Vector3(-5.22f, 2.42f, 3.15f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
                 Box(props.transform, "office window frame bottom", new Vector3(-5.22f, .94f, 3.15f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
+                // The reference office reads with a sealed interior window
+                // on the right wall behind the copier/vending cluster.
+                Box(props.transform, "office right blacked-out window", new Vector3(5.28f, 1.68f, 7.35f), new Vector3(.06f, 1.42f, 2.15f), officeDarkMaterial);
+                Box(props.transform, "office right window frame top", new Vector3(5.22f, 2.42f, 7.35f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
+                Box(props.transform, "office right window frame bottom", new Vector3(5.22f, .94f, 7.35f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
             }
             else if (rule == RoomRule.Run)
             {

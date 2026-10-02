@@ -12,6 +12,19 @@ namespace FrontRooms.Map
     /// </summary>
     public enum ZoneHeight : byte { Low, Standard, Tall }
 
+    /// <summary>What a zone is dressed as: Level 0 paper and carpet, or a Level 4 office.</summary>
+    public enum ZoneTheme : byte { Level0, Office }
+
+    /// <summary>A rectangle of cells inside one chunk, in local cell coordinates.</summary>
+    [Serializable]
+    public struct CellRect
+    {
+        public int x, y, w, h;
+        public CellRect(int x, int y, int w, int h) { this.x = x; this.y = y; this.w = w; this.h = h; }
+        public bool Overlaps(CellRect o) => x < o.x + o.w && o.x < x + w && y < o.y + o.h && o.y < y + h;
+        public bool Contains(int cx, int cy) => cx >= x && cx < x + w && cy >= y && cy < y + h;
+    }
+
     [Serializable]
     public struct GridCoord : IEquatable<GridCoord>
     {
@@ -94,6 +107,9 @@ namespace FrontRooms.Map
         // Columns are rare in the Backrooms: only tall halls get a few.
         public float lowPillar = 0f, standardPillar = 0f, tallPillar = .06f;
 
+        // Share of standard-height zones dressed as a Level 4 office.
+        public float officeShare = .3f;
+
         public MapSettings Clone() => (MapSettings)MemberwiseClone();
     }
 
@@ -106,6 +122,7 @@ namespace FrontRooms.Map
     {
         public GridCoord id;
         public ZoneHeight height;
+        public ZoneTheme theme;
         public float siteX;
         public float siteZ;
     }
@@ -135,6 +152,9 @@ namespace FrontRooms.Map
         public bool hasKey;
         public GridCoord keyCell;
         public ZoneInfo ownZone;
+        // Rooms carved on top of the maze, in carving order. A later room can
+        // overlap an earlier one.
+        public CellRect[] rooms = new CellRect[0];
 
         public GridCoord Origin => MapGrid.ChunkOrigin(coord);
         public GridCoord Cell(int i, int j) => new GridCoord(coord.x * MapGrid.ChunkCells + i, coord.y * MapGrid.ChunkCells + j);
@@ -143,7 +163,7 @@ namespace FrontRooms.Map
     static class MapHash
     {
         public const int SiteX = 11, SiteZ = 13, Height = 17, EdgeEast = 23, EdgeNorth = 29,
-            GateEast = 31, GateNorth = 37, Tree = 41, Pillar = 43, ZoneTint = 47, Rooms = 53;
+            GateEast = 31, GateNorth = 37, Tree = 41, Pillar = 43, ZoneTint = 47, Rooms = 53, Theme = 59;
 
         static uint Mix(uint h)
         {
@@ -212,6 +232,8 @@ namespace FrontRooms.Map
             zone.height = roll < settings.lowShare ? ZoneHeight.Low
                 : roll < settings.lowShare + settings.standardShare ? ZoneHeight.Standard
                 : ZoneHeight.Tall;
+            zone.theme = zone.height == ZoneHeight.Standard && MapHash.Unit(MapHash.Hash(seed, siteChunk.x, siteChunk.y, MapHash.Theme)) < settings.officeShare
+                ? ZoneTheme.Office : ZoneTheme.Level0;
             zones[siteChunk] = zone;
             return zone;
         }
@@ -372,12 +394,14 @@ namespace FrontRooms.Map
             Array.Clear(room, 0, room.Length);
             Rooms(chunk.ownZone.height, out var roomCount, out var roomMin, out var roomMax);
             var roomRng = MapHash.Hash(seed, coord.x, coord.y, MapHash.Rooms, revision) | 1u;
+            chunk.rooms = new CellRect[Math.Max(0, roomCount)];
             for (var r = 1; r <= roomCount; r++)
             {
                 var w = roomMin + (int)(Next(ref roomRng) % (uint)(roomMax - roomMin + 1));
                 var h = roomMin + (int)(Next(ref roomRng) % (uint)(roomMax - roomMin + 1));
                 var x0 = (int)(Next(ref roomRng) % (uint)(n - w + 1));
                 var y0 = (int)(Next(ref roomRng) % (uint)(n - h + 1));
+                chunk.rooms[r - 1] = new CellRect(x0, y0, w, h);
                 for (var y = y0; y < y0 + h; y++)
                 for (var x = x0; x < x0 + w; x++)
                     room[MapGrid.LocalIndex(x, y)] = (byte)r;

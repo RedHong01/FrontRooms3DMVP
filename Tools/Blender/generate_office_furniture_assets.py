@@ -70,10 +70,15 @@ def parent(obj, root):
 
 
 def box(root, name, loc, dims, mat, bevel=0.0, rotation=None):
-    bpy.ops.mesh.primitive_cube_add(location=loc)
+    # The source kit is specified in Unity-style coordinates (Y up, Z into
+    # the room). Blender is Z-up; convert location and dimensions at the
+    # modelling boundary so the exported FBX lands upright in Unity.
+    blender_loc = (loc[0], -loc[2], loc[1])
+    blender_dims = (dims[0], dims[2], dims[1])
+    bpy.ops.mesh.primitive_cube_add(location=blender_loc)
     obj = bpy.context.object
     obj.name = name
-    obj.dimensions = dims
+    obj.dimensions = blender_dims
     if rotation:
         obj.rotation_euler = rotation
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
@@ -90,7 +95,8 @@ def box(root, name, loc, dims, mat, bevel=0.0, rotation=None):
 
 
 def cylinder(root, name, loc, radius, depth, mat, vertices=16, rotation=None):
-    bpy.ops.mesh.primitive_cylinder_add(vertices=vertices, radius=radius, depth=depth, location=loc)
+    blender_loc = (loc[0], -loc[2], loc[1])
+    bpy.ops.mesh.primitive_cylinder_add(vertices=vertices, radius=radius, depth=depth, location=blender_loc)
     obj = bpy.context.object
     obj.name = name
     if rotation:
@@ -108,11 +114,6 @@ def cylinder(root, name, loc, radius, depth, mat, vertices=16, rotation=None):
 def root_node(name):
     root = bpy.data.objects.new(name, None)
     bpy.context.collection.objects.link(root)
-    # Blender is Z-up while Unity is Y-up. The FBX exporter maps the local
-    # coordinates through (x, -z, -y); a 180-degree X rotation on the asset
-    # root restores the intended Unity height/depth axes without baking the
-    # source mesh into a destructive transform.
-    root.rotation_euler = (math.pi, 0.0, 0.0)
     return root
 
 
