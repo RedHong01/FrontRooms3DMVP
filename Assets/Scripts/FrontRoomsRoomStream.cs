@@ -72,10 +72,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     float diffuseCoefficient = .82f;
 
     [SerializeField, Range(0f, 1f), Tooltip("Density of the lightweight built-in-renderer volumetric shafts below each fluorescent fixture.")]
-    float volumetricDensity = .13f;
+    float volumetricDensity = .012f;
 
-    [SerializeField, Range(1.5f, 3.5f), Tooltip("Downward length of each volumetric shaft in metres.")]
-    float volumetricRange = 2.55f;
+    [SerializeField, Range(.8f, 2.0f), Tooltip("Downward length of each volumetric shaft in metres.")]
+    float volumetricRange = 1.0f;
 
     sealed class RoomSlot
     {
@@ -950,10 +950,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
     static Mesh CreateVolumetricFrustumMesh(float range)
     {
-        var topX = .85f;
-        var topZ = .13f;
-        var bottomX = 1.92f;
-        var bottomZ = 1.30f;
+        var topX = .18f;
+        var topZ = .03f;
+        var bottomX = .28f;
+        var bottomZ = .06f;
         var mesh = new Mesh { name = "Fluorescent volumetric frustum" };
         mesh.SetVertices(new[]
         {
@@ -970,10 +970,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         mesh.SetTriangles(new[]
         {
             0, 4, 5, 0, 5, 1, // front
-            1, 5, 6, 1, 6, 2, // right
-            2, 6, 7, 2, 7, 3, // back
-            3, 7, 4, 3, 4, 0, // left
-            4, 7, 6, 4, 6, 5  // floor fade cap
+            2, 6, 7, 2, 7, 3  // back
         }, 0);
         mesh.RecalculateBounds();
         return mesh;
