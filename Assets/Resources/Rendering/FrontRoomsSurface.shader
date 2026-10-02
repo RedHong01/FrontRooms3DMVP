@@ -89,7 +89,11 @@ Shader "FrontRooms/Surface"
             #pragma vertex Vert
             #pragma fragment Frag
 
-            #pragma shader_feature_local _FR_MESH_UV
+            // Furniture materials are created at runtime after the room pool
+            // is built. Keep both the world-projected and mesh-UV variants in
+            // player builds so the runtime Office kit is not stripped to the
+            // architectural projection path.
+            #pragma multi_compile_local _ _FR_MESH_UV
             #pragma shader_feature_local_fragment _EMISSION
 
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN

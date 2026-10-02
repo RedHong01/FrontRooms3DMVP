@@ -44,7 +44,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     AudioSource hum;
     AudioClip playerStepClip, playerRunStepClip, hunterStepClip, doorClip, bangClip, caughtClip;
     FrontRoomsFoley foley;
-    Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, crosshair, displaySettingsText;
+    Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, keyText, displaySettingsText;
+    Image crosshairImage, keyImage;
+    GameObject keyPanel;
     Image logoImage;
     Image logoLeftImage, logoSlideImage;
     Transform logoMotionRoot;
@@ -67,7 +69,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     bool displaySettingsOpen;
     Font monoFont, bayonFont, serifFont;
     GameObject overlay, roomPanel, threatPanel, contextPanel, displaySettingsPanel;
-    CanvasGroup roomHudGroup, threatHudGroup, contextHudGroup, crosshairHudGroup;
+    CanvasGroup roomHudGroup, threatHudGroup, contextHudGroup, crosshairHudGroup, keyHudGroup;
     Image overlayImage;
     Outline logoOutline;
     Transform titleWorld;
@@ -92,6 +94,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     // two forms overlap in motion instead of waiting for a hard hand-off.
     const float LogoS2StartAt = .50f;
     const float GameplayHudFadeSeconds = .9f;
+    const string CalmHint = "Shift to sprint. About 5 seconds, and it hears every step.";
     float gameplayHudAlpha;
     float yaw, pitch, elapsed, stepTime, hunterStepTime, flashTime;
     string flash = "";
@@ -465,7 +468,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         };
         hunterBrain.Caught += End;
         SetPhase(Phase.Playing);
-        Flash("WASD + MOUSE  /  WALK THE ROOMS", 6f);
         Event("start", "streamed-room");
     }
 
@@ -623,7 +625,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Font UiFont(string name, int fontSize)
     {
         if (name.Contains("Room meta") || name.Contains("Distance") || name.Contains("Aim")) return monoFont;
-        if (name.Contains("Threat") || name.Contains("Menu text")) return bayonFont;
+        if (name.Contains("Threat") || name.Contains("Key") || name.Contains("Menu text")) return bayonFont;
         return serifFont;
     }
     Text Text(Transform parent, string name, Vector2 anchor, Vector2 pos, Vector2 size, int fontSize, TextAnchor alignment)
@@ -633,13 +635,19 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Overflow;
         var rt = t.rectTransform; rt.anchorMin = rt.anchorMax = anchor; rt.pivot = anchor; rt.anchoredPosition = pos; rt.sizeDelta = size;
         t.lineSpacing = 1f;
-        if (name != "Menu text") g.AddComponent<Outline>().effectColor = new Color(0, 0, 0, .7f); return t;
+        return t;
     }
     GameObject Panel(Transform parent, string name, Vector2 anchor, Vector2 pos, Vector2 size, Color color)
     {
         var g = new GameObject(name); g.transform.SetParent(parent, false); var image = g.AddComponent<Image>(); image.color = color; image.raycastTarget = false;
         var rt = image.rectTransform; rt.anchorMin = rt.anchorMax = anchor; rt.pivot = anchor; rt.anchoredPosition = pos; rt.sizeDelta = size;
         return g;
+    }
+    Sprite LoadHudSprite(string resourceName)
+    {
+        var texture = Resources.Load<Texture2D>(resourceName);
+        if (texture == null) return null;
+        return Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(.5f, .5f), 100f, 0, SpriteMeshType.FullRect);
     }
     void LoadBrandLogo()
     {
@@ -880,19 +888,17 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // The play HUD follows the 72px outer margin and 24px internal rhythm from UI_SYSTEM.
         // Room and threat are direct typography overlays. Their cards obscured the
         // environment and allowed long room names to bleed past the top-left edge.
-        roomPanel = TypographyGroup(g.transform, "Room typography", new Vector2(0, 1), new Vector2(72, -72), new Vector2(720, 144));
+        roomPanel = TypographyGroup(g.transform, "Room typography", new Vector2(0, 1), new Vector2(72, -72), new Vector2(505, 144));
         roomHudGroup = roomPanel.AddComponent<CanvasGroup>();
-        Rule(roomPanel.transform, "Room accent", new Vector2(0, 1), new Vector2(0, -24), new Vector2(4, 72), accent);
         roomMetaText = Text(roomPanel.transform, "Room meta", new Vector2(0, 1), new Vector2(24, -18), new Vector2(660, 22), 13, TextAnchor.UpperLeft);
         roomMetaText.color = C("BDBAB0");
-        roomText = Text(roomPanel.transform, "Room", new Vector2(0, 1), new Vector2(24, -44), new Vector2(660, 72), 50, TextAnchor.UpperLeft);
+        roomText = Text(roomPanel.transform, "Room", new Vector2(0, 1), new Vector2(24, -44), new Vector2(505, 72), 50, TextAnchor.UpperLeft);
         roomText.color = paper;
         roomText.horizontalOverflow = HorizontalWrapMode.Overflow;
         roomText.verticalOverflow = VerticalWrapMode.Overflow;
 
         threatPanel = TypographyGroup(g.transform, "Threat typography", Vector2.one, new Vector2(-72, -72), new Vector2(720, 144));
         threatHudGroup = threatPanel.AddComponent<CanvasGroup>();
-        Rule(threatPanel.transform, "Threat accent", new Vector2(1, 1), new Vector2(0, -24), new Vector2(4, 72), accent);
         threatStateText = Text(threatPanel.transform, "Threat state", new Vector2(1, 1), new Vector2(-24, -18), new Vector2(660, 34), 20, TextAnchor.UpperRight);
         threatStateText.color = accent; threatStateText.fontStyle = FontStyle.Bold;
         threatStateText.horizontalOverflow = HorizontalWrapMode.Overflow;
@@ -904,13 +910,25 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
         contextPanel = Panel(g.transform, "Context panel", new Vector2(.5f, 0), new Vector2(0, 72), new Vector2(920, 120), media);
         contextHudGroup = contextPanel.AddComponent<CanvasGroup>();
-        Rule(contextPanel.transform, "Context accent", new Vector2(0, .5f), new Vector2(24, 0), new Vector2(4, 72), accent);
-        contextText = Text(contextPanel.transform, "Context", new Vector2(.5f, .5f), new Vector2(12, 0), new Vector2(790, 72), 24, TextAnchor.MiddleCenter);
+        contextText = Text(contextPanel.transform, "Context", new Vector2(.5f, .5f), new Vector2(10, 0), new Vector2(820, 72), 24, TextAnchor.MiddleCenter);
         contextText.color = paper;
 
-        crosshair = Text(g.transform, "Aim", new Vector2(.5f, .5f), Vector2.zero, new Vector2(32, 32), 20, TextAnchor.MiddleCenter); crosshair.text = "·";
-        crosshairHudGroup = crosshair.gameObject.AddComponent<CanvasGroup>();
-        crosshair.color = accent;
+        var crosshairObject = Panel(g.transform, "HUD / Crosshair", new Vector2(.5f, .5f), Vector2.zero, new Vector2(32, 32), Color.white);
+        crosshairImage = crosshairObject.GetComponent<Image>();
+        crosshairImage.sprite = LoadHudSprite("UI/HUD_Crosshair");
+        crosshairImage.preserveAspect = true;
+        crosshairHudGroup = crosshairObject.AddComponent<CanvasGroup>();
+
+        keyPanel = TypographyGroup(g.transform, "HUD / Key", new Vector2(0, 0), new Vector2(72, 118), new Vector2(147, 22));
+        keyHudGroup = keyPanel.AddComponent<CanvasGroup>();
+        keyImage = Panel(keyPanel.transform, "Key glyph", new Vector2(0, 0), Vector2.zero, new Vector2(40, 22), Color.white).GetComponent<Image>();
+        keyImage.sprite = LoadHudSprite("UI/HUD_KeyGlyph");
+        keyImage.preserveAspect = true;
+        keyText = Text(keyPanel.transform, "Key label", new Vector2(0, 0), new Vector2(54, 0), new Vector2(110, 22), 20, TextAnchor.MiddleLeft);
+        keyText.color = paper;
+        keyText.text = "LEVEL 0 KEY";
+        keyText.horizontalOverflow = HorizontalWrapMode.Overflow;
+        keyText.verticalOverflow = VerticalWrapMode.Overflow;
         gameplayHudAlpha = 0f;
         ApplyGameplayHudAlpha();
 
@@ -958,7 +976,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             displaySettingsOpen = false;
             if (displaySettingsPanel != null) displaySettingsPanel.SetActive(false);
         }
-        overlay.SetActive(!playing); crosshair.enabled = playing;
+        overlay.SetActive(!playing); if (crosshairImage != null) crosshairImage.enabled = playing;
         if (overlayImage != null) overlayImage.color = p == Phase.Title ? new Color(0f, 0f, 0f, 0f) : new Color(.93f, .92f, .88f, .98f);
         if (logoImage != null)
         {
@@ -973,6 +991,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
         if (roomPanel != null) roomPanel.SetActive(playing);
         if (threatPanel != null) threatPanel.SetActive(playing);
+        if (keyPanel != null) keyPanel.SetActive(playing);
         if (contextPanel != null) contextPanel.SetActive(false);
         ApplyGameplayHudAlpha();
         Cursor.lockState = playing ? CursorLockMode.Locked : CursorLockMode.None; Cursor.visible = !playing;
@@ -1017,18 +1036,20 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         ApplyGameplayHudAlpha();
         if (!streamedPlay) return;
         var rule = roomStream == null ? RoomRule.Lobby : roomStream.CurrentRule;
-        var roomName = rule == RoomRule.Office ? "LEVEL 4 / OFFICE" : rule == RoomRule.Run ? "LEVEL ! / RUN" : rule == RoomRule.Shift ? "LEVEL 0 / SHIFT" : rule == RoomRule.Exit ? "EXIT / COLD THRESHOLD" : "LOBBY / THRESHOLD";
+        var roomName = rule == RoomRule.Office ? "LEVEL 4 / OFFICE" : rule == RoomRule.Run ? "LEVEL ! / RUN" : rule == RoomRule.Shift || rule == RoomRule.Lobby ? "LEVEL 0 / PILLAR HALL" : rule == RoomRule.Exit ? "EXIT / COLD THRESHOLD" : "LEVEL 0 / PILLAR HALL";
         var released = hunterBrain != null && hunterBrain.Released;
         var threat = !released ? "THREAT  /  QUIET" : hunterBrain.State == HunterState.BreakDoor ? "RELAY  /  BREAKING DOOR" : "RELAY  /  " + hunterBrain.State.ToString().ToUpperInvariant();
-        roomMetaText.text = play ? "ROOM " + RoomsReached().ToString("00") + "  /  ACTIVE" : "";
+        roomMetaText.text = "";
         roomText.text = play ? roomName : "";
-        threatStateText.text = play ? threat : "";
-        distanceText.text = play ? (released ? "RELAY  " + Mathf.RoundToInt(RelayDistance()) + " M" : "RELAY  /  OUT OF RANGE") : "";
-        crosshair.enabled = play;
-        contextText.text = play && flashTime > 0f ? flash : "";
+        var showThreat = play && released;
+        threatStateText.text = showThreat ? threat : "";
+        distanceText.text = showThreat ? "RELAY  " + Mathf.RoundToInt(RelayDistance()) + " M" : "";
+        if (crosshairImage != null) crosshairImage.enabled = play;
+        contextText.text = play ? (flashTime > 0f && !string.IsNullOrEmpty(flash) ? flash : CalmHint) : "";
         if (roomPanel != null) roomPanel.SetActive(play);
-        if (threatPanel != null) threatPanel.SetActive(play);
-        if (contextPanel != null) contextPanel.SetActive(play && contextText.text != "");
+        if (threatPanel != null) threatPanel.SetActive(showThreat);
+        if (keyPanel != null) keyPanel.SetActive(play);
+        if (contextPanel != null) contextPanel.SetActive(play);
     }
 
     int RoomsReached() => roomStream == null ? 1 : roomStream.CurrentRoomNumber - startRoom + 1;
@@ -1039,6 +1060,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (threatHudGroup != null) threatHudGroup.alpha = gameplayHudAlpha;
         if (contextHudGroup != null) contextHudGroup.alpha = gameplayHudAlpha;
         if (crosshairHudGroup != null) crosshairHudGroup.alpha = gameplayHudAlpha;
+        if (keyHudGroup != null) keyHudGroup.alpha = gameplayHudAlpha;
     }
     void Flash(string message, float duration = 3f) { flash = message; flashTime = duration; }
     void Event(string kind, string detail) { events.Add(elapsed.ToString("0.000", CultureInfo.InvariantCulture) + "," + kind + ",\"" + detail.Replace("\"", "\"\"") + "\"," + RelayDistance().ToString("0.00", CultureInfo.InvariantCulture)); }

@@ -148,10 +148,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     Material[] profileWallMaterials;
     Material[] profileFloorMaterials;
     Material[] profileCeilingMaterials;
-    Material officeDeskMaterial;
     Material officeMetalMaterial;
-    Material officePaperMaterial;
-    Material officeGlassMaterial;
     Material officeDarkMaterial;
     Material runChromeMaterial;
     Material runVinylMaterial;
@@ -1187,11 +1184,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
     void EnsurePropMaterials()
     {
-        if (officeDeskMaterial != null) return;
-        officeDeskMaterial = FrontRoomsSurfaces.Lit("Office / laminate desk", new Color(.40f, .36f, .30f), .38f);
+        if (officeMetalMaterial != null) return;
         officeMetalMaterial = FrontRoomsSurfaces.Lit("Office / putty steel", new Color(.56f, .54f, .50f), .45f, .55f);
-        officePaperMaterial = FrontRoomsSurfaces.Lit("Office / paper", new Color(.86f, .84f, .78f), .1f);
-        officeGlassMaterial = FrontRoomsSurfaces.Lit("Office / cooler bottle", new Color(.40f, .60f, .66f), .92f, 0f, new Color(.04f, .08f, .09f));
         officeDarkMaterial = FrontRoomsSurfaces.BlackedGlass;
         runChromeMaterial = FrontRoomsSurfaces.Lit("Run / chrome", new Color(.70f, .70f, .68f), .78f, .9f);
         runVinylMaterial = FrontRoomsSurfaces.Lit("Run / teal vinyl seat", new Color(.20f, .36f, .35f), .42f);
@@ -1226,34 +1220,18 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             else if (rule == RoomRule.Office)
             {
                 // Level 4: ordinary, low-density office objects. The centre
-                // lane remains open for threshold reading and pursuit.
-                for (var i = -1; i <= 1; i++)
-                {
-                    var x = i * 2.45f + (i == 1 ? .22f : 0f);
-                    var z = 6.65f;
-                    Box(props.transform, "office desk surface", new Vector3(x, .72f, z), new Vector3(1.75f, .12f, .72f), officeDeskMaterial);
-                    Box(props.transform, "office desk leg left", new Vector3(x - .67f, .35f, z), new Vector3(.12f, .62f, .45f), officeMetalMaterial);
-                    Box(props.transform, "office desk leg right", new Vector3(x + .67f, .35f, z), new Vector3(.12f, .62f, .45f), officeMetalMaterial);
-                    Box(props.transform, "office CRT monitor", new Vector3(x, 1.08f, z + .18f), new Vector3(.48f, .34f, .08f), officeMetalMaterial);
-                    Box(props.transform, "office monitor stand", new Vector3(x, .88f, z + .1f), new Vector3(.08f, .18f, .08f), officeMetalMaterial);
-                    Box(props.transform, "office paper stack", new Vector3(x - .42f, .82f, z - .16f), new Vector3(.22f, .03f, .28f), officePaperMaterial);
-                    Box(props.transform, "office cubicle panel", new Vector3(x, 1.2f, z + .82f), new Vector3(1.45f, 1.0f, .09f), FrontRoomsSurfaces.CubicleFabric);
-                }
-                Box(props.transform, "office water cooler body", new Vector3(4.25f, .9f, 3.8f), new Vector3(.48f, .9f, .48f), officeMetalMaterial);
-                Box(props.transform, "office water cooler bottle", new Vector3(4.25f, 1.58f, 3.8f), new Vector3(.31f, .42f, .31f), officeGlassMaterial);
-                Box(props.transform, "office filing cabinet", new Vector3(-4.25f, .78f, 8.15f), new Vector3(.56f, .78f, .52f), officeMetalMaterial);
-                Box(props.transform, "office cabinet handle", new Vector3(-4.25f, 1.02f, 7.87f), new Vector3(.22f, .035f, .035f), officePaperMaterial);
+                // lane remains open for threshold reading and pursuit.  The
+                // furniture kit is code-authored so its proportions, UVs and
+                // controlled memory-bleed variants stay deterministic when a
+                // pooled room is recycled.
+                var officeFurniture = FrontRoomsOfficeFurniture.CreateMaterials(room.sequence);
+                FrontRoomsOfficeFurniture.Build(props.transform, room.sequence, officeFurniture);
                 // Level 4's windows are usually blacked out. This shallow
                 // panel reads as a sealed window at the edge of the room,
                 // while the central sightline stays clear for pursuit.
                 Box(props.transform, "office blacked-out window", new Vector3(-5.28f, 1.68f, 3.15f), new Vector3(.06f, 1.42f, 2.15f), officeDarkMaterial);
                 Box(props.transform, "office window frame top", new Vector3(-5.22f, 2.42f, 3.15f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
                 Box(props.transform, "office window frame bottom", new Vector3(-5.22f, .94f, 3.15f), new Vector3(.10f, .08f, 2.25f), officeMetalMaterial);
-                // A dead vending machine is a recognizable 90s office relic;
-                // it is deliberately unlit so it cannot compete with the
-                // fluorescent room reveal.
-                Box(props.transform, "office vending machine", new Vector3(4.88f, 1.12f, 9.35f), new Vector3(.46f, 1.12f, .72f), officeMetalMaterial);
-                Box(props.transform, "office vending machine display", new Vector3(4.62f, 1.62f, 9.35f), new Vector3(.025f, .30f, .48f), officeDarkMaterial);
             }
             else if (rule == RoomRule.Run)
             {
