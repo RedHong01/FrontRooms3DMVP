@@ -1241,6 +1241,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             || name.IndexOf("ceiling", StringComparison.OrdinalIgnoreCase) >= 0
             || name.IndexOf("carpet floor", StringComparison.OrdinalIgnoreCase) >= 0
             || name.IndexOf("rear boundary", StringComparison.OrdinalIgnoreCase) >= 0
+            || name.IndexOf("door", StringComparison.OrdinalIgnoreCase) >= 0
             || name.IndexOf("fluorescent", StringComparison.OrdinalIgnoreCase) >= 0;
         meshFilter.sharedMesh = structural
             ? FrontRoomsFilmMesh.GetPlanarBox(scale)

@@ -297,7 +297,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         tex.wrapMode = TextureWrapMode.Repeat;
         tex.filterMode = FilterMode.Trilinear;
         tex.anisoLevel = 4;
-        tex.mipMapBias = -0.55f;
+        tex.mipMapBias = -1.10f;
         var pixels = new Color[size * size];
         for (var y = 0; y < size; y++)
             for (var x = 0; x < size; x++)
@@ -441,7 +441,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         m.mainTexture = texture;
         m.mainTextureScale = scale;
         var carpet = name.IndexOf("Carpet", StringComparison.OrdinalIgnoreCase) >= 0;
-        var normal = NormalFromAlbedo(texture, carpet ? 9.5f : 2.4f);
+        // Printed wallpaper is a flat ink layer. Deriving a normal from its
+        // chevrons made the glyph edges catch grazing light like raised wire
+        // strips; reserve the procedural normal for the carpet weave.
+        var normal = carpet ? NormalFromAlbedo(texture, 9.5f) : null;
         if (normal != null && m.HasProperty("_BumpMap"))
         {
             m.EnableKeyword("_NORMALMAP");
@@ -470,8 +473,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // roughly 2 m wide and the carpet weave at a few centimetres instead of
         // stretching a default Cube's 0..1 UVs across the whole slab.
         var paperRepeat = new Vector2(.62f, .52f);
-        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("C5BB7B"), WallpaperTexture(C("C5BB7B"), C("788277"), 0), paperRepeat);
-        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("C2B875"), WallpaperTexture(C("C2B875"), C("788277"), 0), paperRepeat);
+        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("C5BB7B"), WallpaperTexture(C("C5BB7B"), C("6A786E"), 0), paperRepeat);
+        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("C2B875"), WallpaperTexture(C("C2B875"), C("6A786E"), 0), paperRepeat);
         wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office / woven beige", C("B7AE94"), WallpaperTexture(C("B7AE94"), C("87806E"), 2), paperRepeat);
         wallMats[RoomRule.Run] = TexturedMat("Wall / run / chalky utility", C("766B60"), WallpaperTexture(C("766B60"), C("554B45"), 5), paperRepeat);
         wallMats[RoomRule.Exit] = TexturedMat("Wallpaper / exit", C("5D7770"), WallpaperTexture(C("5D7770"), C("334B46"), 4), paperRepeat);
