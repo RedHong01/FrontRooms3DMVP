@@ -22,7 +22,7 @@ public sealed class FrontRoomsMapDebugWindow : EditorWindow
 
     [SerializeField] MapSettings settings = new MapSettings();
     [SerializeField] int radius = 5;
-    [SerializeField] float cellPixels = 18f;
+    [SerializeField] float cellPixels = 10f;
     [SerializeField] Vector2 pan;
     [SerializeField] bool showChunks = true;
     [SerializeField] bool showSettings;

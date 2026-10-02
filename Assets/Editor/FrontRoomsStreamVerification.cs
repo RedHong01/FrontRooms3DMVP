@@ -58,7 +58,7 @@ public static class FrontRoomsStreamVerification
             camera = new GameObject("VERIFY / camera").AddComponent<Camera>();
             camera.gameObject.hideFlags = HideFlags.HideAndDontSave;
             camera.transform.position = new Vector3(FrontRooms3DGame.TitleCenterX, 1.62f, 0f);
-            material = new Material(Shader.Find("Standard"));
+            material = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
             var profiles = new[] { material, material, material, material, material };
             stream = root.AddComponent<FrontRoomsRoomStream>();
             stream.Initialize(camera, material, material, material, material, material, material, null, null, null, profiles, profiles, profiles);

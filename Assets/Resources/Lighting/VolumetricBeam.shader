@@ -8,10 +8,10 @@ Shader "FrontRooms/VolumetricBeam"
     }
     SubShader
     {
-        Tags { "Queue" = "Transparent" "RenderType" = "Transparent" "IgnoreProjector" = "True" }
+        Tags { "RenderPipeline" = "UniversalPipeline" "Queue" = "Transparent" "RenderType" = "Transparent" "IgnoreProjector" = "True" }
         // Volumetric light only adds energy. Additive blending prevents the
         // transparent proxy from tinting the room dark when it intersects a
-        // doorway or when Unity's scene fog is dense.
+        // doorway or when the scene fog is dense.
         Blend One One
         Cull Off
         ZWrite Off
@@ -19,36 +19,49 @@ Shader "FrontRooms/VolumetricBeam"
 
         Pass
         {
-            CGPROGRAM
+            Name "VolumetricBeam"
+            Tags { "LightMode" = "UniversalForward" }
+
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #include "UnityCG.cginc"
+            #pragma multi_compile_fog
+            #pragma multi_compile_instancing
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            fixed4 _Color;
-            half _Density;
-            half _DiffuseCoefficient;
+            CBUFFER_START(UnityPerMaterial)
+                half4 _Color;
+                half _Density;
+                half _DiffuseCoefficient;
+            CBUFFER_END
 
-            struct appdata
+            struct Attributes
             {
-                float4 vertex : POSITION;
+                float4 positionOS : POSITION;
                 float2 uv : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
-            struct v2f
+            struct Varyings
             {
-                float4 vertex : SV_POSITION;
+                float4 positionCS : SV_POSITION;
                 float2 uv : TEXCOORD0;
+                half fog : TEXCOORD1;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
-            v2f vert(appdata v)
+            Varyings vert(Attributes input)
             {
-                v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = v.uv;
+                Varyings o = (Varyings)0;
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+                o.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                o.uv = input.uv;
+                o.fog = ComputeFogFactor(o.positionCS.z);
                 return o;
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            half4 frag(Varyings i) : SV_Target
             {
                 // The frustum carries a simple height coordinate. Fade at the
                 // ceiling and floor, then soften each side so the volume never
@@ -56,17 +69,15 @@ Shader "FrontRooms/VolumetricBeam"
                 half heightFade = smoothstep(0.015h, 0.20h, i.uv.y)
                     * (1.0h - smoothstep(0.78h, 1.0h, i.uv.y));
                 half edgeDistance = abs(i.uv.x * 2.0h - 1.0h);
-                // The mesh only carries front/back soft sheets. Fade fully at
-                // their boundaries so the sheet never reads as a rectangle in
-                // the room or across a doorway.
                 half edgeFade = 1.0h - smoothstep(0.30h, 0.96h, edgeDistance);
                 half softVariation = 0.90h + 0.10h * sin((i.uv.x + i.uv.y * 1.7h) * 18.0h);
                 half alpha = saturate(_Density * _DiffuseCoefficient * heightFade * edgeFade * softVariation);
-                fixed4 color = _Color * alpha;
-                color.a = alpha;
-                return color;
+                half3 color = _Color.rgb * alpha;
+                // Additive light fades toward black (no added energy) in fog.
+                color = MixFogColor(color, half3(0, 0, 0), i.fog);
+                return half4(color, alpha);
             }
-            ENDCG
+            ENDHLSL
         }
     }
     FallBack Off

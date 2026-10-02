@@ -30,14 +30,14 @@ namespace FrontRooms.Map
     }
 
     /// <summary>
-    /// World layout of the map. A cell is a 6 m square; a chunk is 4 x 4 cells
-    /// (24 m) and is the unit that is built and dropped around the player.
-    /// Cell (x, y) covers world X [x*6, x*6+6) and Z [y*6, y*6+6).
+    /// World layout of the map. A cell is a 3 m square, one corridor wide; a
+    /// chunk is 8 x 8 cells (24 m) and is the unit that is built and dropped
+    /// around the player. Cell (x, y) covers world X [3x, 3x+3) and Z [3y, 3y+3).
     /// </summary>
     public static class MapGrid
     {
-        public const float CellSize = 6f;
-        public const int ChunkCells = 4;
+        public const float CellSize = 3f;
+        public const int ChunkCells = 8;
         public const int CellsPerChunk = ChunkCells * ChunkCells;
         public const float ChunkSize = CellSize * ChunkCells;
 
@@ -59,7 +59,7 @@ namespace FrontRooms.Map
         public static bool Passable(EdgeKind kind) => kind != EdgeKind.Wall;
     }
 
-    /// <summary>Designer-facing generation numbers. Every value is a share or a chance from 0 to 1.</summary>
+    /// <summary>Designer-facing generation numbers. Every value is a share or a chance from 0 to 1 unless it is a cell count.</summary>
     [Serializable]
     public sealed class MapSettings
     {
@@ -70,18 +70,29 @@ namespace FrontRooms.Map
         public float standardShare = .55f;
         public float tallShare = .10f;
 
-        // Inside a zone (or between two zones of the same height). Edges on the
-        // chunk's spanning tree are never walls, so these never cut a cell off.
-        public float lowWall = .08f, lowArch = .10f;
-        public float standardWall = .38f, standardArch = .32f;
-        public float tallWall = .03f, tallArch = .05f;
+        // Each chunk is first carved as a maze: a random spanning tree whose
+        // edges are never walls. This share of the maze edges becomes a
+        // doorless doorway; the rest stay open corridor.
+        public float lowDoorway = .25f, standardDoorway = .30f, tallDoorway = .10f;
+
+        // Every other edge inside a zone is a wall, a doorway or open, in that
+        // order. Standard zones are the Level 0 maze, low zones leak, tall
+        // zones are halls.
+        public float lowWall = .50f, lowArch = .20f;
+        public float standardWall = .82f, standardArch = .10f;
+        public float tallWall = .30f, tallArch = .10f;
+
+        // Rooms carved into each chunk on top of the maze, sized in cells.
+        public int lowRooms = 2, lowRoomMin = 2, lowRoomMax = 3;
+        public int standardRooms = 2, standardRoomMin = 2, standardRoomMax = 4;
+        public int tallRooms = 1, tallRoomMin = 5, tallRoomMax = 7;
 
         // Where the ceiling height changes, an edge is a wall unless it is the
         // required connection or this roll opens it as a door or window.
-        public float borderOpening = .22f;
+        public float borderOpening = .15f;
 
-        // Pillars stand on cell corners where all four cells share a height.
-        public float lowPillar = .30f, standardPillar = .08f, tallPillar = .55f;
+        // Columns are rare in the Backrooms: only tall halls get a few.
+        public float lowPillar = 0f, standardPillar = 0f, tallPillar = .06f;
 
         public MapSettings Clone() => (MapSettings)MemberwiseClone();
     }
@@ -132,7 +143,7 @@ namespace FrontRooms.Map
     static class MapHash
     {
         public const int SiteX = 11, SiteZ = 13, Height = 17, EdgeEast = 23, EdgeNorth = 29,
-            GateEast = 31, GateNorth = 37, Tree = 41, Pillar = 43, ZoneTint = 47;
+            GateEast = 31, GateNorth = 37, Tree = 41, Pillar = 43, ZoneTint = 47, Rooms = 53;
 
         static uint Mix(uint h)
         {
@@ -176,6 +187,7 @@ namespace FrontRooms.Map
         readonly int[] stack = new int[MapGrid.CellsPerChunk];
         readonly bool[] visited = new bool[MapGrid.CellsPerChunk];
         readonly int[] choices = new int[4];
+        readonly byte[] room = new byte[MapGrid.CellsPerChunk];
 
         public FrontRoomsMapGenerator(MapSettings settings)
         {
@@ -249,10 +261,10 @@ namespace FrontRooms.Map
             var gate = (int)(MapHash.Hash(seed, chunk.x, chunk.y, east ? MapHash.GateEast : MapHash.GateNorth) % MapGrid.ChunkCells);
             var other = east ? new GridCoord(cell.x + 1, cell.y) : new GridCoord(cell.x, cell.y + 1);
             var roll = MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, east ? MapHash.EdgeEast : MapHash.EdgeNorth));
-            return Resolve(cell, other, local == gate, roll);
+            return Resolve(cell, other, local == gate, false, roll);
         }
 
-        EdgeKind Resolve(GridCoord a, GridCoord b, bool required, float roll)
+        EdgeKind Resolve(GridCoord a, GridCoord b, bool required, bool inRoom, float roll)
         {
             var ha = HeightOf(a);
             var hb = HeightOf(b);
@@ -261,19 +273,32 @@ namespace FrontRooms.Map
                 var exit = ha == ZoneHeight.Tall || hb == ZoneHeight.Tall ? EdgeKind.Window : EdgeKind.Door;
                 return required || roll < settings.borderOpening ? exit : EdgeKind.Wall;
             }
-            Interior(ha, out var wall, out var arch);
-            if (required) return roll < arch / Math.Max(1e-4f, 1f - wall) ? EdgeKind.Arch : EdgeKind.Open;
+            if (inRoom) return EdgeKind.Open;
+            Grammar(ha, out var doorway, out var wall, out var arch);
+            if (required) return roll < doorway ? EdgeKind.Arch : EdgeKind.Open;
             return roll < wall ? EdgeKind.Wall : roll < wall + arch ? EdgeKind.Arch : EdgeKind.Open;
         }
 
-        void Interior(ZoneHeight height, out float wall, out float arch)
+        void Grammar(ZoneHeight height, out float doorway, out float wall, out float arch)
         {
             switch (height)
             {
-                case ZoneHeight.Low: wall = settings.lowWall; arch = settings.lowArch; break;
-                case ZoneHeight.Tall: wall = settings.tallWall; arch = settings.tallArch; break;
-                default: wall = settings.standardWall; arch = settings.standardArch; break;
+                case ZoneHeight.Low: doorway = settings.lowDoorway; wall = settings.lowWall; arch = settings.lowArch; break;
+                case ZoneHeight.Tall: doorway = settings.tallDoorway; wall = settings.tallWall; arch = settings.tallArch; break;
+                default: doorway = settings.standardDoorway; wall = settings.standardWall; arch = settings.standardArch; break;
             }
+        }
+
+        void Rooms(ZoneHeight height, out int count, out int min, out int max)
+        {
+            switch (height)
+            {
+                case ZoneHeight.Low: count = settings.lowRooms; min = settings.lowRoomMin; max = settings.lowRoomMax; break;
+                case ZoneHeight.Tall: count = settings.tallRooms; min = settings.tallRoomMin; max = settings.tallRoomMax; break;
+                default: count = settings.standardRooms; min = settings.standardRoomMin; max = settings.standardRoomMax; break;
+            }
+            min = Math.Max(1, Math.Min(min, MapGrid.ChunkCells));
+            max = Math.Max(min, Math.Min(max, MapGrid.ChunkCells));
         }
 
         float PillarChance(ZoneHeight height) => height == ZoneHeight.Low ? settings.lowPillar
@@ -312,8 +337,9 @@ namespace FrontRooms.Map
                 chunk.height[MapGrid.LocalIndex(i, j)] = zone.height;
             }
 
-            // A random spanning tree over the 16 cells: its edges are never
-            // walls, so every cell of the chunk stays reachable.
+            // A random depth-first maze over the chunk's cells: its edges are
+            // never walls, so every cell of the chunk stays reachable, and its
+            // long winding branches read as corridors.
             var treeEast = new bool[MapGrid.CellsPerChunk];
             var treeNorth = new bool[MapGrid.CellsPerChunk];
             var rng = MapHash.Hash(seed, coord.x, coord.y, MapHash.Tree, revision) | 1u;
@@ -340,16 +366,33 @@ namespace FrontRooms.Map
                 stack[top++] = next;
             }
 
+            // Rooms on top of the maze: every edge inside one is open, so the
+            // maze opens into rooms of different sizes. Later rooms overwrite
+            // earlier ones where they overlap.
+            Array.Clear(room, 0, room.Length);
+            Rooms(chunk.ownZone.height, out var roomCount, out var roomMin, out var roomMax);
+            var roomRng = MapHash.Hash(seed, coord.x, coord.y, MapHash.Rooms, revision) | 1u;
+            for (var r = 1; r <= roomCount; r++)
+            {
+                var w = roomMin + (int)(Next(ref roomRng) % (uint)(roomMax - roomMin + 1));
+                var h = roomMin + (int)(Next(ref roomRng) % (uint)(roomMax - roomMin + 1));
+                var x0 = (int)(Next(ref roomRng) % (uint)(n - w + 1));
+                var y0 = (int)(Next(ref roomRng) % (uint)(n - h + 1));
+                for (var y = y0; y < y0 + h; y++)
+                for (var x = x0; x < x0 + w; x++)
+                    room[MapGrid.LocalIndex(x, y)] = (byte)r;
+            }
+
             for (var j = 0; j < n; j++)
             for (var i = 0; i < n; i++)
             {
                 var index = MapGrid.LocalIndex(i, j);
                 var cell = chunk.Cell(i, j);
                 chunk.east[index] = i < n - 1
-                    ? Resolve(cell, new GridCoord(cell.x + 1, cell.y), treeEast[index], MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, MapHash.EdgeEast, revision)))
+                    ? Resolve(cell, new GridCoord(cell.x + 1, cell.y), treeEast[index], room[index] != 0 && room[index] == room[index + 1], MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, MapHash.EdgeEast, revision)))
                     : BorderEdge(cell, true);
                 chunk.north[index] = j < n - 1
-                    ? Resolve(cell, new GridCoord(cell.x, cell.y + 1), treeNorth[index], MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, MapHash.EdgeNorth, revision)))
+                    ? Resolve(cell, new GridCoord(cell.x, cell.y + 1), treeNorth[index], room[index] != 0 && room[index] == room[index + n], MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, MapHash.EdgeNorth, revision)))
                     : BorderEdge(cell, false);
             }
             for (var k = 0; k < n; k++)

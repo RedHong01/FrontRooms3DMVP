@@ -81,9 +81,10 @@ public sealed class FrontRoomsMazePreview : MonoBehaviour
 
     Material Make(string name, Color color)
     {
-        var shader = Shader.Find("Standard") ?? Shader.Find("UI/Default");
+        var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
         var material = new Material(shader) { name = name, color = color };
         material.SetFloat("_Glossiness", .08f);
+        material.SetFloat("_Smoothness", .08f);
         return material;
     }
 

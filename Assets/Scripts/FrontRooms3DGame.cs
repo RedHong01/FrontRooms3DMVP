@@ -41,9 +41,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     readonly Dictionary<RoomRule, Material> floorMats = new Dictionary<RoomRule, Material>();
     readonly Dictionary<RoomRule, Material> ceilingMats = new Dictionary<RoomRule, Material>();
     Material trimMat, fixtureMat;
-    // Procedural materials and textures made for the edit-mode preview, so
-    // they can be released with it instead of leaking on every reload.
-    readonly List<UnityEngine.Object> previewAssets = new List<UnityEngine.Object>();
     AudioSource hum;
     AudioClip playerStepClip, playerRunStepClip, hunterStepClip, doorClip, bangClip, caughtClip;
     FrontRoomsFoley foley;
@@ -138,9 +135,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             if (Application.isPlaying) Destroy(child);
             else DestroyImmediate(child);
         }
-        foreach (var asset in previewAssets)
-            if (asset != null) DestroyImmediate(asset);
-        previewAssets.Clear();
     }
 
     static Material[] ProfileMaterials(Dictionary<RoomRule, Material> materials)
@@ -170,6 +164,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         camera.allowMSAA = true;
         camera.useOcclusionCulling = true;
         camera.clearFlags = CameraClearFlags.SolidColor; camera.backgroundColor = C("22231C"); camera.gameObject.AddComponent<AudioListener>();
+        FrontRoomsPostStack.ConfigureCamera(camera);
         return camera;
     }
 
@@ -211,15 +206,16 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
         // Set ambientLight first: in Unity's built-in renderer this property is
         // an alias for the sky colour and would otherwise overwrite it.
-        RenderSettings.ambientLight = new Color(.16f, .15f, .12f);
-        RenderSettings.ambientSkyColor = C("8D8E78");
-        RenderSettings.ambientEquatorColor = C("4A4231");
-        RenderSettings.ambientGroundColor = C("252016");
+        // The practicals are downward spots, so the ceiling faces down into
+        // the ground colour: that is the warm bounce off the carpet. Same values
+        // as FrontRoomsRenderSetup writes into the shipped scene.
+        RenderSettings.ambientLight = new Color(.20f, .19f, .15f);
+        RenderSettings.ambientSkyColor = new Color(.20f, .19f, .15f);
+        RenderSettings.ambientEquatorColor = new Color(.26f, .24f, .17f);
+        RenderSettings.ambientGroundColor = new Color(.40f, .36f, .24f);
         RenderSettings.reflectionIntensity = .3f;
         RenderSettings.fog = true; RenderSettings.fogMode = FogMode.ExponentialSquared;
-        RenderSettings.fogColor = C("29271E"); RenderSettings.fogDensity = .012f;
-        QualitySettings.shadowDistance = 48f;
-        QualitySettings.shadowCascades = 4;
+        RenderSettings.fogColor = new Color(.16f, .15f, .11f); RenderSettings.fogDensity = .014f;
         var fill = new GameObject("Soft ambient direction").AddComponent<Light>();
         fill.transform.SetParent(parent);
         fill.type = LightType.Directional; fill.intensity = .22f; fill.color = C("D6D3B4");
@@ -244,11 +240,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (!Application.isPlaying) return;
 
         Application.targetFrameRate = 60;
-        // Keep the first-person image and overlay text at native resolution.
-        // The project previously requested MSAA on the camera but left the
-        // active Ultra quality level at 0x, so the Game view/build could show
-        // soft geometry and UI edges.
-        QualitySettings.antiAliasing = 4;
+        // Full-resolution textures; MSAA, HDR and shadows come from the URP
+        // pipeline asset (Assets/Settings/FrontRooms_URP).
         QualitySettings.globalTextureMipmapLimit = 0;
         Time.timeScale = 1f;
         DestroyEditorPreview();
@@ -256,6 +249,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         cam = GetComponentInChildren<Camera>(true);
         if (cam == null) cam = CreateCamera(transform);
         EnsureRuntimeCamera(cam);
+        FrontRoomsPostStack.ConfigureCamera(cam);
+        FrontRoomsPostStack.Ensure(transform);
         BindHunter();
         BuildMaterials();
         hdrEnabled = PlayerPrefs.GetInt(HdrPreferenceKey, defaultHdr ? 1 : 0) != 0;
@@ -276,251 +271,33 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     static Color C(string hex) { ColorUtility.TryParseHtmlString("#" + hex, out var c); return c; }
     static Vector3 V(Vector2 p, float y = 0f) => new Vector3(p.x, y, p.y);
     static Material Mat(string name, Color color, bool emission = false)
-    {
-        var shader = Shader.Find("Standard");
-        if (shader == null) shader = Shader.Find("UI/Default");
-        var m = new Material(shader);
-        m.name = name;
-        m.color = color;
-        m.SetFloat("_Glossiness", .12f);
-        if (emission) { m.EnableKeyword("_EMISSION"); m.SetColor("_EmissionColor", color * .8f); }
-        return m;
-    }
-
-    // A soft, antialiased stroke used by the printed wallpaper glyphs. Keeping
-    // the motif as a color modulation (rather than geometry) avoids turning the
-    // paper into a wireframe when the wall catches a grazing light.
-    static float PrintedStroke(float px, float py, float x1, float y1, float x2, float y2, float width)
-    {
-        var vx = x2 - x1;
-        var vy = y2 - y1;
-        var lengthSq = vx * vx + vy * vy;
-        var t = lengthSq > .0001f ? Mathf.Clamp01(((px - x1) * vx + (py - y1) * vy) / lengthSq) : 0f;
-        var dx = px - (x1 + vx * t);
-        var dy = py - (y1 + vy * t);
-        var distance = Mathf.Sqrt(dx * dx + dy * dy);
-        return 1f - Mathf.SmoothStep(width, width + 1.15f, distance);
-    }
-
-    Texture2D WallpaperTexture(Color baseColor, Color patternColor, int style)
-    {
-        // The film's wall is a printed, slightly warm beige under fluorescent
-        // light, not a saturated yellow bitmap. A single 256px tile keeps this
-        // material cheap for WebGL while the world-size repeat prevents wide
-        // wall slabs from stretching the pattern.
-        const int size = 256;
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true, false);
-        tex.name = "Procedural wallpaper";
-        tex.wrapMode = TextureWrapMode.Repeat;
-        tex.filterMode = FilterMode.Trilinear;
-        tex.anisoLevel = 4;
-        tex.mipMapBias = -1.10f;
-        var pixels = new Color[size * size];
-        for (var y = 0; y < size; y++)
-            for (var x = 0; x < size; x++)
-            {
-                var fiber = Mathf.Sin((x + style * 23) * .19f + Mathf.Sin(y * .07f)) * .012f
-                    + Mathf.Sin((y + style * 17) * .11f) * .008f;
-                var v = 0.965f + fiber;
-                var c = baseColor * v;
-                var pattern = 0f;
-                var variant = ((style % 3) + 3) % 3;
-                if (variant == 0)
-                {
-                    // Level 0's recognizable print is a very fine, repeated
-                    // vertical chevron/diamond glyph. The reference motif is
-                    // two quiet ink tones on yellow paper: it should read as a
-                    // woven print at a glance, not as dark V-shaped geometry.
-                    // Use a larger source glyph and a tighter world repeat.
-                    // This keeps the diagonal strokes above the trilinear
-                    // mip footprint at first-person distance while preserving
-                    // the small, period-wallpaper rhythm in metres.
-                    var cellW = 96f;
-                    var cellH = 128f;
-                    var cellX = Mathf.Repeat(x + style * 11f, cellW);
-                    var cellY = Mathf.Repeat(y + style * 17f, cellH);
-                    var center = cellW * .5f;
-                    // Outer broken diamond and its inner echo. Short strokes
-                    // keep adjacent repeats visually separated at wall scale.
-                    var outer = 0f;
-                    outer = Mathf.Max(outer, PrintedStroke(cellX, cellY, center, 10f, center - 22f, 42f, 9.0f));
-                    outer = Mathf.Max(outer, PrintedStroke(cellX, cellY, center, 10f, center + 22f, 42f, 9.0f));
-                    outer = Mathf.Max(outer, PrintedStroke(cellX, cellY, center - 22f, 42f, center, 74f, 9.0f));
-                    outer = Mathf.Max(outer, PrintedStroke(cellX, cellY, center + 22f, 42f, center, 74f, 9.0f));
-                    var inner = 0f;
-                    inner = Mathf.Max(inner, PrintedStroke(cellX, cellY, center, 22f, center - 12f, 42f, 5.5f));
-                    inner = Mathf.Max(inner, PrintedStroke(cellX, cellY, center, 22f, center + 12f, 42f, 5.5f));
-                    inner = Mathf.Max(inner, PrintedStroke(cellX, cellY, center - 12f, 42f, center, 60f, 5.5f));
-                    inner = Mathf.Max(inner, PrintedStroke(cellX, cellY, center + 12f, 42f, center, 60f, 5.5f));
-                    // The tiny stem and dot are what make the print feel like
-                    // paper from the period instead of a modern logo.
-                    var stem = cellX > center - 3.5f && cellX < center + 3.5f && cellY > 76f && cellY < 112f ? .78f : 0f;
-                    var dotDx = cellX - center;
-                    var dotDy = cellY - 118f;
-                    var dot = Mathf.Clamp01(1f - Mathf.Sqrt(dotDx * dotDx + dotDy * dotDy) / 4.2f);
-                    pattern = outer * .80f + inner * .34f + stem * .20f + dot * .12f;
-                }
-                else if (variant == 1)
-                {
-                    // Sparse floral medallions: readable only in near light,
-                    // like a second print run in the practical set.
-                    var cx = Mathf.Repeat(x + 22f, 96f) - 48f;
-                    var cy = Mathf.Repeat(y + 34f, 96f) - 48f;
-                    var radial = Mathf.Sqrt(cx * cx + cy * cy);
-                    pattern = Mathf.Clamp01(1f - Mathf.Abs(radial - 19f) / 3.5f) * .075f;
-                    pattern += Mathf.Clamp01(1f - radial / 6f) * .05f;
-                }
-                else
-                {
-                    var diamond = Mathf.Abs(Mathf.Repeat(x + y, 88f) - 44f) < 2.3f
-                        || Mathf.Abs(Mathf.Repeat(x - y + 88f, 88f) - 44f) < 2.3f;
-                    pattern = diamond ? .08f : 0f;
-                }
-                if (pattern > 0f) c = Color.Lerp(c, patternColor, Mathf.Clamp01(pattern));
-                pixels[y * size + x] = new Color(c.r, c.g, c.b, 1f);
-            }
-        // Keep this generated source readable until the paired micro-normal is
-        // derived in TexturedMat. It is still mipmapped and reused by every
-        // streamed room; dropping CPU readability here would make runtime
-        // builds fail before the first frame.
-        tex.SetPixels(pixels); tex.Apply(true, false);
-        return tex;
-    }
-
-    Texture2D CarpetTexture(Color baseColor, int style)
-    {
-        const int size = 256;
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, true, false);
-        tex.name = "Procedural carpet weave";
-        tex.wrapMode = TextureWrapMode.Repeat;
-        tex.filterMode = FilterMode.Trilinear;
-        tex.anisoLevel = 4;
-        var pixels = new Color[size * size];
-        for (var y = 0; y < size; y++)
-            for (var x = 0; x < size; x++)
-            {
-                // Two crossing pile directions plus a broad, low-contrast wear
-                // field read as carpet under a soft fluorescent source. The
-                // broad field prevents the old single checker repeat from
-                // looking like a tiled procedural texture.
-                var strandA = Mathf.Sin((x + style * 17) * .92f + Mathf.Sin(y * .08f)) * .028f;
-                var strandB = Mathf.Sin((y - style * 11) * 1.07f + Mathf.Sin(x * .06f)) * .024f;
-                var broadWear = Mathf.Sin(x * .035f + style * .7f) * Mathf.Sin(y * .027f + 1.2f) * .055f;
-                var weave = strandA + strandB + broadWear;
-                var c = baseColor * (1f + weave);
-                if ((x + style * 20) % 96 == 0 || (y + style * 9) % 121 == 0) c *= .89f;
-                pixels[y * size + x] = new Color(c.r, c.g, c.b, 1f);
-            }
-        tex.SetPixels(pixels); tex.Apply(true, false);
-        return tex;
-    }
-
-    Texture2D NormalFromAlbedo(Texture2D source, float strength)
-    {
-        if (source == null) return null;
-        var width = source.width;
-        var height = source.height;
-        var sourcePixels = source.GetPixels();
-        var normalPixels = new Color[sourcePixels.Length];
-        float HeightAt(int x, int y)
-        {
-            x = (x % width + width) % width;
-            y = (y % height + height) % height;
-            return sourcePixels[y * width + x].grayscale;
-        }
-        for (var y = 0; y < height; y++)
-            for (var x = 0; x < width; x++)
-            {
-                var dx = (HeightAt(x + 1, y) - HeightAt(x - 1, y)) * strength;
-                var dy = (HeightAt(x, y + 1) - HeightAt(x, y - 1)) * strength;
-                var n = new Vector3(-dx, -dy, 1f).normalized;
-                normalPixels[y * width + x] = new Color(n.x * .5f + .5f, n.y * .5f + .5f, n.z * .5f + .5f, 1f);
-            }
-        var normal = new Texture2D(width, height, TextureFormat.RGBA32, true, true);
-        normal.name = source.name + " / micro normal";
-        normal.wrapMode = TextureWrapMode.Repeat;
-        normal.filterMode = FilterMode.Trilinear;
-        normal.anisoLevel = 4;
-        normal.SetPixels(normalPixels);
-        normal.Apply(true, true);
-        if (!Application.isPlaying) previewAssets.Add(normal);
-        return normal;
-    }
-
-    Material TexturedMat(string name, Color baseColor, Texture2D texture, Vector2 scale, bool emission = false)
-    {
-        var m = Mat(name, baseColor, emission);
-        // The generated texture already contains the authored base color and
-        // printed ink. Multiplying that albedo a second time through the
-        // material tint crushed the paper contrast in the built player and
-        // made the chevron print disappear at corridor distance.
-        m.color = Color.white;
-        m.mainTexture = texture;
-        m.mainTextureScale = scale;
-        var carpet = name.IndexOf("Carpet", StringComparison.OrdinalIgnoreCase) >= 0;
-        // Printed wallpaper is a flat ink layer. Deriving a normal from its
-        // chevrons made the glyph edges catch grazing light like raised wire
-        // strips; reserve the procedural normal for the carpet weave.
-        var normal = carpet ? NormalFromAlbedo(texture, 9.5f) : null;
-        if (normal != null && m.HasProperty("_BumpMap"))
-        {
-            m.EnableKeyword("_NORMALMAP");
-            m.SetTexture("_BumpMap", normal);
-            m.SetFloat("_BumpScale", carpet ? .34f : .08f);
-        }
-        m.SetFloat("_Metallic", 0f);
-        m.SetFloat("_Glossiness", carpet ? .18f : .09f);
-        m.SetFloat("_OcclusionStrength", carpet ? .72f : .62f);
-        return m;
-    }
+        => FrontRoomsSurfaces.Lit(name, color, .12f, 0f, emission ? color * .8f : (Color?)null);
 
     Material WallMaterial(RoomRule rule) => wallMats.TryGetValue(rule, out var m) ? m : wallMat;
     Material FloorMaterial(RoomRule rule) => floorMats.TryGetValue(rule, out var m) ? m : floorMat;
     Material CeilingMaterial(RoomRule rule) => ceilingMats.TryGetValue(rule, out var m) ? m : ceilingMat;
 
     /// <summary>
-    /// The room profile palette. The visual grammar follows the deck: yellowed
-    /// repeating wallpaper, low-sheen carpet, and room-specific temperature and
-    /// contrast changes, one material per profile so a transition is legible.
+    /// The room profile palette, read from the editable surface materials in
+    /// Resources/Surfaces: Level 0 chevron paper, loop-pile carpet and 2'x4'
+    /// tiles for Lobby/Shift/Exit; drywall, carpet tiles and 2'x2' tiles for
+    /// the Office; the white hospital corridor for Run.
     /// </summary>
     void BuildMaterials()
     {
         wallMats.Clear(); floorMats.Clear(); ceilingMats.Clear();
-        // FilmSurface meshes expose metre-space UVs. Keep the printed motif at
-        // roughly 2 m wide and the carpet weave at a few centimetres instead of
-        // stretching a default Cube's 0..1 UVs across the whole slab.
-        var paperRepeat = new Vector2(.62f, .52f);
-        wallMats[RoomRule.Lobby] = TexturedMat("Wallpaper / lobby", C("C5BB7B"), WallpaperTexture(C("C5BB7B"), C("6A786E"), 0), paperRepeat);
-        wallMats[RoomRule.Shift] = TexturedMat("Wallpaper / level 0", C("C2B875"), WallpaperTexture(C("C2B875"), C("6A786E"), 0), paperRepeat);
-        wallMats[RoomRule.Office] = TexturedMat("Wallpaper / office / woven beige", C("B7AE94"), WallpaperTexture(C("B7AE94"), C("87806E"), 2), paperRepeat);
-        wallMats[RoomRule.Run] = TexturedMat("Wall / run / chalky utility", C("766B60"), WallpaperTexture(C("766B60"), C("554B45"), 5), paperRepeat);
-        wallMats[RoomRule.Exit] = TexturedMat("Wallpaper / exit", C("5D7770"), WallpaperTexture(C("5D7770"), C("334B46"), 4), paperRepeat);
-
-        floorMats[RoomRule.Lobby] = TexturedMat("Carpet / lobby", C("9A8554"), CarpetTexture(C("9A8554"), 0), new Vector2(2.8f, 2.8f));
-        floorMats[RoomRule.Shift] = TexturedMat("Carpet / level 0", C("8E7A4E"), CarpetTexture(C("8E7A4E"), 1), new Vector2(2.8f, 2.8f));
-        floorMats[RoomRule.Office] = TexturedMat("Carpet / office / worn grey brown", C("6E665A"), CarpetTexture(C("6E665A"), 2), new Vector2(2.8f, 2.8f));
-        floorMats[RoomRule.Run] = TexturedMat("Floor / run / dirty concrete", C("55504A"), CarpetTexture(C("55504A"), 5), new Vector2(1.75f, 1.75f));
-        floorMats[RoomRule.Exit] = TexturedMat("Carpet / exit", C("283A38"), CarpetTexture(C("283A38"), 4), new Vector2(2.8f, 2.8f));
-
-        ceilingMats[RoomRule.Lobby] = Mat("Ceiling / lobby", C("777266"));
-        ceilingMats[RoomRule.Shift] = Mat("Ceiling / level 0", C("696355"));
-        ceilingMats[RoomRule.Office] = Mat("Ceiling / office / acoustic tile", C("706D68"));
-        ceilingMats[RoomRule.Run] = Mat("Ceiling / run / exposed service", C("2B2926"));
-        ceilingMats[RoomRule.Exit] = Mat("Ceiling / exit", C("354846"));
+        foreach (RoomRule rule in Enum.GetValues(typeof(RoomRule)))
+        {
+            wallMats[rule] = FrontRoomsSurfaces.Room(rule, FrontRoomsSurfaces.Slot.Wall);
+            floorMats[rule] = FrontRoomsSurfaces.Room(rule, FrontRoomsSurfaces.Slot.Floor);
+            ceilingMats[rule] = FrontRoomsSurfaces.Room(rule, FrontRoomsSurfaces.Slot.Ceiling);
+        }
         wallMat = wallMats[RoomRule.Lobby];
         floorMat = floorMats[RoomRule.Lobby];
         ceilingMat = ceilingMats[RoomRule.Lobby];
-        trimMat = Mat("Aged wall trim", C("716440"));
-        fixtureMat = Mat("Fluorescent diffuser", C("F7F2D8"), true);
-        darkMat = Mat("Door and furniture", C("4B463C"));
-        if (Application.isPlaying) return;
-        foreach (var material in new[] { trimMat, fixtureMat, darkMat }) previewAssets.Add(material);
-        foreach (var set in new[] { wallMats, floorMats, ceilingMats })
-            foreach (var material in set.Values)
-            {
-                previewAssets.Add(material);
-                if (material.mainTexture != null) previewAssets.Add(material.mainTexture);
-            }
+        trimMat = FrontRoomsSurfaces.CoveBase;
+        fixtureMat = FrontRoomsSurfaces.TrofferLens;
+        darkMat = FrontRoomsSurfaces.DoorVeneer;
     }
 
     void BuildTitleCorridor()
