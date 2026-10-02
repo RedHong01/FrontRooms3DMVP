@@ -67,6 +67,16 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     [SerializeField, Tooltip("Empty Lobby rooms after the handoff room before the first furnished profile.")]
     int emptyLeadRooms = 2;
 
+    [Header("Practical light response")]
+    [SerializeField, Range(0f, 1f), Tooltip("Scales the diffuse contribution of each fluorescent practical. The same coefficient drives point-light output, bounceIntensity and the beam material.")]
+    float diffuseCoefficient = .82f;
+
+    [SerializeField, Range(0f, 1f), Tooltip("Density of the lightweight built-in-renderer volumetric shafts below each fluorescent fixture.")]
+    float volumetricDensity = .13f;
+
+    [SerializeField, Range(1.5f, 3.5f), Tooltip("Downward length of each volumetric shaft in metres.")]
+    float volumetricRange = 2.55f;
+
     sealed class RoomSlot
     {
         public GameObject root;
@@ -106,6 +116,12 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         public float[] lightFixtureFlickerPeriod;
         public float[] lightFixtureFlickerOnFraction;
         public float[] lightFixtureFlickerPhase;
+        public Renderer[] lightDiffusers;
+        public Renderer[] volumetricRenderers;
+        public MaterialPropertyBlock[] lightDiffuserBlocks;
+        public MaterialPropertyBlock[] volumetricBlocks;
+        public float[] lightOutputLevel;
+        public bool[] lightOutputEnabled;
         public float lightRevealSeconds;
         public bool lightNeverSettles;
         public float lightUnstableElapsed;
@@ -131,6 +147,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     Material runMetalMaterial;
     Material runCableMaterial;
     Material runHazardMaterial;
+    Material volumetricLightMaterial;
     AudioClip doorCreakClip;
     AudioClip doorLatchClip;
     AudioClip doorTravelClip;
@@ -193,6 +210,22 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     public int FirstProfileSequence => IsPlayable ? firstPlayableSequence + LeadRooms + 1 : -1;
     int LeadRooms => Mathf.Max(0, emptyLeadRooms);
 
+    void EnsureVolumetricLightMaterial()
+    {
+        if (volumetricLightMaterial != null) return;
+        var shader = Resources.Load<Shader>("Lighting/VolumetricBeam");
+        if (shader == null)
+        {
+            Debug.LogWarning("[FrontRooms3D] VolumetricBeam shader is unavailable; fluorescent shafts will stay disabled.");
+            return;
+        }
+        volumetricLightMaterial = new Material(shader)
+        {
+            name = "FrontRooms / volumetric fluorescent beam",
+            renderQueue = 3000
+        };
+    }
+
     /// <summary>Build the fixed room pool around the camera's current position.</summary>
     public void Initialize(Camera camera, Material wall, Material floor, Material ceiling,
         Material trim, Material fixture, Material door, AudioClip doorCreak = null,
@@ -227,6 +260,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         lobbyOnlyTitle = true;
         firstPlayableSequence = -1;
         TotalRebaseShift = 0f;
+
+        EnsureVolumetricLightMaterial();
 
         var cameraZ = streamCamera == null ? 0f : streamCamera.transform.position.z;
         centerX = streamCamera == null ? 0f : streamCamera.transform.position.x;
@@ -264,6 +299,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         Material trim, Material fixture, Material door,
         Material[] profileWalls, Material[] profileFloors, Material[] profileCeilings)
     {
+        EnsureVolumetricLightMaterial();
         wallMaterial = wall;
         floorMaterial = floor;
         ceilingMaterial = ceiling;
@@ -567,8 +603,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                     var fixtureCount = room.lightFixtureFlickerCount == null ? 0 : room.lightFixtureFlickerCount[lightIndex];
                     if (fixtureCount <= 0)
                     {
-                        room.roomLights[lightIndex].enabled = true;
-                        room.roomLights[lightIndex].intensity = room.lightBaseIntensity[lightIndex] * .92f;
+                        SetFixtureOutput(room, lightIndex, .92f, true);
                         continue;
                     }
                     room.lightFixtureFlickerElapsed[lightIndex] += dt;
@@ -578,13 +613,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                         anyFixtureFlickering = true;
                         var pulseTime = (room.lightFixtureFlickerElapsed[lightIndex] + room.lightFixtureFlickerPhase[lightIndex]) % room.lightFixtureFlickerPeriod[lightIndex];
                         var flickerLevel = pulseTime < room.lightFixtureFlickerPeriod[lightIndex] * room.lightFixtureFlickerOnFraction[lightIndex] ? .92f : .035f;
-                        room.roomLights[lightIndex].enabled = true;
-                        room.roomLights[lightIndex].intensity = room.lightBaseIntensity[lightIndex] * flickerLevel;
+                        SetFixtureOutput(room, lightIndex, flickerLevel, true);
                     }
                     else
                     {
-                        room.roomLights[lightIndex].enabled = true;
-                        room.roomLights[lightIndex].intensity = room.lightBaseIntensity[lightIndex] * .92f;
+                        SetFixtureOutput(room, lightIndex, .92f, true);
                     }
                 }
                 if (anyFixtureFlickering) continue;
@@ -632,8 +665,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             var level = (.12f + .28f * Mathf.Clamp01(wave)) * dropout;
             var light = room.roomLights[lightIndex];
             if (light == null || !room.lightWasEnabled[lightIndex]) continue;
-            light.enabled = true;
-            light.intensity = room.lightBaseIntensity[lightIndex] * level;
+            SetFixtureOutput(room, lightIndex, level, true);
         }
     }
 
@@ -849,6 +881,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 var fixtureZPosition = fixtureZ[fixtureIndex];
                 Box(room.root.transform, "fluorescent recessed pan " + fixtureIndex, new Vector3(0f, RoomHeight - .042f, fixtureZPosition), new Vector3(1.94f, .07f, .40f), darkMatOr(roomCeiling));
                 Box(room.root.transform, "fluorescent diffuser " + fixtureIndex, new Vector3(0f, RoomHeight - .083f, fixtureZPosition), new Vector3(1.70f, .026f, .25f), fixtureMaterial ?? roomCeiling);
+                BuildVolumetricBeam(room.root.transform, fixtureIndex, fixtureZPosition, ProfileLightColor(room.rule));
                 var lightObject = new GameObject("fluorescent light " + fixtureIndex);
                 lightObject.transform.SetParent(room.root.transform, false);
                 lightObject.transform.localPosition = new Vector3(0f, RoomHeight - .38f, fixtureZ[fixtureIndex]);
@@ -866,12 +899,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 // wireframe-looking artifact.
                 light.shadows = LightShadows.None;
                 light.shadowStrength = 0f;
-                light.bounceIntensity = .28f;
+                light.bounceIntensity = diffuseCoefficient;
             }
             room.entry = CreateEntry(room.root.transform);
         }
 
         CacheRoomLights(room);
+        CacheRoomLightVisuals(room);
+        ResetRoomLights(room);
 
         room.rearSeal = Box(room.root.transform, "opaque rear boundary seal", new Vector3(0f, RoomHeight * .5f, RearSealOffset), new Vector3(RoomWidth, RoomHeight, .18f), ProfileMaterial(profileWallMaterials, room.rule, wallMaterial));
         room.rearSeal.SetActive(index == 0);
@@ -886,6 +921,62 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         entry.SetParent(parent, false);
         entry.localPosition = new Vector3(0f, 0f, 2f);
         return entry;
+    }
+
+    GameObject BuildVolumetricBeam(Transform parent, int fixtureIndex, float fixtureZ, Color color)
+    {
+        var beam = new GameObject("volumetric fluorescent beam " + fixtureIndex);
+        beam.transform.SetParent(parent, false);
+        // The mesh is a short, tapered frustum below the diffuser. Keeping it
+        // as one low-poly surface avoids the crossed-quad edge lines that read
+        // like a wireframe in the first-person camera.
+        beam.transform.localPosition = new Vector3(0f, RoomHeight - .16f, fixtureZ);
+        var meshFilter = beam.AddComponent<MeshFilter>();
+        var renderer = beam.AddComponent<MeshRenderer>();
+        renderer.sharedMaterial = volumetricLightMaterial;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        renderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+        renderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+        meshFilter.sharedMesh = CreateVolumetricFrustumMesh(volumetricRange);
+        if (volumetricLightMaterial != null)
+        {
+            renderer.enabled = true;
+            renderer.sharedMaterial.SetColor("_Color", color);
+        }
+        else renderer.enabled = false;
+        return beam;
+    }
+
+    static Mesh CreateVolumetricFrustumMesh(float range)
+    {
+        var topX = .85f;
+        var topZ = .13f;
+        var bottomX = 1.92f;
+        var bottomZ = 1.30f;
+        var mesh = new Mesh { name = "Fluorescent volumetric frustum" };
+        mesh.SetVertices(new[]
+        {
+            new Vector3(-topX, 0f, -topZ), new Vector3(topX, 0f, -topZ),
+            new Vector3(topX, 0f, topZ), new Vector3(-topX, 0f, topZ),
+            new Vector3(-bottomX, -range, -bottomZ), new Vector3(bottomX, -range, -bottomZ),
+            new Vector3(bottomX, -range, bottomZ), new Vector3(-bottomX, -range, bottomZ)
+        });
+        mesh.SetUVs(0, new[]
+        {
+            new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f),
+            new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(0f, 0f)
+        });
+        mesh.SetTriangles(new[]
+        {
+            0, 4, 5, 0, 5, 1, // front
+            1, 5, 6, 1, 6, 2, // right
+            2, 6, 7, 2, 7, 3, // back
+            3, 7, 4, 3, 4, 0, // left
+            4, 7, 6, 4, 6, 5  // floor fade cap
+        }, 0);
+        mesh.RecalculateBounds();
+        return mesh;
     }
 
     void BuildDoor(RoomSlot room)
@@ -1159,9 +1250,13 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 {
                     room.lightBaseIntensity[i] = room.rule == RoomRule.Run ? .56f : room.rule == RoomRule.Office ? .68f : .64f;
                     light.range = room.rule == RoomRule.Run ? 7.1f : room.rule == RoomRule.Office ? 8.4f : 8.2f;
+                    light.bounceIntensity = diffuseCoefficient;
                 }
             }
         }
+        if (room.lightOutputLevel != null)
+            for (var i = 0; i < room.lightOutputLevel.Length; i++)
+                ApplyFixtureVisual(room, i, room.lightOutputLevel[i], room.lightOutputEnabled != null && i < room.lightOutputEnabled.Length && room.lightOutputEnabled[i]);
         if (room.profileVariants != null)
             for (var i = 0; i < room.profileVariants.Length; i++)
                 if (room.profileVariants[i] != null) room.profileVariants[i].SetActive(i == (int)room.rule);
@@ -1178,7 +1273,40 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             room.lightBaseIntensity[i] = light == null ? 0f : light.intensity;
             room.lightWasEnabled[i] = light != null && light.enabled && room.lightBaseIntensity[i] > 0f;
         }
-        ResetRoomLights(room);
+    }
+
+    void CacheRoomLightVisuals(RoomSlot room)
+    {
+        var count = room.roomLights == null ? 0 : room.roomLights.Length;
+        room.lightDiffusers = new Renderer[count];
+        room.volumetricRenderers = new Renderer[count];
+        room.lightDiffuserBlocks = new MaterialPropertyBlock[count];
+        room.volumetricBlocks = new MaterialPropertyBlock[count];
+        room.lightOutputLevel = new float[count];
+        room.lightOutputEnabled = new bool[count];
+        var renderers = room.root.GetComponentsInChildren<Renderer>(true);
+        for (var i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null) continue;
+            var name = renderer.gameObject.name;
+            var marker = name.IndexOf("fluorescent diffuser ", StringComparison.OrdinalIgnoreCase);
+            var isBeam = name.IndexOf("volumetric fluorescent beam ", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (marker < 0 && !isBeam) continue;
+            var start = marker >= 0 ? marker + "fluorescent diffuser ".Length : name.IndexOf("volumetric fluorescent beam ", StringComparison.OrdinalIgnoreCase) + "volumetric fluorescent beam ".Length;
+            if (!int.TryParse(name.Substring(start), out var fixtureIndex) || fixtureIndex < 0 || fixtureIndex >= count) continue;
+            if (isBeam)
+            {
+                room.volumetricRenderers[fixtureIndex] = renderer;
+                room.volumetricBlocks[fixtureIndex] = new MaterialPropertyBlock();
+                renderer.sharedMaterial = volumetricLightMaterial;
+            }
+            else
+            {
+                room.lightDiffusers[fixtureIndex] = renderer;
+                room.lightDiffuserBlocks[fixtureIndex] = new MaterialPropertyBlock();
+            }
+        }
     }
 
     void ResetRoomLights(RoomSlot room)
@@ -1195,8 +1323,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         {
             var light = room.roomLights[i];
             if (light == null) continue;
-            light.intensity = 0f;
-            light.enabled = false;
+            SetFixtureOutput(room, i, 0f, false);
         }
     }
 
@@ -1277,12 +1404,53 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         if (room == null || room.roomLights == null) return;
         normalizedIntensity = Mathf.Clamp01(normalizedIntensity);
         for (var i = 0; i < room.roomLights.Length; i++)
+            SetFixtureOutput(room, i, normalizedIntensity, enabled);
+    }
+
+    void SetFixtureOutput(RoomSlot room, int fixtureIndex, float normalizedIntensity, bool enabled)
+    {
+        if (room == null || room.roomLights == null || fixtureIndex < 0 || fixtureIndex >= room.roomLights.Length) return;
+        var light = room.roomLights[fixtureIndex];
+        if (light == null || room.lightWasEnabled == null || fixtureIndex >= room.lightWasEnabled.Length || !room.lightWasEnabled[fixtureIndex]) return;
+        normalizedIntensity = Mathf.Clamp01(normalizedIntensity);
+        var active = enabled && normalizedIntensity > .0005f;
+        // Built-in realtime GI is intentionally disabled in this project, so
+        // bounceIntensity alone is not a visible diffuse control. Scale the
+        // direct practical output as well, while keeping a useful floor when
+        // the coefficient is tuned down for a darker grade.
+        var diffuseScale = Mathf.Lerp(.45f, 1f, Mathf.Clamp01(diffuseCoefficient));
+        light.bounceIntensity = Mathf.Clamp01(diffuseCoefficient);
+        light.enabled = active;
+        light.intensity = room.lightBaseIntensity[fixtureIndex] * normalizedIntensity * diffuseScale;
+        if (room.lightOutputLevel != null && fixtureIndex < room.lightOutputLevel.Length)
+            room.lightOutputLevel[fixtureIndex] = normalizedIntensity;
+        if (room.lightOutputEnabled != null && fixtureIndex < room.lightOutputEnabled.Length)
+            room.lightOutputEnabled[fixtureIndex] = active;
+        ApplyFixtureVisual(room, fixtureIndex, normalizedIntensity, active);
+    }
+
+    void ApplyFixtureVisual(RoomSlot room, int fixtureIndex, float level, bool enabled)
+    {
+        var color = ProfileLightColor(room.rule);
+        if (room.lightDiffusers != null && fixtureIndex < room.lightDiffusers.Length && room.lightDiffusers[fixtureIndex] != null)
         {
-            var light = room.roomLights[i];
-            if (light == null || !room.lightWasEnabled[i]) continue;
-            light.enabled = enabled;
-            light.intensity = room.lightBaseIntensity[i] * normalizedIntensity;
+            var renderer = room.lightDiffusers[fixtureIndex];
+            var block = room.lightDiffuserBlocks[fixtureIndex] ?? (room.lightDiffuserBlocks[fixtureIndex] = new MaterialPropertyBlock());
+            renderer.GetPropertyBlock(block);
+            var emission = color * Mathf.Lerp(.015f, .72f, enabled ? level : 0f);
+            block.SetColor("_EmissionColor", emission);
+            block.SetColor("_Color", Color.Lerp(new Color(.045f, .042f, .035f), Color.white, enabled ? level : 0f));
+            renderer.SetPropertyBlock(block);
         }
+        if (room.volumetricRenderers == null || fixtureIndex >= room.volumetricRenderers.Length || room.volumetricRenderers[fixtureIndex] == null) return;
+        var volume = room.volumetricRenderers[fixtureIndex];
+        var volumeBlock = room.volumetricBlocks[fixtureIndex] ?? (room.volumetricBlocks[fixtureIndex] = new MaterialPropertyBlock());
+        volume.GetPropertyBlock(volumeBlock);
+        volumeBlock.SetColor("_Color", color);
+        volumeBlock.SetFloat("_Density", enabled ? volumetricDensity * level : 0f);
+        volumeBlock.SetFloat("_DiffuseCoefficient", Mathf.Clamp01(diffuseCoefficient));
+        volume.enabled = enabled && volumetricDensity > .0005f;
+        volume.SetPropertyBlock(volumeBlock);
     }
 
     void BeginDoorOpening(RoomSlot room)
