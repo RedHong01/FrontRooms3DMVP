@@ -17,6 +17,7 @@ public static class FrontRoomsMainScenePlaytest
     const string ScenePath = "Assets/Scenes/FrontRooms3D.unity";
     const string ActiveKey = "FrontRooms.Playtest.Active";
     const string DeadlineKey = "FrontRooms.Playtest.Deadline";
+    const string PlayedKey = "FrontRooms.Playtest.Played";
     const float TimeoutSeconds = 240f;
 
     // Entering Play reloads the domain; this re-attaches the watcher.
@@ -36,6 +37,7 @@ public static class FrontRoomsMainScenePlaytest
         SessionState.SetInt(FrontRooms3DGame.AutopilotSeedKey, SeedArgument());
         SessionState.SetBool(ActiveKey, true);
         SessionState.SetFloat(DeadlineKey, (float)EditorApplication.timeSinceStartup + TimeoutSeconds);
+        SessionState.EraseBool(PlayedKey);
         EditorApplication.update -= Watch;
         EditorApplication.update += Watch;
         EditorApplication.EnterPlaymode();
@@ -55,9 +57,12 @@ public static class FrontRoomsMainScenePlaytest
 
     static void Watch()
     {
+        if (EditorApplication.isPlaying) SessionState.SetBool(PlayedKey, true);
         var done = File.Exists(DonePath);
         var timedOut = EditorApplication.timeSinceStartup > SessionState.GetFloat(DeadlineKey, float.MaxValue);
-        if (!done && !timedOut) return;
+        // Play was left before the autopilot finished: clean up now, so the next manual Play is a normal one.
+        var aborted = !done && SessionState.GetBool(PlayedKey, false) && !EditorApplication.isPlayingOrWillChangePlaymode;
+        if (!done && !timedOut && !aborted) return;
         if (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
         {
             if (EditorApplication.isPlaying) EditorApplication.ExitPlaymode();
@@ -65,9 +70,12 @@ public static class FrontRoomsMainScenePlaytest
         }
         EditorApplication.update -= Watch;
         SessionState.EraseBool(ActiveKey);
+        SessionState.EraseBool(PlayedKey);
         SessionState.EraseBool(FrontRooms3DGame.AutopilotKey);
         SessionState.EraseInt(FrontRooms3DGame.AutopilotSeedKey);
-        var verdict = done ? File.ReadAllText(DonePath) : "FAIL · timed out after " + TimeoutSeconds + " s";
+        var verdict = done ? File.ReadAllText(DonePath)
+            : aborted ? "FAIL · Play mode was left before the autopilot finished"
+            : "FAIL · timed out after " + TimeoutSeconds + " s";
         var passed = verdict.StartsWith("PASS");
         if (passed) Debug.Log("[FrontRoomsPlaytest] " + verdict);
         else Debug.LogError("[FrontRoomsPlaytest] " + verdict);

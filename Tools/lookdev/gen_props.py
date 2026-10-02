@@ -242,23 +242,149 @@ def keyboard_keys():
 
 
 # ----------------------------------------------------------------------- labels
+# Prop_Label is a 4 x 4 atlas of 256 px cells (kitlib Kit.atlas_cell(i, 4, 4),
+# row-major from the top-left):
+#   0-3   typed drawer cards  A-C, D-F, G-K, L-P
+#   4-7   typed cards         1994, 1995, PAYROLL, MISC
+#   8-9   binder spine inserts (portrait, drawn in the cell's middle 40 %)
+#   10    folder tab strip (wide, drawn in the cell's middle band)
+#   11    furniture maker's paper label (stamped model / date)
+#   12    TV rating plate, 13 "INSPECTED BY" stamp, 14 asset tag with barcode,
+#   15    yellow caution sticker
 def labels():
-    W, H = 1024, 512
-    img = Image.new("RGB", (W, H), (226, 220, 200))
+    N, C = 1024, 256
+    img = Image.new("RGB", (N, N), (120, 116, 104))
     dr = ImageDraw.Draw(img)
-    f = font(FONT_MONO, 34)
-    texts = ["A - C", "D - F", "G - K", "L - P", "Q - S", "T - Z", "1994", "1995", "PAYROLL", "MISC", "OLD", "LEVEL 4"]
-    for i, t in enumerate(texts):
-        x = (i % 4) * 256 + 18
-        y = (i // 4) * 170 + 30
-        dr.rectangle([x, y, x + 220, y + 110], fill=(240, 236, 220), outline=(150, 140, 120), width=3)
-        dr.text((x + 20, y + 34), t, font=f, fill=(40, 40, 60))
-    col = arr(img) * (0.9 + .1 * blur(spectral(H, W, 1.5, 141), 1.0))[..., None]
-    write("Prop_Label", col, None, mask(np.full((H, W), .3, np.float32), np.ones((H, W), np.float32)))
+    mono = font(FONT_MONO, 34)
+    small = font(FONT_MONO, 22)
+    bold = font(FONT_BOLD, 30)
+    rng = np.random.default_rng(141)
+    def cell(i):
+        return (i % 4) * C, (i // 4) * C
+    def card(i, text, bg=(240, 236, 220), ink=(40, 40, 60)):
+        x, y = cell(i)
+        dr.rectangle([x + 6, y + 50, x + C - 6, y + C - 50], fill=bg, outline=(150, 140, 120), width=3)
+        dr.line([x + 20, y + 150, x + C - 20, y + 150], fill=(170, 160, 200), width=2)
+        tb = dr.textbbox((0, 0), text, font=mono)
+        dr.text((x + (C - (tb[2] - tb[0])) / 2, y + 100), text, font=mono, fill=ink)
+    for i, t in enumerate(["A - C", "D - F", "G - K", "L - P", "1994", "1995", "PAYROLL", "MISC"]):
+        card(i, t)
+    for i, t in ((8, "Q3 REPORTS"), (9, "MINUTES")):
+        x, y = cell(i)
+        dr.rectangle([x + 77, y + 4, x + 179, y + C - 4], fill=(236, 232, 214), outline=(140, 130, 110), width=2)
+        sp = Image.new("RGBA", (C - 16, 90), (0, 0, 0, 0))
+        ImageDraw.Draw(sp).text((10, 25), t, font=bold, fill=(30, 30, 80, 255))
+        sp = sp.rotate(90, expand=True)
+        img.paste(sp, (x + 84, y + 8), sp)
+    x, y = cell(10)
+    dr.rectangle([x + 4, y + 104, x + C - 4, y + 152], fill=(230, 222, 190), outline=(150, 140, 110), width=2)
+    dr.text((x + 14, y + 112), "CLIENT FILES", font=small, fill=(40, 40, 40))
+    x, y = cell(11)
+    dr.rectangle([x + 18, y + 40, x + C - 18, y + C - 40], fill=(214, 200, 160), outline=(110, 90, 60), width=3)
+    dr.text((x + 34, y + 60), "MODEL 4417-B", font=small, fill=(80, 40, 30))
+    dr.text((x + 34, y + 96), "MADE IN U.S.A.", font=small, fill=(80, 40, 30))
+    dr.text((x + 34, y + 132), "QC  03 / 1979", font=small, fill=(120, 30, 30))
+    x, y = cell(12)
+    dr.rectangle([x + 10, y + 60, x + C - 10, y + C - 60], fill=(196, 196, 190), outline=(60, 60, 60), width=2)
+    for k, t in enumerate(["MODEL CT-2104", "120V~ 60Hz 95W", "SER. 0045519"]):
+        dr.text((x + 24, y + 74 + k * 34), t, font=small, fill=(30, 30, 30))
+    x, y = cell(13)
+    dr.ellipse([x + 38, y + 38, x + C - 38, y + C - 38], outline=(150, 40, 50), width=7)
+    dr.text((x + 70, y + 98), "INSPECTED", font=small, fill=(150, 40, 50))
+    dr.text((x + 100, y + 130), "No. 7", font=small, fill=(150, 40, 50))
+    x, y = cell(14)
+    dr.rectangle([x + 16, y + 70, x + C - 16, y + C - 70], fill=(236, 236, 230), outline=(80, 80, 80), width=2)
+    dr.text((x + 30, y + 80), "ASSET 004193", font=small, fill=(20, 20, 20))
+    for k in range(48):
+        w = int(rng.integers(1, 4))
+        dr.rectangle([x + 30 + k * 4, y + 116, x + 30 + k * 4 + w, y + 168], fill=(15, 15, 15))
+    x, y = cell(15)
+    dr.polygon([(x + C / 2, y + 30), (x + C - 30, y + C - 40), (x + 30, y + C - 40)], fill=(236, 196, 40), outline=(30, 30, 30))
+    dr.text((x + C / 2 - 8, y + 110), "!", font=font(FONT_BOLD, 70), fill=(20, 20, 20))
+    col = arr(img) * (0.9 + .1 * blur(spectral(N, N, 1.5, 142), 1.0))[..., None]
+    write("Prop_Label", col, None, mask(np.full((N, N), .3, np.float32), np.ones((N, N), np.float32)))
 
+
+# ---------------------------------------------------------------- stencils
+# Prop_StencilBlack: black spray stencil with alpha (alpha-clipped material).
+# Atlas: top half "FRAGILE" + wine glass (uv_rect 0,.5,1,1); bottom-left
+# "THIS SIDE UP" double arrow (0,0,.5,.5); bottom-right umbrella / KEEP DRY (.5,0,1,.5).
+def stencils():
+    W, H = 1024, 512
+    a = Image.new("L", (W, H), 0)
+    dr = ImageDraw.Draw(a)
+    big = font(FONT_BOLD, 150)
+    dr.text((40, 40), "FRAGILE", font=big, fill=255)
+    gx = 860
+    dr.polygon([(gx - 55, 50), (gx + 55, 50), (gx + 30, 140), (gx - 30, 140)], fill=255)
+    dr.rectangle([gx - 6, 140, gx + 6, 200], fill=255)
+    dr.rectangle([gx - 40, 200, gx + 40, 214], fill=255)
+    med = font(FONT_BOLD, 54)
+    for k, ox in enumerate((90, 190)):
+        dr.polygon([(ox, 280), (ox + 46, 340), (ox + 18, 340), (ox + 18, 420), (ox - 18, 420), (ox - 18, 340), (ox - 46, 340)], fill=255)
+    dr.text((40, 440), "THIS SIDE UP", font=font(FONT_BOLD, 50), fill=255)
+    cx = 768
+    dr.pieslice([cx - 100, 250, cx + 100, 390], 180, 360, fill=255)
+    dr.rectangle([cx - 5, 320, cx + 5, 405], fill=255)
+    dr.arc([cx - 30, 385, cx + 10, 425], 0, 180, fill=255, width=10)
+    dr.text((cx - 120, 455), "KEEP DRY", font=font(FONT_BOLD, 44), fill=255)
+    alpha = arr(a)
+    # Spray overspray and dropouts so it reads painted, not printed.
+    spray = blur(alpha, 1.6)
+    noise_ = band(H, W, 80, 300, 151)
+    alpha = np.clip(np.maximum(alpha * (noise_ > .22), spray * .45 * (noise_ > .5)), 0, 1)
+    rgb = np.full((H, W, 3), .05, np.float32)
+    rgba = np.concatenate([rgb, alpha[..., None]], -1)
+    save_rgba(f"{OUT}/Prop_StencilBlack_A.png", rgba)
+
+
+# ------------------------------------------------------------------ phone keys
+# Prop_PhoneKeys: 3 x 4 dial pad (1-9 * 0 #) on the left 60 %, a column of
+# feature keys (HOLD, XFER, CONF, REDIAL, MSG) on the right.
+def phone_keys():
+    W, H = 512, 512
+    img = Image.new("RGB", (W, H), (70, 70, 68))
+    dr = ImageDraw.Draw(img)
+    f = font(FONT_BOLD, 44)
+    sub = font(FONT, 16)
+    letters = ["", "ABC", "DEF", "GHI", "JKL", "MNO", "PRS", "TUV", "WXY", "", "OPER", ""]
+    for i, k in enumerate("123456789*0#"):
+        x = 16 + (i % 3) * 100
+        y = 16 + (i // 3) * 122
+        dr.rounded_rectangle([x, y, x + 88, y + 110], 12, fill=(214, 210, 198), outline=(110, 106, 98), width=2)
+        tb = dr.textbbox((0, 0), k, font=f)
+        dr.text((x + 44 - (tb[2] - tb[0]) / 2, y + 14), k, font=f, fill=(30, 30, 30))
+        if letters[i]:
+            tb = dr.textbbox((0, 0), letters[i], font=sub)
+            dr.text((x + 44 - (tb[2] - tb[0]) / 2, y + 74), letters[i], font=sub, fill=(70, 70, 70))
+    for k, t in enumerate(["HOLD", "XFER", "CONF", "REDIAL", "MSG"]):
+        y = 16 + k * 98
+        dr.rounded_rectangle([330, y, 496, y + 84], 10, fill=(150, 148, 140), outline=(90, 88, 82), width=2)
+        dr.text((350, y + 26), t, font=font(FONT_BOLD, 28), fill=(30, 30, 30))
+    col = arr(img)
+    hgt = blur(arr(img.convert("L")), 2)
+    write("Prop_PhoneKeys", col, normal_from_height(hgt, 3), mask(.45 + .1 * hgt, np.ones_like(hgt)))
+
+
+# ------------------------------------------------------------- vending header
+def vending_header():
+    W, H = 1024, 96
+    img = Image.new("RGB", (W, H), (150, 28, 22))
+    dr = ImageDraw.Draw(img)
+    f = font(FONT_BOLD, 58)
+    text = "SNACKS  \u2022  CANDY  \u2022  CHIPS"
+    tb = dr.textbbox((0, 0), text, font=f)
+    dr.text(((W - (tb[2] - tb[0])) / 2, (H - (tb[3] - tb[1])) / 2 - tb[1]), text, font=f, fill=(250, 236, 200))
+    col = arr(img)
+    lum = col.mean(-1, keepdims=True)
+    emit = np.clip(col * (0.55 + 0.9 * (lum > .6)), 0, 1)
+    write("Prop_VendingHeader", col, None, mask(np.full((H, W), .55, np.float32), np.ones((H, W), np.float32)), emit)
+
+
+ALL_EXTRA = dict(stencils=stencils, phone_keys=phone_keys, vending_header=vending_header)
 
 ALL = dict(screen_crt=screen_crt, vending_front=vending_front, copier_panel=copier_panel,
-           keyboard_keys=keyboard_keys, labels=labels)
+           keyboard_keys=keyboard_keys, labels=labels, **ALL_EXTRA)
 
 if __name__ == "__main__":
     for name in (sys.argv[3:] or ALL.keys()):

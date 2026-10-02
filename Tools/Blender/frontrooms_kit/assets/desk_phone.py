@@ -18,6 +18,9 @@ import bmesh
 from mathutils import Vector
 
 NAME = "Kit_DeskPhone"
+# LOD0 is ~3.6k tris, 1.27k of them the coiled cord (8 points per turn,
+# 5-sided wire: the minimum that reads as a round coil). LOD1 decimates it.
+LOD1 = 0.5
 
 BEIGE = "Prop_PlasticBeige"
 DARK = "Prop_PlasticGrey"
@@ -48,7 +51,7 @@ SLOT_V = 0.018                       # hookswitch slot between the cups
 HANDSET_U = CRADLE_U
 HANDSET_V = 0.001
 POD_V = 0.074                        # earpiece / mouthpiece centres from the handset centre
-POD_R = 0.023
+POD_R = 0.0198                       # widest point of the cup dome, just inside the 40 mm grip
 
 
 def _deck(u, v, w):
@@ -164,8 +167,16 @@ def _coil(centre, radius, pitch, per_turn):
 def _key(kit, u, v, w, h, slot, name="key"):
     """Tapered key cap standing on the faceplate (no bevel: the taper reads)."""
     tilt = math.degrees(TILT)
-    kit.loft_box((w, h), (w - 0.0024, h - 0.0024), 0.0045, _deck(u, v, 0.00225 + 0.0012), slot,
-                 back_offset=(0, 0), bevel=0.0, rot=(90 + tilt, 0, 0), name=name)
+    cap = kit.loft_box((w, h), (w - 0.0024, h - 0.0024), 0.0045, _deck(u, v, 0.00225 + 0.0012), slot,
+                       back_offset=(0, 0), bevel=0.0, rot=(90 + tilt, 0, 0), name=name)
+    # Its base (the loft's front rectangle) sits on the faceplate: never seen.
+    bm = bmesh.new()
+    bm.from_mesh(cap.data)
+    bm.normal_update()
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.normal.y < -0.99], context="FACES")
+    bm.to_mesh(cap.data)
+    bm.free()
+    return cap
 
 
 def _rj11(kit, end, prev):
@@ -206,7 +217,7 @@ def build(kit):
         cv = (v0 + v1) / 2
         kit.frame((CRADLE_W, v1 - v0), (CUP_U, CUP_V), CRADLE_TOP - CUP_FLOOR,
                   _deck(CRADLE_U, cv, (CUP_FLOOR + CRADLE_TOP) / 2), BEIGE, inner_offset=(0, -(cup - cv)),
-                  bevel=0.0025, segments=2, rot=(90 + tilt, 0, 0), name=nm)
+                  bevel=0.0025, segments=1, rot=(90 + tilt, 0, 0), name=nm)
         kit.box((CUP_U + 0.001, CUP_V + 0.001, 0.0006), _deck(CRADLE_U, cup, CUP_FLOOR + 0.0003), DARK, bevel=0.0,
                 rot=(tilt, 0, 0), name="cup floor")
     kit.box((CRADLE_W - 0.002, SLOT_V + 0.001, 0.0006), _deck(CRADLE_U, hv, CUP_FLOOR + 0.0003), DARK, bevel=0.0,
@@ -220,7 +231,7 @@ def build(kit):
                 plane="xy", bevel=0.0, name="parting line")
     for sx in (-1, 1):
         for sy in (-1, 1):
-            kit.cylinder(0.008, FOOT, (sx * 0.088, sy * 0.080, FOOT / 2), RUBBER, verts=6, bevel=0.0, name="foot")
+            kit.box((0.014, 0.014, FOOT), (sx * 0.088, sy * 0.080, FOOT / 2), RUBBER, bevel=0.0, name="foot")
 
     # ------------------------------------------------------------ faceplate
     fp_u0, fp_u1, fp_v0, fp_v1 = -0.036, 0.104, -0.058, 0.081
@@ -280,12 +291,14 @@ def build(kit):
     outline = [(-0.1025, 0.006), (-0.097, 0.0), (-0.056, 0.0), (-0.042, 0.0125), (0.042, 0.0125), (0.056, 0.0),
                (0.097, 0.0), (0.1025, 0.006), (0.1025, 0.028), (0.086, 0.0335), (0.0, 0.0350), (-0.086, 0.0335),
                (-0.1025, 0.028)]
-    kit.extrude(outline, 0.040, _deck(hu, hv, wb), BEIGE, plane="yz", rot=(tilt, 0, 0), bevel=0.0085, segments=4, name="handset")
+    kit.extrude(outline, 0.040, _deck(hu, hv, wb), BEIGE, plane="yz", rot=(tilt, 0, 0), bevel=0.0085, segments=3, name="handset")
     # Ear / mouth pods: domed undersides seated in the cups (lathe: flat
     # centre, rounded rim, straight wall up into the handset).
-    pod = [(0.010, 0.0), (0.0150, 0.0009), (0.0190, 0.0033), (0.0217, 0.0068), (0.0228, 0.0108), (POD_R, 0.0150), (POD_R, 0.024)]
+    # The dome shows below the handset's rounded underside; above w 8.5 mm it
+    # tucks back inside the handset (no faceted bulge through its sides).
+    pod = [(0.0095, 0.0), (0.0152, 0.0015), (0.0185, 0.0045), (POD_R, 0.0085), (0.0170, 0.0130), (0.0120, 0.0170)]
     for s, nm in ((1, "earpiece"), (-1, "mouthpiece")):
-        p = kit.lathe(pod, _deck(hu, hv + s * POD_V, wb), BEIGE, verts=20, name=nm, close_top=False)
+        p = kit.lathe(pod, _deck(hu, hv + s * POD_V, wb), BEIGE, verts=16, name=nm, close_top=False)
         p.rotation_euler = (TILT, 0, 0)
     # Earpiece perforations and the mouthpiece holes are on the hidden faces;
     # on the back of the handset: two moulded grip seams.
@@ -296,32 +309,32 @@ def build(kit):
     # Mouthpiece end -> drops in front of the cradle -> curls along the desk
     # -> jack in the left side of the cradle block.
     start = _deck(hu, hv - 0.1005, wb + 0.006)
-    jack = (CRADLE_X0 - 0.0006, -0.074, 0.013)
+    jack = (CRADLE_X0 - 0.0006, -0.090, 0.013)
     lead_a = (start[0], start[1] - 0.007, start[2] - 0.006)
-    centre = _smooth([lead_a, (hu - 0.004, -0.116, 0.0130), (hu - 0.016, -0.123, 0.0062), (-0.108, -0.121, 0.0058),
-                      (-0.121, -0.108, 0.0058), (-0.123, -0.089, 0.0066), (jack[0] - 0.007, jack[1], jack[2])], 5)
-    centre = [(x, y, max(z, 0.0057)) for x, y, z in centre]          # coil rests on the desk
-    _pt_tube(kit, [start, lead_a], 0.0018, BLACK, verts=8, name="cord lead")
+    centre = _smooth([lead_a, (hu - 0.004, -0.114, 0.0120), (hu - 0.015, -0.119, 0.0060), (-0.106, -0.116, 0.0058),
+                      (-0.1175, -0.1035, 0.0062), (jack[0] - 0.007, jack[1], jack[2])], 5)
+    centre = [(x, y, max(z, 0.0059)) for x, y, z in centre]          # coil rests on the desk
+    _pt_tube(kit, [start, lead_a], 0.0018, BLACK, verts=6, name="cord lead")
     coil = _coil(centre, 0.0042, 0.0052, 8)
     _pt_tube(kit, coil, 0.0014, BLACK, verts=5, name="coiled cord", caps=False)
-    _pt_tube(kit, [(jack[0] - 0.007, jack[1], jack[2]), (jack[0] + 0.002, jack[1], jack[2])], 0.0018, BLACK, verts=8,
+    _pt_tube(kit, [(jack[0] - 0.007, jack[1], jack[2]), (jack[0] + 0.002, jack[1], jack[2])], 0.0018, BLACK, verts=6,
              name="cord plug lead")
     kit.box((0.004, 0.012, 0.009), (CRADLE_X0 - 0.0008, jack[1], jack[2]), BLACK, bevel=0.0012, segments=1, name="handset jack plug")
 
     # ------------------------------------------------------------ line cord
     # Flat 6 x 3 mm line cord out of the back to its (unplugged) RJ-11 plug.
     lx = 0.045
-    kit.box((0.012, 0.004, 0.009), (lx, D / 2 + 0.0015, 0.012), BLACK, bevel=0.0012, segments=1, name="line plug")
+    kit.box((0.012, 0.004, 0.009), (lx, D / 2 + 0.0015, 0.012), BLACK, bevel=0.0, name="line plug")
     ctrl = [(lx, D / 2 + 0.003, 0.012), (lx + 0.002, D / 2 + 0.013, 0.008), (lx + 0.006, D / 2 + 0.022, 0.0016),
             (lx + 0.018, D / 2 + 0.040, 0.0015), (lx + 0.024, D / 2 + 0.055, 0.0020), (lx + 0.026, D / 2 + 0.062, 0.0030)]
-    line = [(x, y, max(z, 0.0015)) for x, y, z in _smooth(ctrl, 3)]
+    line = [(x, y, max(z, 0.0016)) for x, y, z in _smooth(ctrl, 2)]
     _pt_tube(kit, line, 0.0030, DARK, verts=6, name="line cord", flat=0.5)
     _rj11(kit, ctrl[-1], ctrl[-2])
 
     # ------------------------------------------------------------ metadata
     kit.anchor("handset", _deck(hu, hv, 0.04))
     kit.anchor("lcd", _deck(lu, lv, 0.004))
-    kit.collider((0.033, 0, 0.028), (W - CRADLE_W, D, 0.056))
+    kit.collider(((W / 2 + CRADLE_X1) / 2, 0, 0.028), (W / 2 - CRADLE_X1, D, 0.056))
     kit.collider((CRADLE_U, 0, (_deck_z(D / 2, CRADLE_TOP)) / 2), (CRADLE_W, D, _deck_z(D / 2, CRADLE_TOP)))
     # Handset collider from its tilted extent (ends 0.1025 from centre, w wb..wb+0.035).
     zs = [_deck(hu, hv + sv * 0.1025, wb + w)[2] for sv in (-1, 1) for w in (0.0, 0.035)]

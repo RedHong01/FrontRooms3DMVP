@@ -412,8 +412,11 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         chunk.root.transform.SetParent(transform, false);
         chunk.root.transform.localPosition = origin;
 
+        // One set of meshes per 6 m block and ceiling height, so each renderer
+        // can carry its own _CeilingHeight for the surface shader's grime band.
         const int blocks = n / BlockCells;
-        var builders = new Dictionary<Material, MeshBuilder>[blocks * blocks];
+        const int heights = 3;
+        var builders = new Dictionary<Material, MeshBuilder>[blocks * blocks * heights];
         for (var b = 0; b < builders.Length; b++) builders[b] = new Dictionary<Material, MeshBuilder>();
         MeshBuilder Get(int blockIndex, Material material)
         {
@@ -421,7 +424,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             return builder;
         }
         var collision = new MeshBuilder();
-        int BlockOf(int i, int j) => i / BlockCells + j / BlockCells * blocks;
+        int BlockOf(int i, int j, float ceiling) => (i / BlockCells + j / BlockCells * blocks) * heights + HeightClass(ceiling);
 
         void Solid(int blockIndex, Material material, Vector3 center, Vector3 size, float repeat)
         {
@@ -437,7 +440,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var zone = Cache.ZoneOf(cell);
             var theme = Theme(zone.theme);
             var height = MapGrid.CeilingHeight(data.height[index]);
-            var b = BlockOf(i, j);
+            var b = BlockOf(i, j, height);
             var cellCenter = new Vector3((i + .5f) * cs, 0f, (j + .5f) * cs);
             Solid(b, theme.floor, cellCenter + Vector3.down * (ModuleUnits.FloorSlab * .5f), new Vector3(cs, ModuleUnits.FloorSlab, cs), CarpetRepeat);
             Solid(b, theme.ceiling, cellCenter + Vector3.up * (height + ModuleUnits.CeilingSlab * .5f), new Vector3(cs, ModuleUnits.CeilingSlab, cs), CeilingRepeat);
@@ -448,10 +451,12 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var north = new GridCoord(cell.x, cell.y + 1);
             var eastZone = Cache.ZoneOf(east);
             var northZone = Cache.ZoneOf(north);
+            var eastHeight = Mathf.Max(height, MapGrid.CeilingHeight(eastZone.height));
+            var northHeight = Mathf.Max(height, MapGrid.CeilingHeight(northZone.height));
             BuildEdge(chunk, data.east[index], cell, east, new Vector3((i + 1) * cs, 0f, j * cs), Vector3.forward,
-                Mathf.Max(height, MapGrid.CeilingHeight(eastZone.height)), theme.wall, Theme(eastZone.theme).wall, b, Get, Solid, origin);
+                eastHeight, theme.wall, Theme(eastZone.theme).wall, BlockOf(i, j, eastHeight), Get, Solid, origin);
             BuildEdge(chunk, data.north[index], cell, north, new Vector3(i * cs, 0f, (j + 1) * cs), Vector3.right,
-                Mathf.Max(height, MapGrid.CeilingHeight(northZone.height)), theme.wall, Theme(northZone.theme).wall, b, Get, Solid, origin);
+                northHeight, theme.wall, Theme(northZone.theme).wall, BlockOf(i, j, northHeight), Get, Solid, origin);
 
             if (data.pillar[i + j * (n + 1)]) BuildColumn(data.pillarStyle[i + j * (n + 1)], new Vector3(i * cs, 0f, j * cs), height, zone.theme, theme, b, Get, Solid, origin);
 
@@ -461,9 +466,10 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         for (var b = 0; b < builders.Length; b++)
         {
             if (builders[b].Count == 0) continue;
-            var go = new GameObject("Block " + b);
+            var ceiling = HeightOfClass(b % heights);
+            var go = new GameObject("Block " + b / heights + " · " + ceiling.ToString("0.0") + " m");
             go.transform.SetParent(chunk.root.transform, false);
-            foreach (var pair in builders[b]) AddRenderer(go, pair.Key, pair.Value);
+            foreach (var pair in builders[b]) AddRenderer(go, pair.Key, pair.Value, chunk.root.transform.position.y + ceiling);
         }
         var col = new GameObject("Collision");
         col.transform.SetParent(chunk.root.transform, false);
@@ -486,7 +492,16 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         built[coord] = chunk;
     }
 
-    void AddRenderer(GameObject parent, Material material, MeshBuilder builder)
+    static readonly int CeilingHeightId = Shader.PropertyToID("_CeilingHeight");
+
+    static int HeightClass(float ceiling) => ceiling < 2.65f ? 0 : ceiling < 4f ? 1 : 2;
+    static float HeightOfClass(int c) => c == 0 ? ModuleUnits.LowCeiling : c == 1 ? ModuleUnits.StandardCeiling : ModuleUnits.TallCeiling;
+
+    /// <summary>
+    /// A shell renderer. <paramref name="ceilingWorldY"/> is the world height
+    /// of its ceiling plane: the surface shader grimes the 1.6 m under it.
+    /// </summary>
+    void AddRenderer(GameObject parent, Material material, MeshBuilder builder, float ceilingWorldY)
     {
         if (builder.vertices.Count == 0 || material == null) return;
         var go = new GameObject(material.name);
@@ -495,6 +510,12 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         var r = go.AddComponent<MeshRenderer>();
         r.sharedMaterial = material;
         r.shadowCastingMode = ShadowCastingMode.On;
+        if (material.HasProperty(CeilingHeightId))
+        {
+            var props = new MaterialPropertyBlock();
+            props.SetFloat(CeilingHeightId, ceilingWorldY);
+            r.SetPropertyBlock(props);
+        }
     }
 
     delegate MeshBuilder BuilderFn(int blockIndex, Material material);
@@ -619,17 +640,17 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
     /// <summary>
     /// A structural column on a 6 m grid corner (see MapSettings): faced in
-    /// the room's wall material. Office columns stand on a cove base and
-    /// carry a bulkhead to the next column on the grid. The bulkhead is
+    /// the room's wall material, on a cove base. Office columns carry a
+    /// bulkhead to the next column on the grid. The bulkhead is
     /// above every head, so it has no collision.
     /// </summary>
     void BuildColumn(byte style, Vector3 at, float height, ZoneTheme zoneTheme, ThemeMaterials theme, int blockIndex, BuilderFn get, SolidFn solid, Vector3 origin)
     {
         var w = (style & MapChunk.ColumnLarge) != 0 ? ModuleUnits.ColumnLarge : ModuleUnits.ColumnSmall;
         solid(blockIndex, theme.wall, at + Vector3.up * (height * .5f), new Vector3(w, height, w), WallpaperRepeat);
-        if (zoneTheme != ZoneTheme.Office) return;
         var cove = w + ModuleUnits.CoveProud * 2f;
         get(blockIndex, trim).Box(at + Vector3.up * (ModuleUnits.CoveHeight * .5f), new Vector3(cove, ModuleUnits.CoveHeight, cove), origin, 1f);
+        if (zoneTheme != ZoneTheme.Office) return;
         var span = ModuleUnits.ColumnGrid - w;
         var y = height - ModuleUnits.BulkheadDepth * .5f;
         if ((style & MapChunk.ColumnBeamEast) != 0)
@@ -734,13 +755,14 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         var fixture = new Fixture { rng = MapHash.Hash(seed, cell.x, cell.y, 211) | 1u };
         var root = new GameObject("Fixture " + cell);
         root.transform.SetParent(chunk.root.transform, false);
-        root.transform.localPosition = localCenter + Vector3.up * height;
+        // The lens fills whole 0.6 m ceiling tiles: X [1.2, 1.8], Z [1.2, 2.4] of the cell.
+        root.transform.localPosition = localCenter + new Vector3(0f, height, ModuleUnits.TrofferOffsetZ);
         var panel = GameObject.CreatePrimitive(PrimitiveType.Cube);
         panel.name = "Lens";
         Kill(panel.GetComponent<Collider>());
         panel.transform.SetParent(root.transform, false);
         panel.transform.localPosition = new Vector3(0f, -ModuleUnits.TrofferDrop, 0f);
-        panel.transform.localScale = new Vector3(ModuleUnits.TrofferLong, ModuleUnits.TrofferLens, ModuleUnits.TrofferShort);
+        panel.transform.localScale = new Vector3(ModuleUnits.TrofferShort, ModuleUnits.TrofferLens, ModuleUnits.TrofferLong);
         var pr = panel.GetComponent<Renderer>();
         pr.sharedMaterial = theme.lens;
         pr.shadowCastingMode = ShadowCastingMode.Off;
@@ -903,18 +925,28 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         var height = MapGrid.CeilingHeight(zone.height);
         var roomSeed = (int)MapHash.Hash(Cache.Generator.Seed, data.coord.x * 16 + r, data.coord.y, 307, data.revision);
         var columns = Columns(data, room);
+        var clear = new List<Rect>(KeepClear(data, room));
+        // The player starts in the middle of chunk (0, 0): keep that spot clear too.
+        var mid = MapGrid.ChunkCells / 2;
+        if (data.coord.x == 0 && data.coord.y == 0 && room.Contains(mid, mid))
+        {
+            var spawn = SpawnPoint();
+            clear.Add(new Rect(spawn.x - 1f, spawn.z - 1f, 2f, 2f));
+        }
         try
         {
             if (zone.theme == ZoneTheme.Office)
             {
                 if (!dressOffices) return;
-                var floor = new Rect(room.x * cs, room.y * cs, room.w * cs, room.h * cs);
-                if (officeDress != null) officeDress.Invoke(null, new object[] { chunk.root.transform, floor, height, roomSeed, KeepClear(data, room), columns.ToArray() });
-                else if (officeDressOld != null) officeDressOld.Invoke(null, new object[] { chunk.root.transform, floor, height, roomSeed, KeepClear(data, room) });
+                // The clear floor between wall faces; keep-clear strips and columns are in the same chunk-local metres.
+                var floor = new Rect(room.x * cs + ModuleUnits.WallHalf, room.y * cs + ModuleUnits.WallHalf,
+                    room.w * cs - ModuleUnits.WallThickness, room.h * cs - ModuleUnits.WallThickness);
+                if (officeDress != null) officeDress.Invoke(null, new object[] { chunk.root.transform, floor, height, roomSeed, clear.ToArray(), columns.ToArray() });
+                else if (officeDressOld != null) officeDressOld.Invoke(null, new object[] { chunk.root.transform, floor, height, roomSeed, clear.ToArray() });
             }
             else if (pileBuild != null && Mathf.Min(room.w, room.h) >= 4 && MapHash.Unit((uint)roomSeed) < (zone.height == ZoneHeight.Tall ? Mathf.Max(pileChance, .6f) : pileChance))
             {
-                if (PileSpot(room, columns, out var center, out var radius))
+                if (PileSpot(room, columns, clear, out var center, out var radius))
                     pileBuild.Invoke(null, new object[] { chunk.root.transform, center, radius, height, roomSeed });
             }
         }
@@ -922,6 +954,13 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         {
             Debug.LogWarning("[FrontRoomsMap] Furnishing room " + r + " of chunk " + data.coord + " failed: " + (e.InnerException ?? e).Message);
         }
+    }
+
+    static float Distance(Rect r, Vector2 p)
+    {
+        var dx = Mathf.Max(r.xMin - p.x, 0f, p.x - r.xMax);
+        var dy = Mathf.Max(r.yMin - p.y, 0f, p.y - r.yMax);
+        return Mathf.Sqrt(dx * dx + dy * dy);
     }
 
     /// <summary>Footprints of the columns inside a room, in chunk-local metres.</summary>
@@ -943,9 +982,10 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     /// <summary>
     /// Where a furniture pile goes: the room centre, or with columns the
     /// centre of the 6 m bay nearest it, sized so the pile and its 0.6 m
-    /// clear ring keep off the columns and the walls. False if no pile fits.
+    /// clear ring keep off the columns and the walls, and the pile itself off
+    /// every keep-clear strip (openings, the spawn). False if no pile fits.
     /// </summary>
-    bool PileSpot(CellRect room, List<Rect> columns, out Vector3 center, out float radius)
+    bool PileSpot(CellRect room, List<Rect> columns, List<Rect> clear, out Vector3 center, out float radius)
     {
         const float ring = .6f, minRadius = 1.2f;
         var cs = MapGrid.CellSize;
@@ -960,12 +1000,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         }
         radius = Mathf.Min(3.2f, Mathf.Min(room.w, room.h) * cs * .22f);
         radius = Mathf.Min(radius, Mathf.Min(Mathf.Min(c.x - min.x, max.x - c.x), Mathf.Min(c.y - min.y, max.y - c.y)) - ring);
-        foreach (var col in columns)
-        {
-            var dx = Mathf.Max(col.xMin - c.x, 0f, c.x - col.xMax);
-            var dy = Mathf.Max(col.yMin - c.y, 0f, c.y - col.yMax);
-            radius = Mathf.Min(radius, Mathf.Sqrt(dx * dx + dy * dy) - ring);
-        }
+        foreach (var col in columns) radius = Mathf.Min(radius, Distance(col, c) - ring);
+        foreach (var strip in clear) radius = Mathf.Min(radius, Distance(strip, c));
         center = new Vector3(c.x, 0f, c.y);
         return radius >= minRadius;
     }
@@ -990,7 +1026,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
                 if (room.Contains(x + d.x, y + d.y)) continue;
                 var kind = Cache.Edge(cell, cell + d);
                 if (!MapGrid.Passable(kind)) continue;
-                var depth = kind == EdgeKind.Door ? ModuleUnits.DoorClearDepth : ModuleUnits.EntryClearDepth;
+                // Strips start on the cell line, so they reach their depth from the wall face.
+                var depth = (kind == EdgeKind.Door ? ModuleUnits.DoorClearDepth : ModuleUnits.EntryClearDepth) + ModuleUnits.WallHalf;
                 if (d.x != 0) clear.Add(new Rect(d.x > 0 ? (x + 1) * cs - depth : x * cs, y * cs, depth, cs));
                 else clear.Add(new Rect(x * cs, d.y > 0 ? (y + 1) * cs - depth : y * cs, cs, depth));
             }
@@ -1034,6 +1071,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     /// </summary>
     void SwingAway(Door door, Vector3 worldFrom)
     {
+        // Leaf still moving (closing): keep its side, so the door just reverses.
+        if (door.progress > 0f) return;
         var p = transform.InverseTransformPoint(worldFrom);
         var mid = transform.InverseTransformPoint(door.position);
         var eastEdge = door.b.x != door.a.x;

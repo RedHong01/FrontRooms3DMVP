@@ -6,7 +6,12 @@ rubber feet. Painted-steel U cover over a steel chassis, moulded beige front
 bezel: a 5.25" bay blank over a 3.5" floppy drive on the right, badge, LEDs,
 power / reset buttons, key lock and a ribbed intake grille on the left. Back:
 PSU with wire fan guard, IEC inlet + monitor outlet, voltage switch, the I/O
-row (PS/2, serial, parallel, VGA) and three horizontal riser-slot covers.
+row (PS/2, serial, parallel, VGA) on a shield beside a punched vent field,
+three horizontal riser-slot covers; the power cord lies loose behind the case
+and ends in its moulded NEMA 5-15P plug. ~5k tris (one CRT + PC + desk per
+workstation; small hidden parts are unbevelled on purpose).
+The LED lenses use Prop_GlassCRT until an emissive Prop_LED slot exists
+(anchors power_led / hdd_led mark them).
 Front (bezel) faces -Y. Origin = desk under the feet.
 """
 

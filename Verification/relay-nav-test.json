@@ -5,12 +5,12 @@
     "officeRoomsDressed": 4,
     "trials": 60,
     "arrived": 60,
-    "endedBeside": 0,
+    "endedBeside": 15,
     "ghosts": 0,
     "exceptions": 0,
     "wallFrames": 0,
     "furnitureFramesNotGhosting": 0,
-    "averageSeconds": 11.891926765441895,
-    "worstPlanMs": 2.2139999866485597,
+    "averageSeconds": 11.96748161315918,
+    "worstPlanMs": 2.3001999855041506,
     "failures": []
 }

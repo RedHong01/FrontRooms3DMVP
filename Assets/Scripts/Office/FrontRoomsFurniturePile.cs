@@ -175,12 +175,14 @@ public static class FrontRoomsFurniturePile
         var heavy = Filter(lib, p => p.mass >= 2).Count;
         var seats = Filter(lib, p => p.cls == "Seat").Count;
         var office = Filter(lib, p => p.palette == "office90s").Count;
+        // Level 0 halls: mostly the film's centred sculpture. OfficeCluster
+        // (pasted workstations) is only built when a caller forces it for an
+        // Office zone; on its own it reads as a showroom, not a distortion.
         var roll = rng.Next();
-        if (ceiling > 4.5f && roll < .12f) return Tableau.ZeroPile;
-        if (heavy >= 2 && lib.Count >= 6 && roll < .62f) return Tableau.CentreSculpture;
-        if (seats > 0 && roll < .80f) return Tableau.CopyPasteRow;
-        if (ceiling < 3.2f && seats > 0 && roll < .90f) return Tableau.CeilingStuck;
-        if (office >= 3) return Tableau.OfficeCluster;
+        if (ceiling > 4.5f && roll < .10f) return Tableau.ZeroPile;
+        if (heavy >= 2 && lib.Count >= 6 && roll < .72f) return Tableau.CentreSculpture;
+        if (seats > 0 && roll < .88f) return Tableau.CopyPasteRow;
+        if (ceiling < 3.2f && seats > 0) return Tableau.CeilingStuck;
         return heavy >= 1 ? Tableau.CentreSculpture : Tableau.CopyPasteRow;
     }
 
@@ -258,9 +260,13 @@ public static class FrontRoomsFurniturePile
 
     static void CeilingStuck(Plan plan, List<Piece> lib, Rng rng)
     {
-        var stackable = Filter(lib, p => (p.cls == "Seat" || p.cls == "Crate" || p.cls == "Table") && p.info.Height < plan.ceiling * .45f);
+        // One light chair repeated floor to ceiling (the film's chair columns);
+        // crates/tables only when no light seat exists.
+        var stackable = Filter(lib, p => p.cls == "Seat" && p.mass == 0 && p.info.Height < plan.ceiling * .45f);
+        if (stackable.Count == 0) stackable = Filter(lib, p => (p.cls == "Seat" || p.cls == "Crate" || p.cls == "Table") && p.info.Height < plan.ceiling * .45f);
         if (stackable.Count == 0) { CentreSculpture(plan, lib, rng); return; }
         var piece = rng.Pick(stackable);
+        var before = plan.placed.Count;
         var group = plan.nextCopyGroup++;
         var y = 0f;
         var yaw = rng.Range(0f, 360f);
@@ -275,12 +281,22 @@ public static class FrontRoomsFurniturePile
             var top = Top(placed);
             if (top > plan.ceiling + .12f) break;
             plan.hMax = plan.ceiling + .12f;
-            if (!TryCommit(plan, placed, ignoreOverlapWithGroup: true)) break;
+            if (!TryCommit(plan, placed, ignoreOverlapWithGroup: true, interlocked: i > 0)) break;
             // Interlock a little: the next copy sits 12% into this one.
             y = top - (top - y) * .12f;
         }
+        if (plan.placed.Count - before < 3)
+        {
+            // Too short to read as a column: make it a sculpture instead.
+            plan.placed.RemoveRange(before, plan.placed.Count - before);
+            plan.hMax = Mathf.Min(plan.ceiling - CeilingClearance, .9f * plan.ceiling);
+            CentreSculpture(plan, lib, rng);
+            return;
+        }
         var bases = Filter(lib, p => p.mass >= 2);
-        if (bases.Count > 0) Repeat(2, () => TryBase(plan, bases, rng, minR: .45f));
+        if (bases.Count > 0) Repeat(3, () => TryBase(plan, bases, rng, minR: .45f));
+        var seats = Filter(lib, p => p.cls == "Seat");
+        if (seats.Count > 0) TryCopyPasteRun(plan, seats, rng, rng.Range(2, 4));
     }
 
     static void OfficeCluster(Plan plan, List<Piece> lib, Rng rng)
@@ -372,7 +388,7 @@ public static class FrontRoomsFurniturePile
     static bool TryStack(Plan plan, List<Piece> pool, Rng rng, Rest? want, bool highest = false)
     {
         if (pool.Count == 0) return false;
-        for (var attempt = 0; attempt < 12; attempt++)
+        for (var attempt = 0; attempt < 22; attempt++)
         {
             var piece = rng.Pick(pool);
             var rest = want.HasValue && piece.Allows(want.Value) ? want.Value : PickRest(piece, rng);
@@ -388,7 +404,7 @@ public static class FrontRoomsFurniturePile
             if (support != null)
             {
                 var c = support.obbCentre;
-                var spread = Mathf.Min(Extent(support, Vector3.right), Extent(support, Vector3.forward)) * .5f;
+                var spread = Mathf.Min(Extent(support, Vector3.right), Extent(support, Vector3.forward)) * .3f;
                 pos = new Vector3(c.x + rng.Range(-spread, spread), 0f, c.z + rng.Range(-spread, spread));
                 y = TopAt(plan, pos);
             }
@@ -399,7 +415,7 @@ public static class FrontRoomsFurniturePile
                 pos = new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
                 y = TopAt(plan, pos);
             }
-            var placed = Make(piece, rest, Quaternion.Euler(0f, yaw, 0f), pos, y);
+            var placed = MakeResting(plan, piece, rest, Quaternion.Euler(0f, yaw, 0f), pos);
             if (TryCommit(plan, placed)) return true;
         }
         return false;
@@ -450,7 +466,7 @@ public static class FrontRoomsFurniturePile
             var c = support.obbCentre;
             var pos = new Vector3(c.x + rng.Range(-.15f, .15f), 0f, c.z + rng.Range(-.15f, .15f));
             var tilt = Quaternion.Euler(rng.Range(-8f, 8f), rng.Range(0f, 360f), rng.Range(-8f, 8f));
-            var placed = Make(piece, Rest.Upright, tilt, pos, TopAt(plan, pos));
+            var placed = MakeResting(plan, piece, Rest.Upright, tilt, pos);
             if (TryCommit(plan, placed)) return true;
         }
         return false;
@@ -501,6 +517,52 @@ public static class FrontRoomsFurniturePile
         return placed;
     }
 
+    /// <summary>
+    /// Rest a piece on whatever is under its footprint: sample 3 x 3 points
+    /// over the bottom of its box and drop it onto the highest surface found.
+    /// </summary>
+    static Placed MakeResting(Plan plan, Piece piece, Rest rest, Quaternion yaw, Vector3 position)
+    {
+        var placed = Make(piece, rest, yaw, position, 0f);
+        var top = 0f;
+        foreach (var s in BottomSamples(placed)) top = Mathf.Max(top, TopAt(plan, s));
+        Ground(placed, top);
+        return placed;
+    }
+
+    static readonly Vector3[] Samples = new Vector3[9];
+
+    /// <summary>Nine points spread over the lowest face of a piece's box (world xz, y = its bottom).</summary>
+    static Vector3[] BottomSamples(Placed p)
+    {
+        p.Corners(CornersA);
+        var minY = float.MaxValue;
+        foreach (var c in CornersA) minY = Mathf.Min(minY, c.y);
+        // The four lowest corners span the resting face (good enough for quantised states).
+        var low = new List<Vector3>();
+        foreach (var c in CornersA) if (c.y < minY + .05f) low.Add(c);
+        if (low.Count < 3) low = new List<Vector3>(CornersA);
+        float x0 = float.MaxValue, x1 = float.MinValue, z0 = float.MaxValue, z1 = float.MinValue;
+        foreach (var c in low) { x0 = Mathf.Min(x0, c.x); x1 = Mathf.Max(x1, c.x); z0 = Mathf.Min(z0, c.z); z1 = Mathf.Max(z1, c.z); }
+        var i = 0;
+        for (var a = 0; a < 3; a++)
+            for (var b = 0; b < 3; b++)
+                Samples[i++] = new Vector3(Mathf.Lerp(x0, x1, .15f + .35f * a), minY, Mathf.Lerp(z0, z1, .15f + .35f * b));
+        return Samples;
+    }
+
+    /// <summary>Fraction of a piece's bottom that touches the floor or a top surface (±3 cm).</summary>
+    static float SupportFraction(Plan plan, Placed p)
+    {
+        var supported = 0;
+        foreach (var s in BottomSamples(p))
+        {
+            if (s.y < .03f) { supported++; continue; }
+            if (Mathf.Abs(TopAt(plan, s, p) - s.y) < .03f) supported++;
+        }
+        return supported / 9f;
+    }
+
     /// <summary>Move vertically so the lowest corner sits at y.</summary>
     static void Ground(Placed p, float y)
     {
@@ -538,7 +600,11 @@ public static class FrontRoomsFurniturePile
         return best;
     }
 
-    /// <summary>Height of the highest committed top surface under (x, z).</summary>
+    /// <summary>
+    /// Height of the highest committed surface under (x, z). An upright piece
+    /// offers its authored supports (a desk top, a chair seat) when it has
+    /// any; otherwise, and in every other rest state, the top of its box.
+    /// </summary>
     static float TopAt(Plan plan, Vector3 xz, Placed ignore = null)
     {
         var y = 0f;
@@ -547,6 +613,18 @@ public static class FrontRoomsFurniturePile
             if (p == ignore || p.rest == Rest.EdgeLean) continue;
             var probe = new Vector3(xz.x, p.obbCentre.y, xz.z);
             if (!p.Contains(probe, .02f)) continue;
+            var supports = p.piece.info.supports;
+            if (p.rest == Rest.Upright && supports != null && supports.Length > 0)
+            {
+                var local = Quaternion.Inverse(p.rotation) * (new Vector3(xz.x, 0f, xz.z) - new Vector3(p.position.x, 0f, p.position.z));
+                foreach (var sup in supports)
+                {
+                    if (sup?.centre == null || sup.size == null || sup.centre.Length < 3 || sup.size.Length < 2) continue;
+                    if (Mathf.Abs(local.x - sup.centre[0]) <= sup.size[0] * .5f + .02f && Mathf.Abs(local.z - sup.centre[2]) <= sup.size[1] * .5f + .02f)
+                        y = Mathf.Max(y, p.position.y + sup.centre[1]);
+                }
+                continue;
+            }
             y = Mathf.Max(y, Top(p));
         }
         return y;
@@ -570,8 +648,17 @@ public static class FrontRoomsFurniturePile
         return inside / 64f;
     }
 
-    static bool TryCommit(Plan plan, Placed p, bool ignoreOverlapWithGroup = false)
+    static bool TryCommit(Plan plan, Placed p, bool ignoreOverlapWithGroup = false, bool interlocked = false)
     {
+        // Nothing floats: a raised piece must rest on something under at
+        // least half its footprint (a third for inverted seats, which sit on
+        // their backrest edge and legs-up, as in the film's towers).
+        // Interlocked column copies (CeilingStuck) sink into the one below.
+        if (p.rest != Rest.EdgeLean && !interlocked)
+        {
+            var need = p.rest == Rest.Inverted && p.piece.cls == "Seat" ? .33f : .5f;
+            if (SupportFraction(plan, p) < need) return false;
+        }
         p.Corners(CornersA);
         foreach (var c in CornersA)
         {

@@ -2,7 +2,7 @@
 // projected in world metres. Walls, floors and ceilings take their UVs from the
 // world position and the face normal, so a pattern runs continuously across
 // every slab and keeps the same printed scale everywhere. Tile sizes are chosen
-// to divide the room stream's 256 m origin rebase, so a rebase never shifts a
+// to divide the room stream's 192 m origin rebase, so a rebase never shifts a
 // pattern. Large-scale wear (discolouration, damp carpet, water streaks under
 // the ceiling, dirt along the floor) is sampled at 8 m and 12.8 m in world
 // space on top of the tile, which hides the tile repeat.
@@ -187,7 +187,7 @@ Shader "FrontRooms/Surface"
                 half3 nTS = UnpackNormalScale(SAMPLE_TEXTURE2D(_BumpMap, sampler_BumpMap, uv), _BumpScale);
 
                 // Large-scale wear in world space (two scales, the second turned
-                // 90 degrees). Both periods divide 256 m.
+                // 90 degrees). Both periods divide 192 m.
                 float2 wearUV;
                 float3 wt, wb;
                 PlanarFrame(input.positionWS, nGeo, wearUV, wt, wb);

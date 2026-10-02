@@ -11,9 +11,11 @@ using UnityEngine;
 /// Office dressing when the kit is there), scatters test boxes in every open
 /// room (desk to cabinet sizes, no aisles promised), then sends the Relay to
 /// 60 points 5–14 cells away, frame by frame at 60 Hz.
+/// Every fourth goal is half covered by an extra box (its face 0.22 m from
+/// the goal), so the hunt must end beside it.
 /// It checks: no exceptions; the body never stands in a wall, column or door;
 /// it never stands in furniture except while it passes through it with no
-/// way round; and how many hunts arrive.
+/// way round; and that hunts end on their goal, or beside a covered one.
 /// Writes Verification/relay-nav-test.json.
 /// Headless: -executeMethod FrontRoomsRelayNavTest.RunBatch -quit (throws on FAIL).
 /// </summary>
@@ -49,6 +51,17 @@ public static class FrontRoomsRelayNavTest
     static void Execute(bool throwOnFail)
     {
         var report = new Report();
+        // BuildForCapture applies the map's ambient and fog: put the open scene's back afterwards.
+        var ambientMode = RenderSettings.ambientMode;
+        var sky = RenderSettings.ambientSkyColor;
+        var equator = RenderSettings.ambientEquatorColor;
+        var ground = RenderSettings.ambientGroundColor;
+        var reflection = RenderSettings.reflectionIntensity;
+        var fog = RenderSettings.fog;
+        var fogMode = RenderSettings.fogMode;
+        var fogColor = RenderSettings.fogColor;
+        var fogDensity = RenderSettings.fogDensity;
+        var skybox = RenderSettings.skybox;
         var root = new GameObject("RELAY NAV TEST") { hideFlags = HideFlags.DontSave };
         root.transform.position = new Vector3(-5000f, 0f, -5000f);
         var boxes = new HashSet<Collider>();
@@ -123,6 +136,16 @@ public static class FrontRoomsRelayNavTest
                 if (Touches(startFeet, probe, null, playerCollider)) continue;
                 var goalFeet = world.CellCenter(goal);
                 report.trials++;
+                GameObject cover = null;
+                if (report.trials % 4 == 0)
+                {
+                    cover = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    cover.name = "test furniture (covers goal)";
+                    cover.transform.SetParent(root.transform, true);
+                    cover.transform.localScale = new Vector3(.8f, 1f, .8f);
+                    cover.transform.position = goalFeet + new Vector3(.22f + .4f, .5f, 0f);
+                    boxes.Add(cover.GetComponent<Collider>());
+                }
                 player.position = goalFeet;
                 Physics.SyncTransforms();
                 hunter.DebugPlace(startFeet);
@@ -160,7 +183,11 @@ public static class FrontRoomsRelayNavTest
                     if (t > TrialSeconds - .5f && report.failures.Count < 24) report.failures.Add("trial " + report.trials + " stuck t " + t.ToString("F2") + " at " + hunter.Position.ToString("F2") + " · " + hunter.DebugSteering);
                     if (hunter.State == HunterState.Search)
                     {
-                        arrived = true;
+                        var off = Flat(hunter.Position - goalFeet);
+                        // On the goal, or beside it when furniture covers it (it stops as close as it can).
+                        arrived = off <= .35f || (off <= 1.5f && Touches(goalFeet, probe, null, playerCollider));
+                        if (!arrived && report.failures.Count < 24)
+                            report.failures.Add("trial " + report.trials + ": gave up " + off.ToString("F2") + " m from " + goal + " · " + hunter.DebugSteering);
                         break;
                     }
                 }
@@ -170,7 +197,13 @@ public static class FrontRoomsRelayNavTest
                     totalSeconds += t;
                     if (Flat(hunter.Position - goalFeet) > .1f) report.endedBeside++;
                 }
-                else if (report.failures.Count < 12) report.failures.Add("trial " + report.trials + ": no arrival from " + start + " to " + goal + ", ended at " + world.CellOf(hunter.Position) + " in " + hunter.State);
+                else if (report.failures.Count < 24) report.failures.Add("trial " + report.trials + ": no arrival from " + start + " to " + goal + ", ended at " + world.CellOf(hunter.Position) + " in " + hunter.State);
+                if (cover != null)
+                {
+                    boxes.Remove(cover.GetComponent<Collider>());
+                    UnityEngine.Object.DestroyImmediate(cover);
+                    Physics.SyncTransforms();
+                }
             }
             report.ghosts = hunter.Ghosts;
             report.averageSeconds = report.arrived > 0 ? totalSeconds / report.arrived : 0f;
@@ -178,6 +211,17 @@ public static class FrontRoomsRelayNavTest
         finally
         {
             UnityEngine.Object.DestroyImmediate(root);
+            RenderSettings.ambientMode = ambientMode;
+            RenderSettings.ambientSkyColor = sky;
+            RenderSettings.ambientEquatorColor = equator;
+            RenderSettings.ambientGroundColor = ground;
+            RenderSettings.reflectionIntensity = reflection;
+            RenderSettings.fog = fog;
+            RenderSettings.fogMode = fogMode;
+            RenderSettings.fogColor = fogColor;
+            RenderSettings.fogDensity = fogDensity;
+            RenderSettings.skybox = skybox;
+            DynamicGI.UpdateEnvironment();
         }
 
         var pass = report.trials >= Trials && report.exceptions == 0 && report.wallFrames == 0

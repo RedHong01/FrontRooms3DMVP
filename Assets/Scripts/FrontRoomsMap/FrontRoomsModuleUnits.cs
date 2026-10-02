@@ -72,8 +72,10 @@ namespace FrontRooms.Map
         public const float BulkheadDepth = .35f;
         /// <summary>Cove base on Office columns: height, and how far it stands proud of the column face.</summary>
         public const float CoveHeight = .1f, CoveProud = .006f;
-        /// <summary>One troffer per cell. Lens footprint (X by Z) and drop below the ceiling.</summary>
+        /// <summary>One troffer per cell: lens long and short sides, thickness, drop of its centre below the ceiling, and the lamp's drop.</summary>
         public const float TrofferLong = 1.2f, TrofferShort = .6f, TrofferLens = .025f, TrofferDrop = .02f, LampDrop = .06f;
+        /// <summary>The lens (0.6 along X, 1.2 along Z) fills whole 0.6 m ceiling tiles, so its centre sits this far +Z of the cell centre.</summary>
+        public const float TrofferOffsetZ = .3f;
 
         // ---------- Bodies ----------
 

@@ -67,6 +67,6 @@ Material:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 2.2, g: 2.1, b: 1.8, a: 1}
     - _StainColor: {r: 0.42, g: 0.31, b: 0.16, a: 1}
-    - _TileSize: {r: 0.60952383, g: 1.2190477, b: 0, a: 0}
+    - _TileSize: {r: 0.6, g: 1.2, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

@@ -38,6 +38,12 @@ Every other part (legs, posts, blocks, fabric, metal) keeps kitlib's
 mapping exactly, and texel density stays 1 UV unit per metre. If kitlib's
 own _uv_metres later learns all three modes, install() does nothing and kitlib
 takes over; this file can then be deleted.
+
+2026-10-02 (round 2): kitlib._uv_metres is now grain-aware for every wood slot
+(obj["fr_grain"] or the board's long axis), so "metres_h" no longer needs the
+quarter turn: horizontal() just sets fr_grain and kitlib does the rest (the
+turn is skipped when kitlib reads fr_grain, otherwise it would cross the grain
+again). "metres_ring" and "metres_axis" are still this helper's job.
 """
 
 import inspect
@@ -138,6 +144,14 @@ def _uv_axis(obj):
     bm.free()
 
 
+def _kitlib_has_grain():
+    """kitlib >= round 2 runs wood grain along obj["fr_grain"] itself."""
+    try:
+        return "fr_grain" in inspect.getsource(kitlib.Kit._uv_metres)
+    except (OSError, TypeError):
+        return False
+
+
 def _uv_metres_h(obj):
     kitlib.Kit._uv_metres(obj)
     if obj.get("fr_uv") == RING:
@@ -147,6 +161,11 @@ def _uv_metres_h(obj):
         _uv_axis(obj)
         return
     if obj.get("fr_uv") != MODE:
+        return
+    if _kitlib_has_grain():
+        # kitlib's own projection already put V along fr_grain (or the
+        # board's long axis); the legacy quarter turn below would now turn
+        # the grain back across the part.
         return
     mesh = obj.data
     bm = bmesh.new()

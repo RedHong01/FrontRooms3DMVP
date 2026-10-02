@@ -41,6 +41,7 @@ public static class FrontRoomsRenderSetup
         EnsurePost();
         EnsureSurfaces();
         EnsureGlassMaterials();
+        EnsureCutoutMaterials();
         EnsureOfficePost();
         ConvertSceneMaterials();
         GraphicsSettings.defaultRenderPipeline = pipeline;
@@ -314,7 +315,7 @@ public static class FrontRoomsRenderSetup
         new SurfaceDef { name = "Prop_Chipboard", texture = "Prop_Chipboard", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
         new SurfaceDef { name = "Prop_PinePallet", texture = "Prop_PinePallet", tile = new Vector2(1.4f, 1.4f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.15f, macroDirt = 0.2f },
         new SurfaceDef { name = "Prop_Studs", texture = "Prop_Studs", tile = new Vector2(0.5f, 0.5f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.08f, macroDirt = 0.08f },
-        new SurfaceDef { name = "Prop_LaminateBeige", tint = new Color(0.788f, 0.745f, 0.627f), smooth = 0.43f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        new SurfaceDef { name = "Prop_LaminateBeige", tint = new Color(.71f, .64f, .51f), smooth = 0.43f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
         new SurfaceDef { name = "Prop_PlasticBeige", texture = "Prop_PlasticBeige", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.1f, macroDirt = 0.1f },
         new SurfaceDef { name = "Prop_PlasticWhite", texture = "Prop_PlasticWhite", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0.1f, macroDirt = 0.1f },
         new SurfaceDef { name = "Prop_PlasticBlack", texture = "Prop_PlasticBlack", tile = new Vector2(1.0f, 1.0f), meshUV = true, metallic = 0.0f, bump = 1.0f, macroTone = 0f, macroDirt = 0.05f },
@@ -341,6 +342,25 @@ public static class FrontRoomsRenderSetup
         new SurfaceDef { name = "Prop_Paper", tint = new Color(0.863f, 0.847f, 0.8f), smooth = 0.24f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
         new SurfaceDef { name = "Prop_LampShade", tint = new Color(0.886f, 0.847f, 0.753f), smooth = 0.1f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
         new SurfaceDef { name = "Prop_Ceramic", tint = new Color(0.353f, 0.227f, 0.141f), smooth = 0.8f, metallic = 0.0f, meshUV = true, macroTone = .05f, macroDirt = .06f },
+        // Round-1 requests: non-metallic finishes, coloured plastics, emissive
+        // indicators (emission without a map: emission = ""), and decal sets.
+        new SurfaceDef { name = "Prop_PVCEdge", tint = new Color(.10f, .07f, .05f), smooth = .55f, meshUV = true, macroTone = 0f, macroDirt = .05f },
+        new SurfaceDef { name = "Prop_Backer", texture = "Prop_Cardboard", tile = Vector2.one, meshUV = true, tint = new Color(.62f, .52f, .42f), macroTone = .1f, macroDirt = .1f },
+        new SurfaceDef { name = "Prop_SteelAlmond", texture = "Prop_SteelPutty", tile = Vector2.one, meshUV = true, tint = new Color(1.04f, .98f, .86f), macroTone = .1f, macroDirt = .1f },
+        new SurfaceDef { name = "Prop_PlasticPutty", texture = "Prop_PlasticBeige", tile = Vector2.one, meshUV = true, tint = new Color(.82f, .80f, .74f), macroTone = .08f, macroDirt = .08f },
+        new SurfaceDef { name = "Prop_Hardboard", texture = "Prop_Chipboard", tile = Vector2.one, meshUV = true, tint = new Color(.55f, .40f, .30f), bump = .3f, macroTone = .1f, macroDirt = .1f },
+        new SurfaceDef { name = "Prop_PlasticRed", tint = new Color(.55f, .06f, .05f), smooth = .5f, meshUV = true, macroTone = 0f, macroDirt = .04f },
+        new SurfaceDef { name = "Prop_PlasticBlue", tint = new Color(.06f, .16f, .45f), smooth = .5f, meshUV = true, macroTone = 0f, macroDirt = .04f },
+        new SurfaceDef { name = "Prop_CeramicGlaze", tint = new Color(.86f, .85f, .80f), smooth = .85f, meshUV = true, macroTone = 0f, macroDirt = .04f },
+        new SurfaceDef { name = "Prop_FoamPU", tint = new Color(.03f, .03f, .03f), smooth = .25f, meshUV = true, macroTone = 0f, macroDirt = .03f },
+        new SurfaceDef { name = "Prop_LEDGreen", tint = new Color(.05f, .3f, .08f), smooth = .7f, meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "", emissionColor = new Color(.2f, 2.2f, .35f) },
+        new SurfaceDef { name = "Prop_LEDAmber", tint = new Color(.3f, .15f, .02f), smooth = .7f, meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "", emissionColor = new Color(2.2f, 1.1f, .1f) },
+        new SurfaceDef { name = "Prop_LEDRed", tint = new Color(.3f, .03f, .02f), smooth = .7f, meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "", emissionColor = new Color(2.2f, .12f, .08f) },
+        new SurfaceDef { name = "Prop_LCD", tint = new Color(.45f, .50f, .38f), smooth = .6f, meshUV = true, macroTone = 0f, macroDirt = .03f },
+        new SurfaceDef { name = "Prop_PhoneKeys", texture = "Prop_PhoneKeys", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = .04f },
+        new SurfaceDef { name = "Prop_VendingHeader", texture = "Prop_VendingHeader", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "Prop_VendingHeader", emissionColor = new Color(1.6f, 1.5f, 1.4f) },
+        new SurfaceDef { name = "Prop_LampShadeLit", tint = new Color(.95f, .88f, .70f), smooth = .1f, meshUV = true, macroTone = 0f, macroDirt = .05f, emission = "", emissionColor = new Color(1.4f, 1.1f, .65f) },
+        new SurfaceDef { name = "Prop_BulbLit", tint = new Color(1f, .95f, .85f), smooth = .3f, meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "", emissionColor = new Color(4f, 3.5f, 2.6f) },
         new SurfaceDef { name = "Prop_ScreenCRT", texture = "Prop_ScreenCRT", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = 0f },
         new SurfaceDef { name = "Prop_ScreenCRT_On", texture = "Prop_ScreenCRT", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "Prop_ScreenCRT", emissionColor = new Color(1.3f, 1.15f, .9f) },
         new SurfaceDef { name = "Prop_VendingFront", texture = "Prop_VendingFront", tile = Vector2.one, meshUV = true, macroTone = 0f, macroDirt = 0f, emission = "Prop_VendingFront", emissionColor = new Color(1.5f, 1.45f, 1.3f) },
@@ -355,6 +375,25 @@ public static class FrontRoomsRenderSetup
         ("Prop_Glass", new Color(.82f, .88f, .88f, .16f), .92f),
         ("Prop_BottleBlue", new Color(.36f, .58f, .80f, .42f), .9f),
     };
+
+    static void EnsureCutoutMaterials()
+    {
+        // Prop_StencilBlack: spray stencil on crates; RGBA art, alpha-clipped.
+        var shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null) return;
+        var path = SurfaceDir + "/Prop_StencilBlack.mat";
+        var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (m == null) { m = new Material(shader) { name = "Prop_StencilBlack" }; AssetDatabase.CreateAsset(m, path); }
+        m.shader = shader;
+        m.SetTexture("_BaseMap", TexOptional("Prop_StencilBlack_A"));
+        m.SetColor("_BaseColor", Color.white);
+        m.SetFloat("_AlphaClip", 1f);
+        m.SetFloat("_Cutoff", .5f);
+        m.SetFloat("_Smoothness", .2f);
+        m.EnableKeyword("_ALPHATEST_ON");
+        m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+        EditorUtility.SetDirty(m);
+    }
 
     static void EnsureGlassMaterials()
     {
@@ -439,7 +478,8 @@ public static class FrontRoomsRenderSetup
             if (d.meshUV) m.EnableKeyword("_FR_MESH_UV"); else m.DisableKeyword("_FR_MESH_UV");
             if (d.emission != null)
             {
-                m.SetTexture("_EmissionMap", Tex(d.emission + "_E"));
+                // emission = "" glows the tint colour without a map (LEDs, lit shades).
+                m.SetTexture("_EmissionMap", d.emission.Length == 0 ? null : Tex(d.emission + "_E"));
                 m.SetColor("_EmissionColor", d.emissionColor);
                 m.SetFloat("_UseEmission", 1f);
                 m.EnableKeyword("_EMISSION");

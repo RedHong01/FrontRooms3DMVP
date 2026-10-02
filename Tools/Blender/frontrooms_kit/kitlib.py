@@ -88,7 +88,28 @@ SLOTS = {
     "Prop_FabricCharcoal": ((0.23, 0.23, 0.24), 0.9, 0.0),
     "Prop_FabricNavy": ((0.14, 0.19, 0.29), 0.9, 0.0),
     "Prop_Ceramic": ((0.35, 0.23, 0.14), 0.2, 0.0),
+    # Round-1 requests (2026-10-02): finishes the kit was missing.
+    "Prop_PVCEdge": ((0.10, 0.07, 0.05), 0.55, 0.0),      # T-mould / vinyl edge band
+    "Prop_Backer": ((0.42, 0.30, 0.18), 0.8, 0.0),        # kraft backer under desk tops
+    "Prop_SteelAlmond": ((0.66, 0.60, 0.48), 0.55, 0.0),  # almond painted steel (pedestals)
+    "Prop_PlasticPutty": ((0.58, 0.55, 0.48), 0.5, 0.0),  # warm putty plastic trim
+    "Prop_Hardboard": ((0.30, 0.20, 0.13), 0.65, 0.0),    # tempered hardboard backs
+    "Prop_PlasticRed": ((0.55, 0.05, 0.04), 0.4, 0.0),
+    "Prop_PlasticBlue": ((0.05, 0.15, 0.45), 0.4, 0.0),
+    "Prop_CeramicGlaze": ((0.86, 0.85, 0.80), 0.15, 0.0),
+    "Prop_FoamPU": ((0.03, 0.03, 0.03), 0.75, 0.0),       # soft matte black PU (arm pads)
+    "Prop_LEDGreen": ((0.1, 0.9, 0.2), 0.3, 0.0),         # emissive indicator lenses
+    "Prop_LEDAmber": ((1.0, 0.55, 0.05), 0.3, 0.0),
+    "Prop_LEDRed": ((0.9, 0.05, 0.03), 0.3, 0.0),
+    "Prop_LCD": ((0.45, 0.50, 0.38), 0.3, 0.0),           # unlit grey-green segment display
+    "Prop_StencilBlack": ((0.02, 0.02, 0.02), 0.8, 0.0),  # alpha-clipped spray stencil (decal)
+    "Prop_PhoneKeys": ((0.75, 0.73, 0.68), 0.5, 0.0),     # phone keypad legends (decal)
+    "Prop_VendingHeader": ((0.8, 0.2, 0.1), 0.4, 0.0),    # lit header sign (decal, emissive)
+    "Prop_LampShadeLit": ((0.95, 0.88, 0.70), 0.1, 0.0),  # lamp shade, emissive when on
+    "Prop_BulbLit": ((1.0, 0.95, 0.85), 0.2, 0.0),        # frosted bulb / halogen tube, emissive
 }
+
+WOOD_PREFIXES = ("Prop_Wood", "Prop_Plywood", "Prop_PinePallet", "Prop_Studs", "Prop_Chipboard", "Prop_Hardboard")
 
 
 def register_slot(slot, colour=(0.6, 0.6, 0.6), roughness=0.6, metallic=0.0):
@@ -388,8 +409,10 @@ class Kit:
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         return self._new_object(name, bm, slot, uv, "xz")
 
-    def quad(self, size_u, size_v, loc, slot, facing="-y", name="quad", uv="decal"):
-        """Single-sided rectangle (labels, screens). facing: -y, +y, +z, -x, +x."""
+    def quad(self, size_u, size_v, loc, slot, facing="-y", name="quad", uv="decal", uv_rect=None):
+        """Single-sided rectangle (labels, screens). facing: -y, +y, +z, -x, +x.
+        uv_rect=(u0, v0, u1, v1) maps the decal into one cell of an atlas
+        texture (see Kit.atlas_cell); Prop_Label is a 4 x 3 atlas."""
         bm = bmesh.new()
         hu, hv = size_u / 2, size_v / 2
         if facing in ("-y", "+y"):
@@ -409,6 +432,8 @@ class Kit:
             face.normal_flip()
         obj = self._new_object(name, bm, slot, uv, axes)
         obj.location = loc
+        if uv_rect is not None:
+            obj["fr_uv_rect"] = list(uv_rect)
         return obj
 
     def adopt(self, obj, slot_names, uv="keep"):
@@ -498,25 +523,55 @@ class Kit:
 
     @staticmethod
     def _uv_metres(obj):
-        """Box projection in world metres (after the part's transform)."""
+        """Box projection in world metres (after the part's transform).
+        Wood slots (WOOD_PREFIXES) run the grain (texture V) along the part's
+        grain axis: obj["fr_grain"] ("x"/"y"/"z") if set, else per face the
+        longer in-plane extent, so rails, drawer fronts and tops read along
+        the board. obj["fr_uv_offset"] = (du, dv) shifts a part's UVs so
+        neighbouring boards don't share one continuous sheet of grain."""
         mesh = obj.data
         bm = bmesh.new()
         bm.from_mesh(mesh)
         layer = bm.loops.layers.uv.verify()
         mw = obj.matrix_world
         rot = mw.to_3x3()
+        mats = mesh.materials
+        slot = mats[0].name.split(".")[0] if len(mats) and mats[0] is not None else ""
+        wood = slot.startswith(WOOD_PREFIXES)
+        forced = obj.get("fr_grain")
+        forced = "xyz".index(forced) if forced in ("x", "y", "z") else None
+        pts = [mw @ v.co for v in bm.verts]
+        ext = [max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3)] if pts else [1, 1, 1]
+        off = obj.get("fr_uv_offset")
+        du, dv = (float(off[0]), float(off[1])) if off is not None else (0.0, 0.0)
         for face in bm.faces:
             n = (rot @ face.normal).normalized()
             ax, ay, az = abs(n.x), abs(n.y), abs(n.z)
+            if az >= ax and az >= ay:
+                axis, sgn, plane = 2, (1 if n.z >= 0 else -1), (0, 1)
+            elif ax >= ay:
+                axis, sgn, plane = 0, (1 if n.x >= 0 else -1), (1, 2)
+            else:
+                axis, sgn, plane = 1, (1 if n.y >= 0 else -1), (0, 2)
+            g = None
+            if wood:
+                g = forced if (forced is not None and forced in plane) else (plane[0] if ext[plane[0]] > ext[plane[1]] else plane[1])
             for loop in face.loops:
                 p = mw @ loop.vert.co
-                if az >= ax and az >= ay:
-                    u, v = p.x * (1 if n.z >= 0 else -1), p.y
-                elif ax >= ay:
-                    u, v = -p.y * (1 if n.x >= 0 else -1), p.z
+                if axis == 2:
+                    u, v = p.x * sgn, p.y
+                elif axis == 0:
+                    u, v = -p.y * sgn, p.z
                 else:
-                    u, v = p.x * (1 if n.y < 0 else -1), p.z
-                loop[layer].uv = (u, v)
+                    u, v = -p.x * sgn, p.z
+                if g is not None:
+                    if axis == 2 and g == 0:      # top/bottom, grain along X
+                        u, v = -p.y * sgn, p.x
+                    elif axis == 0 and g == 1:    # end face, grain along Y
+                        u, v = -p.z * sgn, p.y
+                    elif axis == 1 and g == 0:    # front/back, grain along X
+                        u, v = p.z * sgn, p.x
+                loop[layer].uv = (u + du, v + dv)
         bm.to_mesh(mesh)
         bm.free()
 
@@ -543,12 +598,29 @@ class Kit:
         bm.to_mesh(mesh)
         bm.free()
 
+    @staticmethod
+    def _uv_remap(obj, rect):
+        """Squeeze 0..1 decal UVs into rect = (u0, v0, u1, v1) of an atlas."""
+        u0, v0, u1, v1 = [float(x) for x in rect]
+        for loop_uv in obj.data.uv_layers.active.data:
+            u, v = loop_uv.uv
+            loop_uv.uv = (u0 + (u1 - u0) * u, v0 + (v1 - v0) * v)
+
+    @staticmethod
+    def atlas_cell(index, cols, rows):
+        """uv_rect of cell ``index`` (row-major from the top-left) in a cols x rows atlas."""
+        c, r = index % cols, index // cols
+        return (c / cols, 1 - (r + 1) / rows, (c + 1) / cols, 1 - r / rows)
+
     def finish(self, smooth_angle=35.0):
         """Apply modifiers, generate UVs, join into one object, shade."""
         for obj in self.parts:
             self._apply_modifiers(obj)
             if obj.get("fr_uv") == "decal":
                 self._uv_decal(obj, obj.get("fr_decal_axes", "xz"))
+                rect = obj.get("fr_uv_rect")
+                if rect is not None:
+                    self._uv_remap(obj, rect)
         # Metre UVs need world-space positions, so bake transforms first.
         # uv="keep" (imported scans) leaves the authored UVs alone.
         for obj in self.parts:

@@ -47,7 +47,7 @@ public sealed class FrontRoomsMapHunter
     readonly Queue<GridCoord> frontier = new Queue<GridCoord>();
     readonly List<GridCoord> candidates = new List<GridCoord>();
     readonly RaycastHit[] hits = new RaycastHit[16];
-    readonly RaycastHit[] bodyHits = new RaycastHit[16];
+    readonly RaycastHit[] bodyHits = new RaycastHit[64];
     readonly Collider[] overlaps = new Collider[16];
     // Detour planning scratch: a region of at most 4 x 4 cells at 0.25 m.
     readonly List<Vector3> detour = new List<Vector3>();
@@ -65,7 +65,11 @@ public sealed class FrontRoomsMapHunter
     // (empty = straight), and whether the detour ends short of the aim.
     Vector3 planTarget = new Vector3(float.MaxValue, 0f, 0f);
     int detourIndex;
-    bool detourShort, unreachable, ghosting;
+    bool detourShort, unreachable, ghosting, ghostTouched;
+    // Hunt watchdog: where it last made progress, and for how long it has not.
+    Vector3 progressAnchor;
+    float progressTime;
+    const float StallSeconds = 3f;
     // The cell a crossing leg started from: a detour may cut through a
     // neighbouring cell, and that must not count as leaving the route.
     GridCoord legFrom, legTo;
@@ -154,6 +158,12 @@ public sealed class FrontRoomsMapHunter
                 break;
             case HunterState.Hunt:
                 if (Follow(tuning.huntSpeed, dt)) SetState(HunterState.Search);
+                else if (Stalled(dt))
+                {
+                    // Held in place (a covered aim, a dropped chunk): give up and search here.
+                    ResetSteering();
+                    SetState(HunterState.Search);
+                }
                 break;
             case HunterState.Search:
                 if (StateTime > tuning.searchSeconds) SetState(HunterState.Listen);
@@ -163,7 +173,7 @@ public sealed class FrontRoomsMapHunter
                 if (replanTimer <= 0f)
                 {
                     replanTimer = ReplanSeconds;
-                    Plan(myCell, world.CellOf(lastSeen), lastSeen);
+                    Plan(RouteCell(myCell), world.CellOf(lastSeen), lastSeen);
                 }
                 if (SeesPlayer && myCell == playerCell) MoveDirect(playerFeet, tuning.chaseSpeed, dt);
                 else Follow(tuning.chaseSpeed, dt);
@@ -210,7 +220,7 @@ public sealed class FrontRoomsMapHunter
 
     void HuntToward(GridCoord cell, Vector3? point)
     {
-        Plan(world.CellOf(position), cell, point ?? world.CellCenter(cell));
+        Plan(RouteCell(world.CellOf(position)), cell, point ?? world.CellCenter(cell));
         SetState(HunterState.Hunt);
     }
 
@@ -332,8 +342,14 @@ public sealed class FrontRoomsMapHunter
         {
             // Walk up to the door on this side, then break it down.
             var door = world.DoorBetween(here, next);
+            if (door == null)
+            {
+                // The chunk that owns this door was dropped under the path: plan again over what is built.
+                Plan(here, path[path.Count - 1], goal);
+                return false;
+            }
             var face = world.CrossingPoint(here, next) - Flat(world.CellCenter(next) - world.CellCenter(here)).normalized * .45f;
-            if (MoveDirect(face, speed, dt) && door != null)
+            if (MoveDirect(face, speed, dt))
             {
                 breakingDoor = door;
                 blowTime = BlowInterval;
@@ -366,12 +382,6 @@ public sealed class FrontRoomsMapHunter
         target.y = position.y;
         if (Flat(target - planTarget).sqrMagnitude > .25f) Steer(target, final, enter);
         else if (detour.Count == 0 && (straightCheck -= dt) <= 0f) Steer(target, final, enter);
-        if (unreachable)
-        {
-            // Nothing free near a final point: stop here, the hunt is over.
-            unreachable = false;
-            return true;
-        }
         var onDetour = detourIndex < detour.Count;
         var aim = onDetour ? detour[detourIndex] : target;
         aim.y = position.y;
@@ -379,13 +389,26 @@ public sealed class FrontRoomsMapHunter
         if (onDetour && (straightCheck -= dt) <= 0f)
         {
             straightCheck = StraightRecheck;
-            if (!PathClear(position, aim, !ghosting))
+            var replan = !PathClear(position, aim, !ghosting);
+            if (ghosting && !replan)
+            {
+                // Once past what it had to pass through, walk round the rest again.
+                if (!BodyFits(position, true)) ghostTouched = true;
+                else if (ghostTouched) replan = true;
+            }
+            if (replan)
             {
                 Steer(target, final, enter);
                 onDetour = detourIndex < detour.Count;
                 aim = onDetour ? detour[detourIndex] : target;
                 aim.y = position.y;
             }
+        }
+        if (unreachable)
+        {
+            // Nothing free near a final point: stop here, the hunt is over.
+            unreachable = false;
+            return true;
         }
         position = Vector3.MoveTowards(position, aim, speed * dt);
         if (onDetour && Flat(position - aim).sqrMagnitude < .0004f && ++detourIndex >= detour.Count)
@@ -394,16 +417,38 @@ public sealed class FrontRoomsMapHunter
             detourIndex = 0;
             straightCheck = 0f;
             if (ghosting && BodyFits(position, true)) ghosting = false;
-            if (detourShort && final) return true;
+            // The aim itself is covered: beside it is as close as it gets (a hunt's end, or a door face).
+            if (detourShort && (final || !enter.HasValue)) return true;
         }
         return Flat(position - target).sqrMagnitude < .04f * .04f;
     }
+
+    /// <summary>Hunt watchdog: true once it has moved less than 0.3 m for <see cref="StallSeconds"/>.</summary>
+    bool Stalled(float dt)
+    {
+        if (Flat(position - progressAnchor).sqrMagnitude > .09f)
+        {
+            progressAnchor = position;
+            progressTime = 0f;
+            return false;
+        }
+        progressTime += dt;
+        return progressTime > StallSeconds;
+    }
+
+    /// <summary>
+    /// The cell a new route should start from. Mid-detour on a crossing leg
+    /// the body may stand in a neighbouring cell; the route is still at the
+    /// leg's start, as Follow treats it.
+    /// </summary>
+    GridCoord RouteCell(GridCoord body) =>
+        hasLeg && detourIndex < detour.Count && pathIndex < path.Count && path[pathIndex] == legTo && body != legTo ? legFrom : body;
 
     void ResetSteering()
     {
         detour.Clear();
         detourIndex = 0;
-        detourShort = unreachable = ghosting = hasLeg = false;
+        detourShort = unreachable = ghosting = ghostTouched = hasLeg = false;
         planTarget = new Vector3(float.MaxValue, 0f, 0f);
         straightCheck = 0f;
     }
@@ -419,7 +464,7 @@ public sealed class FrontRoomsMapHunter
         planTarget = target;
         detour.Clear();
         detourIndex = 0;
-        detourShort = false;
+        detourShort = unreachable = false;
         straightCheck = StraightRecheck;
         var inside = !BodyFits(position, true);
         if (!inside)
@@ -436,6 +481,7 @@ public sealed class FrontRoomsMapHunter
             DebugBlocker = Blocker(position, target);
         }
         ghosting = true;
+        ghostTouched = inside;
         if (!PathClear(position, target, false)) PlanDetour(target, enter, false);
     }
 
@@ -541,20 +587,32 @@ public sealed class FrontRoomsMapHunter
         nodePath.Clear();
         for (var k = reached; k >= 0; k = nodeParent[k]) nodePath.Add(k);
         nodePath.Reverse();
-        // String-pull: from where it stands, jump to the farthest node it can walk to straight.
+        // String-pull: from where it stands, jump to the farthest node it can walk
+        // to straight. The body is off the node grid, so its first leg is
+        // checked down to the start node; from a node the next one is always
+        // walkable (both free, no cut corner).
         var at = position;
-        var i0 = 0;
+        var i0 = -1;
         while (i0 < nodePath.Count - 1)
         {
-            var next = i0 + 1;
-            for (var j = nodePath.Count - 1; j > i0 + 1; j--)
-                if (PathClear(at, Node(nodePath[j]), furniture)) { next = j; break; }
+            var next = -1;
+            for (var j = nodePath.Count - 1; j > i0; j--)
+                if ((i0 >= 0 && j == i0 + 1) || PathClear(at, Node(nodePath[j]), furniture)) { next = j; break; }
+            if (next < 0)
+            {
+                detour.Clear();
+                detourShort = false;
+                return false;
+            }
             at = Node(nodePath[next]);
             detour.Add(at);
             i0 = next;
         }
-        if (detour.Count == 0) detour.Add(Node(reached));
-        if (!detourShort && !enter.HasValue && PathClear(at, target, furniture)) detour.Add(target);
+        if (!detourShort && !enter.HasValue)
+        {
+            if (PathClear(at, target, furniture)) detour.Add(target);
+            else detourShort = true; // the aim is covered: the goal node beside it is as close as it gets
+        }
         return true;
     }
 
@@ -610,6 +668,8 @@ public sealed class FrontRoomsMapHunter
         if (distance < 1e-4f) return true;
         dir /= distance;
         var count = Physics.CapsuleCastNonAlloc(a + Vector3.up * (ProbeBottom + Radius), a + Vector3.up * (ProbeTop - Radius), Radius, dir, bodyHits, distance, ~0, QueryTriggerInteraction.Ignore);
+        // Hits come unordered: a full buffer may have dropped the one that matters.
+        if (count >= bodyHits.Length) return false;
         for (var i = 0; i < count; i++)
         {
             var c = bodyHits[i].collider;
@@ -696,6 +756,8 @@ public sealed class FrontRoomsMapHunter
 
     void SetState(HunterState next)
     {
+        progressAnchor = position;
+        progressTime = 0f;
         if (next == State) { StateTime = 0f; return; }
         State = next;
         StateTime = 0f;
