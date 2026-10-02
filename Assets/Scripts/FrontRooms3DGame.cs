@@ -929,20 +929,21 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         panel.Add(vectorLogoRoot);
 
         // Restore the 11:53 lockup: one complete FRONTROOMS vector wordmark
-        // plus the two trailing S assets. The individual glyph resources stay
-        // available for later variants, but are not used by this title motion.
+        // plus the two trailing S assets. The source white lockup paints the
+        // two translucent afterimages first and the solid wordmark last; keep
+        // that painter order so the gray SS never washes over the final solid
+        // S when their paths overlap.
         vectorLogoLetterMasks.Clear();
         vectorLogoLetterWidths.Clear();
-        vectorLogoLeftImage = VectorLogoImage("SVG complete wordmark", leftAsset, 8f, 17.6f);
-        vectorLogoRoot.Add(vectorLogoLeftImage);
-
         // Unity imports each S at its painted bounds. Place both visible glyphs
         // on the final solid-S baseline; do not apply the source SVG viewBox
         // x coordinates a second time.
         vectorLogoS1Image = VectorLogoImage("SVG trailing S 1", s1Asset, 798f, 17.8f);
         vectorLogoS2Image = VectorLogoImage("SVG trailing S 2", s2Asset, 798f, 17.8f);
-        vectorLogoRoot.Add(vectorLogoS1Image);
         vectorLogoRoot.Add(vectorLogoS2Image);
+        vectorLogoRoot.Add(vectorLogoS1Image);
+        vectorLogoLeftImage = VectorLogoImage("SVG complete wordmark", leftAsset, 8f, 17.6f);
+        vectorLogoRoot.Add(vectorLogoLeftImage);
         vectorLogoRoot.style.display = UiDisplayStyle.None;
         return vectorLogoLeftImage != null && vectorLogoS1Image != null && vectorLogoS2Image != null;
     }

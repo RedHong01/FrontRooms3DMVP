@@ -1,6 +1,6 @@
 {
     "suite": "FrontRooms room stream and Relay",
-    "timestampUtc": "2026-10-02T01:16:41.1177210Z",
+    "timestampUtc": "2026-10-02T01:37:27.2694490Z",
     "unityVersion": "6000.3.10f1",
     "scope": "Room pool, profile order and Relay state machine with a scripted player. Rendering, audio and human playability are separate.",
     "passed": 5,
