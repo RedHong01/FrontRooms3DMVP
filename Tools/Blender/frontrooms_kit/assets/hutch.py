@@ -9,7 +9,9 @@ top that overhangs 20 mm. Upper hutch set back on the buffet top: oak-framed
 face frame (ebonised) with two inset glazed doors whose glass has an arched
 head (a shaped spandrel in each door), two plate shelves inside, a cove
 crown under a rounded top board, brass knobs and butt hinges, brass bail
-pulls on the drawers, tempered hardboard back.
+pulls on the drawers. The backs are stained with the rest of the case
+(Still A shows this piece BACK to the camera as a near-black peak, so a tan
+hardboard back would break the silhouette): 3 slots, Ebony / Brass / Glass.
 
 Size: 1.00 m wide, 0.50 m deep (buffet), 1.90 m tall; buffet top at 0.80 m.
 Front looks -Y. Variant Kit_Hutch_Cherry swaps the finish to cherry.
@@ -28,7 +30,6 @@ VARIANTS = {"Kit_Hutch_Cherry": {"Prop_WoodEbony": "Prop_WoodCherry"}}
 WOOD = "Prop_WoodEbony"
 BRASS = "Prop_Brass"
 GLASS = "Prop_Glass"
-BACK = "Prop_Hardboard"
 
 W, D, H = 1.00, 0.50, 1.90
 T = 0.019                       # carcass board
@@ -60,7 +61,10 @@ def build(kit):
     base = [(-0.030, 0.0), (0.016, 0.0), (0.016, 0.058), (0.0145, 0.066), (0.0105, 0.073), (0.0065, 0.080),
             (0.0045, 0.089), (0.0, PLINTH_H), (-0.030, PLINTH_H)]
     # Run on the door-face line, so the moulding stands 16 mm proud of the doors.
-    nc.sweep(kit, nc.three_sides(CXL, YFL - FRONT_T, YB), base, WOOD, origin=(0, 0, 0), name="plinth moulding")
+    # Its returns stop on the back panel's inner face (YB - 5 mm), so their end
+    # caps never share the back's outer plane.
+    nc.sweep(kit, nc.three_sides(CXL, YFL - FRONT_T, YB - 0.005), base, WOOD, origin=(0, 0, 0),
+             name="plinth moulding")
     kit.box((2 * CXL - 0.024, YB - YFL - 0.012, 0.012), (0, (YFL + YB) / 2 + 0.006, PLINTH_H - 0.006), WOOD,
             bevel=0.0, name="plinth deck")
     side_h = TOPL_Z - TOPL_T - PLINTH_H
@@ -91,14 +95,17 @@ def build(kit):
         nc.knob(kit, sx * (GAP / 2 + 0.034), door_z1 - 0.075, YFL - FRONT_T, BRASS)
         for hz in (door_z0 + 0.07, door_z1 - 0.07):
             nc.knuckle(kit, sx * (CXL - 0.0005), YFL - 0.003, hz, 0.050, BRASS, radius=0.0038)
-    kit.box((2 * (CXL - T), 0.005, TOPL_Z - TOPL_T - 0.004), (0, YB - 0.0025, (TOPL_Z - TOPL_T + 0.004) / 2), BACK,
-            bevel=0.0, name="buffet back")
+    bb = kit.box((2 * (CXL - T), 0.005, TOPL_Z - TOPL_T), (0, YB - 0.0025, (TOPL_Z - TOPL_T) / 2),
+                 WOOD, bevel=0.0, name="buffet back")
+    bb["fr_grain"] = "z"
 
     # =============================== hutch ================================
-    ff_y = YFU + 0.020
+    ff_y = YFU + 0.020              # back face of the face frame (stiles span YFU..ff_y)
     u_side_h = CROWN_Z - TOPL_Z
     for sx in (-1, 1):
-        nc.plate(kit, YB - YFU, u_side_h, nc.chamfer(T, 0.002), (sx * (CXU - T), (YFU + YB) / 2, TOPL_Z + u_side_h / 2),
+        # Side plates start BEHIND the stiles (as display_cabinet), so the
+        # stile end grain and the side never share a face.
+        nc.plate(kit, YB - ff_y, u_side_h, nc.chamfer(T, 0.002), (sx * (CXU - T), (ff_y + YB) / 2, TOPL_Z + u_side_h / 2),
                  WOOD, facing="+x" if sx > 0 else "-x", name="hutch side", grain="z")
         nc.plate(kit, STILE, u_side_h, nc.chamfer(0.020, 0.002), (sx * (CXU - STILE / 2), ff_y, TOPL_Z + u_side_h / 2),
                  WOOD, facing="-y", name="hutch stile", grain="z")
@@ -107,12 +114,11 @@ def build(kit):
              facing="-y", name="frieze rail", grain="x")
     nc.plate(kit, rail_w, U_OPEN_Z0 - TOPL_Z, nc.chamfer(0.019, 0.002), (0, ff_y, (U_OPEN_Z0 + TOPL_Z) / 2), WOOD,
              facing="-y", name="hutch bottom rail", grain="x")
-    # Interior: back veneer, two plate shelves, ceiling.
+    # Interior: back (its inner face is the veneer seen through the glass), two plate shelves, ceiling.
     ix = CXU - T
-    kit.box((2 * ix, 0.005, H - TOPU_T - TOPL_Z), (0, YB - 0.0025, (H - TOPU_T + TOPL_Z) / 2), BACK, bevel=0.0,
-            name="hutch back")
-    kit.quad(2 * ix, U_OPEN_Z1 - TOPL_Z, (0, YB - 0.0052, (U_OPEN_Z1 + TOPL_Z) / 2), WOOD, facing="-y", uv="metres",
-             name="hutch back veneer")
+    hb = kit.box((2 * ix, 0.005, H - TOPU_T - TOPL_Z), (0, YB - 0.0025, (H - TOPU_T + TOPL_Z) / 2), WOOD, bevel=0.0,
+                 name="hutch back")
+    hb["fr_grain"] = "z"
     for z in (1.115, 1.405):
         sy0, sy1 = ff_y + 0.012, YB - 0.006
         nc.plate(kit, 2 * ix - 0.002, sy1 - sy0, nc.chamfer(T, 0.002), (0, (sy0 + sy1) / 2, z), WOOD, facing="+z",
@@ -167,5 +173,6 @@ def build(kit):
     kit.tag("domestic", "case_goods", "pile", "pile_piece", "glass")
     kit.pile("Case", mass=3, states=["Upright", "Back", "EdgeLean"], palette="domestic70s")
 
-    nc.scatter(kit, 1983, (WOOD, BACK))
+    nc.scatter(kit, 1983, (WOOD,))
+    nc.grain_on_u(kit)
     nc.lod1_sharp(kit, SMOOTH_ANGLE)

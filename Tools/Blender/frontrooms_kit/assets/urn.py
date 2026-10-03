@@ -13,7 +13,7 @@ side (Still A).
 Size: 0.28 m diameter, 0.38 m tall. Rotationally symmetric (front = -Y by
 convention only). Budget 600 / 250 tris (~640 LOD0: the 18-sided bulb needs
 9 profile points to hold the glaze highlight without banding), no collider
-(rolls loose in piles). Slots: Ceramic, PlasticBlack (well floor).
+(rolls loose in piles). Slots: Ceramic, Rubber (matte black well floor).
 """
 
 import math
@@ -26,7 +26,7 @@ SMOOTH_ANGLE = 42.0
 VERTS = 18
 
 CERAMIC = "Prop_Ceramic"
-WELL = "Prop_PlasticBlack"
+WELL = "Prop_Rubber"           # matte (smoothness 0.15), so top light leaves no highlight in the well
 
 # The bulb: an ellipse (r 0.140, half-height 0.125) centred at z 0.158,
 # sampled every ~14 deg from -58 deg (z 0.052) to +54.7 deg (z 0.260).

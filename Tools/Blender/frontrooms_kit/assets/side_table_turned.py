@@ -6,20 +6,25 @@ table, dark walnut stain: 22 mm top with a rounded edge over a 72 mm apron,
 four bobbin-turned legs with square blocks where the apron and the lower shelf
 join, a lower shelf, brass cup casters with small black wheels.
 
-Budget pass (2026-10-02, §5.3: 2,200 LOD0 / 900 LOD1, WoodWalnut + Brass):
+Budget pass (2026-10-02, §5.3: 2,200 LOD0 / 900 LOD1, WoodWalnut + Brass;
+live 2,688 / 1,102 = 1.22x after the fix pass restored the bobbins):
 * slots: Prop_WoodWalnut (§5.3; was WoodDark), Prop_Brass, Prop_Rubber
   (wheels). The brace screws are gone (hidden, below 5 mm).
-* legs: 8-sided lathes (SMOOTH_ANGLE 48 shades them round) with five
-  barrel bobbins (sharp neck + two shoulder rings) between the blocks and a
-  bulb foot + long taper below the shelf; both ends are buried (cup, apron
-  block) so they are left open. 7 sides was tried: faceted at 0.5 m.
-* the lower shelf is a plain slab whose corners are buried in the leg blocks
-  (the old notches were invisible inside the blocks); rails have no bevel
-  (the top and the bead moulding cover their edges).
+* legs: 8-sided lathes (SMOOTH_ANGLE 48 shades them round) with six
+  rounded bobbins (fix pass: neck, shoulder, full bead, shoulder: a 4-step
+  sine, so they read as beads at 2 m, not as twisted barrels) between the
+  blocks and a bulb foot + long taper below the shelf; both ends are buried
+  (cup, apron block) so they are left open. 7 sides was tried: faceted at
+  0.5 m.
+* the lower shelf is a plain slab (1-segment edge) whose corners are buried
+  in the leg blocks; rails have no bevel (the top and the bead moulding cover
+  their edges).
 
-Size: 0.62 m wide, 0.40 m deep, 0.64 m tall on its casters. The long side is
-the front (-Y); the table is symmetric apart from the casters' trail.
-Wood grain follows each part's length (kitlib), each part on its own patch.
+Size (§5.3 / Still A, A3): 0.46 m square, 0.66 m tall on its casters, the
+legs set 48 mm in from the top's edge. Symmetric apart from the casters'
+trail; -Y is the front. Wood grain follows each part's length (kitlib;
+walnut's albedo grain is on V, so no transpose), each part on its own patch.
+_pilecases_grain.install fixes the LOD1 sharp edges.
 """
 
 import math
@@ -34,9 +39,9 @@ WOOD = "Prop_WoodWalnut"
 BRASS = "Prop_Brass"
 RUBBER = "Prop_Rubber"
 
-W, D, H = 0.62, 0.40, 0.64
+W, D, H = 0.46, 0.46, 0.66
 TOP_T = 0.022
-LX, LY = 0.262, 0.152          # leg centres
+LX, LY = 0.182, 0.182          # leg centres (48 mm in from the top's edge)
 BLOCK = 0.040                  # square block section
 APRON_H = 0.072
 SHELF_Z = 0.185                # top of the lower shelf
@@ -45,7 +50,7 @@ CUP_TOP = 0.062
 LEG_SIDES = 8
 
 
-def _leg_profile(bobbins=5):
+def _leg_profile(bobbins=6):
     top = H - TOP_T
     shelf_block = (SHELF_Z - SHELF_T - 0.016, SHELF_Z + 0.016)     # 0.151 .. 0.201
     apron_block0 = top - APRON_H - 0.006                           # 0.540
@@ -54,12 +59,12 @@ def _leg_profile(bobbins=5):
          (0.0122, CUP_TOP + 0.030),             # neck, then a long taper up to
          (0.0178, shelf_block[0] - 0.003),      # the collar under the shelf block
          (0.0178, shelf_block[1] + 0.004)]      # collar over it (core hidden in the block)
-    # Bobbins: a sharp neck, then a full barrel (two shoulder rings).
+    # Bobbins: neck, shoulder, full bead, shoulder (a 4-step sine).
     z0, z1 = shelf_block[1] + 0.011, apron_block0 - 0.012
     pitch = (z1 - z0) / bobbins
     for k in range(bobbins):
         b = z0 + k * pitch
-        p += [(0.0118, b), (0.0186, b + 0.30 * pitch), (0.0186, b + 0.70 * pitch)]
+        p += [(0.0118, b), (0.0168, b + 0.22 * pitch), (0.0188, b + 0.50 * pitch), (0.0168, b + 0.78 * pitch)]
     p += [(0.0118, z1), (0.0182, apron_block0 + 0.004)]    # last neck, then a flared collar into the block
     return p
 
@@ -128,7 +133,7 @@ def build(kit):
     # leg blocks (reads as notched round them).
     sx_, sy_ = LX + BLOCK / 2 - 0.004, LY + BLOCK / 2 - 0.004
     nx = LX - BLOCK / 2
-    kit.box((2 * sx_, 2 * sy_, SHELF_T), (0, 0, SHELF_Z - SHELF_T / 2), WOOD, bevel=0.005, segments=2,
+    kit.box((2 * sx_, 2 * sy_, SHELF_T), (0, 0, SHELF_Z - SHELF_T / 2), WOOD, bevel=0.005, segments=1,
             name="lower shelf")
 
     # --- Metadata --------------------------------------------------------
@@ -141,4 +146,4 @@ def build(kit):
 
     # Each part on its own patch of veneer (grain direction: kitlib).
     grain.scatter_offsets(kit, seed=2207, slots=(WOOD,), tile=(1.8, 1.8))    # Walnut TileSize 1.8 m
-    grain.install(kit)
+    grain.install(kit, SMOOTH_ANGLE)

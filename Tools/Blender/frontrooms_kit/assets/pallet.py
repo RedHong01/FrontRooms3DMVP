@@ -11,14 +11,24 @@ showing the stringer end and a bent nail. Every deck board seats on (or a
 hair into) the stringers, so the deck top never rises above 0.144 m: the
 pile stacks the crate on the OBB top.
 
-Budget pass (2026-10-02, §5.3: 900 LOD0 / 400 LOD1, PinePallet):
+Budget pass (2026-10-02, §5.3: 900 LOD0 / 400 LOD1, PinePallet; live 994 /
+436 = 1.10x with the centre stringer bevelled):
 * slots: Prop_PinePallet, Prop_SteelBlack (nail heads).
 * nail heads are single 8 mm quads (2 tris) seated on each board's twisted
   top face, turned at random; the underside nails are gone (only Upright is
   allowed in the pile, §5.3) and the bottom boards sit on the floor.
-* bevels: 1 segment on the deck boards and the two outer stringers (the
-  notched faces are the pallet's silhouette); none on the centre stringer
-  and the bottom boards (their chamfer is in the profile).
+* bevels: 1 segment on the deck boards and all three stringers (the notched
+  faces are the pallet's silhouette; the centre one shows through the open
+  ends and under the broken corner); none on the bottom boards (their
+  chamfer is in the profile).
+
+Texture (fix pass): Prop_PinePallet is ambientCG Planks021, grain on U, 11
+planks per 1.4 m tile with painted nail dots. _pilecases_grain.install
+transposes the UVs so the grain runs along every board in Unity, then snaps
+each board into one plank of the sheet (seams off the boards; the 0.14 m
+lead boards are wider than a plank, so their seam is pushed to an edge) and
+puts the dots on the stringer lines, where the nails are. LOD1 keeps its
+sharp edges. Swap in a single-board scan to drop the snapping.
 
 Size: 1.20 m (X, stringer length) x 1.00 m (Y, deck board length) x 0.144 m.
 Symmetric; -Y is the side a forklift would see the deck board ends from.
@@ -60,8 +70,9 @@ def build(kit):
                 (b - 0.022, depth * 0.72), (b, 0.0)]
     outline = [(-L / 2, 0.0)] + notch(-0.405, -0.145) + notch(0.145, 0.405) + [(L / 2, 0.0), (L / 2, STR_H), (-L / 2, STR_H)]
     for k, sy in enumerate(STRINGERS_Y):
-        kit.extrude(outline, STR_T, (rng.uniform(-0.004, 0.004), sy, z_str0), PINE, plane="xz",
-                    bevel=0.0 if sy == 0.0 else 0.0025, segments=1, name="stringer")
+        st = kit.extrude(outline, STR_T, (rng.uniform(-0.004, 0.004), sy, z_str0), PINE, plane="xz",
+                         bevel=0.0025, segments=1, name="stringer")
+        st["fr_face"] = (0.0, 1.0 if sy > 0 else -1.0, 0.0)        # the side seen past the deck
 
     # --- Top deck: 7 boards along Y, irregular widths and gaps -------------
     widths = [0.140, 0.092, 0.088, 0.096, 0.086, 0.094, 0.138]
@@ -89,10 +100,12 @@ def build(kit):
             outline = [(-hw + 0.061, -hl), (hw, -hl), (hw, hl), (-hw, hl), (-hw, -hl + 0.128),
                        (-hw + 0.021, -hl + 0.106), (-hw + 0.045, -hl + 0.089), (-hw + 0.056, -hl + 0.062),
                        (-hw + 0.062, -hl + 0.024)]
-            kit.extrude(outline, t, loc, PINE, plane="xy", rot=(0, twist, yaw), bevel=0.0025, segments=1,
-                        name="top deck board")
+            board = kit.extrude(outline, t, loc, PINE, plane="xy", rot=(0, twist, yaw), bevel=0.0025, segments=1,
+                                name="top deck board")
         else:
-            kit.box((w, length, t), loc, PINE, rot=(0, twist, yaw), bevel=0.0025, segments=1, name="top deck board")
+            board = kit.box((w, length, t), loc, PINE, rot=(0, twist, yaw), bevel=0.0025, segments=1,
+                            name="top deck board")
+        board["fr_nail_lines"] = list(STRINGERS_Y)     # texture nail dots go where the nails are
         # Nail heads sit 0.4 mm proud of the board's (twisted) top face.
         tw = math.radians(twist)
         for sy in STRINGERS_Y:
@@ -142,4 +155,4 @@ def build(kit):
     # TileSize) pine texture, so the deck does not read as one sheet cut
     # into strips. Grain direction: kitlib.
     grain.scatter_offsets(kit, seed=4841, slots=(PINE,), tile=(1.4, 1.4))
-    grain.install(kit)
+    grain.install(kit, 35.0, planks={PINE: grain.PINE_PLANKS})

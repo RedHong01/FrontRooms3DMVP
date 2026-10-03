@@ -8,20 +8,27 @@ manchettes on flat arm rails, a tall serpentine-crested upholstered back
 inside a closed moulded frame with a carved crest rosette, a tight
 upholstered seat deck and a thick piped loose cushion).
 
-Real-world reference size: 0.72 m wide (across the arms), 0.70 m deep,
-1.05 m tall to the crest. Seat (cushion top) 0.50 m, arm pads 0.68 m,
-back raked 12 degrees. Front (seat) faces -Y. Origin = floor under the
-centre of the seat. Film: Still A, the pink armchair tipped onto the desk.
+Real-world reference size: 0.69 m wide (across the arms), 0.70 m deep,
+1.06 m tall to the crest (the critic-checked GreenChair_01 reference is
+1,059 mm; §5.3's A6 row says 0.68 x 0.70 x 0.98). Seat (cushion top)
+0.50 m, arm pads 0.68 m, back raked 12 degrees. Front (seat) faces -Y.
+Origin = floor under the centre of the seat. Film: Still A, the pink
+armchair tipped onto the desk.
 
 Budget (§5.3, Kit_BergereChair row): 4,200 LOD0 tris, VelvetPink +
-WoodWalnut, 1 collider, Seat 1 (U, B, E). Optimised 2026-10-02 from 11.8k:
-every upholstered part is a kit.soft_box (superellipsoid, so it reads soft
-at 3 m): the back is remapped onto the serpentine-crest outline, the seat
+WoodWalnut, Seat 1 (U, B, E). Optimised 2026-10-02 from 11.8k: every
+upholstered part is a kit.soft_box (superellipsoid, so it reads soft at
+3 m): the back is remapped onto the serpentine-crest outline, the seat
 cushion and deck keep their own plans with a fixed-width rolled edge and a
-bowed front, the manchettes bend along the arm rails. Carved members
-keep their paths with 8-sided (small parts 6-sided) sections and one
-sample per control point; the apron bead and knee blocks (hidden under
-the rail) are gone; one piping welt on the cushion's top edge.
+bowed front, the manchettes bend along the arm rails. Carved members keep
+8-sided (small parts 6-sided) sections; their samples follow the curve
+(fix pass): legs, arms and stiles subdivide each Catmull-Rom span until no
+ring turns more than TURN degrees, and the back frame walks the outline as
+a smooth closed curve, one ring per FRAME_TURN degrees, so knees, ankles,
+knuckles and crest shoulders stay round while straight runs stay sparse.
+The apron bead and knee blocks (hidden under the rail) are gone; one
+3-sided piping welt on the cushion's top edge. Two collider boxes: the
+base to seat height (the seat support rests on it) and the back slab.
 """
 
 import math
@@ -30,12 +37,18 @@ import bmesh
 from mathutils import Vector
 
 NAME = "Kit_QueenAnneArmchair"
-LOD1 = 0.42
+LOD1 = 0.35      # ~1.7k, the §5.3 LOD1 budget
 # 8- and 6-sided carved sections turn up to 60 deg per edge, and the
 # upholstery is all curves: smooth everything below 62 deg.
 SMOOTH_ANGLE = 62.0
 
 WOOD = "Prop_WoodWalnut"
+# Carved members: the most a swept tube may turn at one ring (degrees);
+# adaptive_subs() samples curves densely and straight runs sparsely.
+TURN = 18.0
+# The back frame is the long outline seen whole when the chair lies on its
+# back (Still A): sampled finer, by turning along its smooth outline.
+FRAME_TURN = 12.0
 VELVET = "Prop_VelvetPink"
 
 # Back geometry: rear face centre, rake, outline in the back plane (u, v).
@@ -55,25 +68,71 @@ BACK_DEPTH = 0.094
 # Seat rail plan (rail centre line) and heights.
 RAIL_Z0, RAIL_Z1 = 0.335, 0.395
 FL = (0.285, -0.255)       # front leg centre (x mirrored)
+KNUCKLE_X = 0.308          # arm knuckle centre (x mirrored)
 BL = (0.262, 0.255)        # back leg top centre
 
 
 # ------------------------------------------------------------------ helpers
-def catmull(ctrl, sub):
-    """Catmull-Rom through tuples of any length (positions plus scales)."""
+def catmull(ctrl, sub, with_seg=False):
+    """Catmull-Rom through tuples of any length (positions plus scales).
+    ``sub`` is samples per segment: one int, or a list (one per segment)."""
     pts = [list(c) for c in ctrl]
+    subs = list(sub) if isinstance(sub, (list, tuple)) else [sub] * (len(pts) - 1)
     first = [2 * a - b for a, b in zip(pts[0], pts[1])]
     last = [2 * a - b for a, b in zip(pts[-1], pts[-2])]
     ext = [first] + pts + [last]
-    out = []
+    out, seg = [], []
     for i in range(1, len(ext) - 2):
         p0, p1, p2, p3 = ext[i - 1], ext[i], ext[i + 1], ext[i + 2]
-        for s in range(sub):
-            t = s / sub
+        n = subs[i - 1]
+        for s in range(n):
+            t = s / n
             out.append([0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t
                                + (-a + 3 * b - 3 * c + d) * t * t * t) for a, b, c, d in zip(p0, p1, p2, p3)])
+            seg.append(i - 1)
     out.append(pts[-1])
+    seg.append(len(subs) - 1)
+    return (out, seg) if with_seg else out
+
+
+def turns(pts):
+    """Turning angle (degrees) at every sample of a path in (x, y, z, s, u)
+    space. The section scales count as coordinates, so a knee that swells
+    (its silhouette turns) needs samples even where the centre line is
+    straight."""
+    out = [0.0]
+    for k in range(1, len(pts) - 1):
+        a = [q - p for p, q in zip(pts[k - 1], pts[k])]
+        b = [q - p for p, q in zip(pts[k], pts[k + 1])]
+        la = math.sqrt(sum(x * x for x in a))
+        lb = math.sqrt(sum(x * x for x in b))
+        if la < 1e-9 or lb < 1e-9:
+            out.append(0.0)
+            continue
+        c = sum(x * y for x, y in zip(a, b)) / (la * lb)
+        out.append(math.degrees(math.acos(max(-1.0, min(1.0, c)))))
+    out.append(0.0)
     return out
+
+
+def adaptive_subs(ctrl, max_turn, max_sub=4):
+    """Samples per Catmull-Rom segment so that no joint of the swept tube
+    turns more than ``max_turn`` degrees: curves (knee, ankle, knuckle,
+    crest shoulders) get 2-4 samples, straight runs keep one. Same
+    smoothness as a uniform sub=2..3 at a fraction of the rings."""
+    subs = [1] * (len(ctrl) - 1)
+    for _ in range(4 * max_sub):
+        pts, seg = catmull(ctrl, subs, with_seg=True)
+        grow = set()
+        for k, a in enumerate(turns(pts)):
+            if a > max_turn:
+                grow.update((seg[k - 1], seg[k]))
+        grow = {s for s in grow if subs[s] < max_sub}
+        if not grow:
+            break
+        for s in grow:
+            subs[s] += 1
+    return subs
 
 
 def squircle(n, e=2.4, phase=0.0):
@@ -94,10 +153,14 @@ def recalc(obj):
     bm.free()
 
 
-def sweep(kit, ctrl, section, slot, ref, sub=1, grain=None, name="sweep"):
+def sweep(kit, ctrl, section, slot, ref, sub=1, max_turn=None, grain=None, name="sweep"):
     """Carved member: a cross-section swept along a smooth path whose size
     changes along it. ctrl = (x, y, z, scale_s, scale_u); the section's u
-    axis follows ``ref`` (a vector, or a function of the point)."""
+    axis follows ``ref`` (a vector, or a function of the point). With
+    ``max_turn`` (degrees) the samples per segment adapt to the curvature
+    (adaptive_subs) instead of a uniform ``sub``."""
+    if max_turn:
+        sub = adaptive_subs(ctrl, max_turn)
     pts = catmull(ctrl, sub)
     n = len(section)
     obj = kit.tube([p[:3] for p in pts], 1.0, slot, verts=n, name=name)
@@ -122,6 +185,46 @@ def sweep(kit, ctrl, section, slot, ref, sub=1, grain=None, name="sweep"):
     if grain:
         obj["fr_grain"] = grain
     return obj
+
+
+def closed_catmull(points, sub):
+    """Closed Catmull-Rom loop through 2D points, ``sub`` samples a span."""
+    n = len(points)
+    out = []
+    for i in range(n):
+        p0, p1, p2, p3 = points[i - 1], points[i], points[(i + 1) % n], points[(i + 2) % n]
+        for s in range(sub):
+            t = s / sub
+            out.append(tuple(0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t * t
+                                    + (-a + 3 * b - 3 * c + d) * t * t * t) for a, b, c, d in zip(p0, p1, p2, p3)))
+    return out
+
+
+def resample_by_turn(poly, max_turn, max_len, min_len=0.0):
+    """Keep the points of a dense open 2D polyline where its direction has
+    turned ``max_turn`` degrees (or ``max_len`` metres have run) since the
+    last kept point: rings where the curve bends, few on straight runs.
+    Spans stay at least ``min_len`` long (a tight corner gets a few
+    well-spaced rings, not a bunch). The first and last points are kept."""
+    def turn(k):
+        a = (poly[k][0] - poly[k - 1][0], poly[k][1] - poly[k - 1][1])
+        b = (poly[k + 1][0] - poly[k][0], poly[k + 1][1] - poly[k][1])
+        return abs(math.degrees(math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1])))
+    keep = [poly[0]]
+    acc, run = 0.0, 0.0
+    for k in range(1, len(poly) - 1):
+        run += math.hypot(poly[k][0] - poly[k - 1][0], poly[k][1] - poly[k - 1][1])
+        acc += turn(k)
+        # Keep this point if the span would pass the limits at the next one
+        # (so no span turns more than max_turn).
+        nxt = turn(k + 1) if k + 1 < len(poly) - 1 else 0.0
+        if (acc + nxt > max_turn and run >= min_len) or run >= max_len:
+            keep.append(poly[k])
+            acc, run = 0.0, 0.0
+    if len(keep) > 1 and math.hypot(poly[-1][0] - keep[-1][0], poly[-1][1] - keep[-1][1]) < 0.3 * max_len:
+        keep.pop()                       # no sliver span at the end
+    keep.append(poly[-1])
+    return keep
 
 
 def polar_polygon(points):
@@ -275,7 +378,8 @@ def rosette(kit, centre, rot, radius, name):
 # -------------------------------------------------------------------- build
 def build(kit):
     sec = squircle(8, e=2.4)        # legs, rails, arms, back frame
-    sec_small = squircle(6, e=2.2)  # ears, leaves, volutes
+    sec_small = squircle(6, e=2.2)  # ears, leaves
+    sec_ridge = [(-1.0, -0.35), (1.0, -0.35), (0.0, 1.0)]   # V-carved ridge (volutes)
 
     # ------------------------------------------------- cabriole front legs
     for sx in (-1, 1):
@@ -287,7 +391,7 @@ def build(kit):
                         (-0.015, 0.068, 0.0110), (-0.009, 0.040, 0.0118), (0.002, 0.026, 0.0132),
                         (0.010, 0.017, 0.0140)):
             ctrl.append((cx + dx * o, cy + dy * o, z, r, r))
-        sweep(kit, ctrl, sec, WOOD, (1, 0, 0), grain="z", name="cabriole leg")
+        sweep(kit, ctrl, sec, WOOD, (1, 0, 0), max_turn=TURN, grain="z", name="cabriole leg")
         # Pad foot: a turned, domed club (wider than the knee) thrown forward
         # of the ankle; the ankle dies into its crown.
         kit.lathe([(0.0, 0.0), (0.0315, 0.0), (0.0326, 0.0045), (0.0295, 0.0120), (0.0205, 0.0210),
@@ -309,14 +413,14 @@ def build(kit):
                 (sx * BL[0], BL[1], 0.405, 0.0195, 0.0200), (sx * 0.263, 0.2400, 0.462, 0.0205, 0.0175),
                 (sx * 0.264, 0.2275, 0.512, 0.0215, 0.0155), (sx * 0.265, 0.2296, 0.545, 0.0215, 0.0150),
                 (sx * 0.265, 0.2381, 0.585, 0.0210, 0.0145)]
-        sweep(kit, ctrl, sec, WOOD, (1, 0, 0), grain="z", name="back leg")
+        sweep(kit, ctrl, sec, WOOD, (1, 0, 0), max_turn=TURN, grain="z", name="back leg")
 
     # ------------------------------------------------------- seat rails
     rail_z = (RAIL_Z0 + RAIL_Z1) / 2
     rh = (RAIL_Z1 - RAIL_Z0) / 2
     front = []
-    for i in range(9):
-        x = -FL[0] + 2 * FL[0] * i / 8
+    for i in range(5):                      # a shallow parabola: 8 deg a joint
+        x = -FL[0] + 2 * FL[0] * i / 4
         front.append((x, FL[1] - 0.042 * (1 - (x / FL[0]) ** 2), rail_z, 0.014, rh))
     sweep(kit, front, sec, WOOD, (0, 0, 1), grain="x", name="front apron")
     for sx in (-1, 1):
@@ -354,7 +458,7 @@ def build(kit):
                        sag=cush_sag, puff=cush_puff)
         x, y, z = remap(p)
         welt.append((x * 1.004, y * 1.004 + cush_loc.y, z + cush_loc.z))
-    kit.tube(welt, 0.0045, VELVET, verts=4, name="cushion welt")
+    kit.tube(welt, 0.0045, VELVET, verts=3, name="cushion welt")
 
     # -------------------------------------------------- back and its frame
     right = BACK_OUTLINE_R
@@ -368,12 +472,23 @@ def build(kit):
     # Show-wood frame round the back: one closed moulded loop over the
     # serpentine crest; its bottom member sits on the deck behind the
     # cushion and the stiles run into its sides.
+    # The path is the outline as a smooth closed Catmull-Rom curve (not
+    # the polygon), pushed 12 mm out and sampled by turning angle: dense
+    # round the crest shoulders and bottom corners, sparse on the straight
+    # bottom member and the sides. Sampled on the right half and mirrored,
+    # so both sides of the crest carry the same rings.
+    # Long straight edges (the bottom) are split first: a uniform
+    # Catmull-Rom overshoots where a long span meets short ones.
+    right_d = [right[0]]
+    for (u0, v0), (u1, v1) in zip(right, right[1:]):
+        n = max(1, int(math.ceil(math.hypot(u1 - u0, v1 - v0) / 0.05)))
+        right_d += [(u0 + (u1 - u0) * i / n, v0 + (v1 - v0) * i / n) for i in range(1, n + 1)]
+    dense = closed_catmull(right_d + [(-u, v) for u, v in reversed(right_d[1:-1])], 8)
+    half = dense[:(len(right_d) - 1) * 8 + 1]   # bottom centre -> top centre
+    half = resample_by_turn(half, FRAME_TURN, 0.12, 0.02)
+    loop = half + [(-u, v) for u, v in reversed(half[:-1])]
     ctrl = []
-    a0, a1 = -math.pi / 2, 3 * math.pi / 2
-    steps = 24
-    for i in range(steps + 1):
-        phi = a0 + (a1 - a0) * i / steps
-        bx, by = back_shape(phi)
+    for bx, by in loop:
         d = math.hypot(bx, by)
         k = (d + 0.012) / d
         p = back_point(bx * k, by * k, 0.026)
@@ -395,7 +510,7 @@ def build(kit):
             p = back_point(u, v, 0.047 - 0.006 * t)
             r = 0.0105 * math.sin(math.pi * (0.18 + 0.8 * t)) + 0.0015
             leaf.append((p.x, p.y, p.z, r, r * 0.75))
-        sweep(kit, leaf, sec_small, WOOD, tuple(BACK_N), name="crest leaf")
+        sweep(kit, leaf, sec_small, WOOD, tuple(BACK_N), sub=2, name="crest leaf")
 
     # ------------------------------------------------------------- arms
     for sx in (-1, 1):
@@ -404,34 +519,36 @@ def build(kit):
         # 40 mm deep), waisted at z 0.50, swelling into the knuckle, then the
         # rail flattens to a 22 mm x 44 mm board under the manchette.
         ctrl = [
-            (0.290, -0.243, 0.370, 0.0200, 0.0130), (0.296, -0.250, 0.430, 0.0190, 0.0120),
-            (0.304, -0.258, 0.505, 0.0165, 0.0110), (0.309, -0.262, 0.570, 0.0175, 0.0125),
-            (0.312, -0.256, 0.620, 0.0200, 0.0180), (0.316, -0.236, 0.650, 0.0220, 0.0200),
-            (0.322, -0.200, 0.660, 0.0160, 0.0210), (0.333, -0.110, 0.660, 0.0110, 0.0220),
-            (0.337, 0.000, 0.664, 0.0110, 0.0220), (0.332, 0.100, 0.672, 0.0110, 0.0220),
-            (0.312, 0.180, 0.684, 0.0125, 0.0200), (0.276, 0.226, 0.692, 0.0150, 0.0185),
+            (0.290, -0.243, 0.370, 0.0200, 0.0130), (0.295, -0.250, 0.430, 0.0190, 0.0120),
+            (0.301, -0.258, 0.505, 0.0165, 0.0110), (0.304, -0.262, 0.570, 0.0175, 0.0125),
+            (0.306, -0.256, 0.620, 0.0200, 0.0180), (0.308, -0.236, 0.650, 0.0220, 0.0200),
+            (0.312, -0.200, 0.660, 0.0160, 0.0210), (0.320, -0.110, 0.660, 0.0110, 0.0220),
+            (0.322, 0.000, 0.664, 0.0110, 0.0220), (0.318, 0.100, 0.672, 0.0110, 0.0220),
+            (0.300, 0.180, 0.684, 0.0125, 0.0200), (0.270, 0.226, 0.692, 0.0150, 0.0185),
             (0.263, 0.252, 0.696, 0.0160, 0.0180),
         ]
         ctrl = [(sx * x, y, z, a, b) for x, y, z, a, b in ctrl]
-        sweep(kit, ctrl, sec, WOOD, (1, 0, 0), grain="y", name="arm")
+        sweep(kit, ctrl, sec, WOOD, (1, 0, 0), max_turn=TURN, grain="y", name="arm")
         # Carved volute on the outer face of the knuckle: a 1.25-turn spiral
-        # bead that rolls forward and down round the knuckle into an eye.
+        # ridge that rolls forward and down round the knuckle into an eye.
+        # A 3-sided (V-carved) section sampled every 25 degrees: a smooth
+        # spiral for fewer triangles than a round bead.
         vol = []
         for i in range(7):
             t = i / 6.0
             th = math.radians(90.0 + 450.0 * t)
             r = 0.020 - 0.014 * t
             face = (1.0 - min(0.95, r / 0.024) ** 2.5) ** 0.4      # squircle bulge of the knuckle
-            x = 0.316 + 0.0200 * face - 0.0006
+            x = KNUCKLE_X + 0.0200 * face - 0.0006
             b = 0.0060 - 0.0030 * t
             vol.append((sx * x, -0.236 + r * math.cos(th), 0.645 + r * math.sin(th), b, b * 0.7))
-        sweep(kit, vol, sec_small, WOOD, (1, 0, 0), name="arm volute")
+        sweep(kit, vol, sec_ridge, WOOD, (sx, 0, 0), sub=3, name="arm volute")
 
         # Padded manchette on the arm rail: a soft_box bent along the rail.
         def pad_bend(x, y, z, sx=sx):
             # follow the arm rail's outward bow and its rise toward the back
             wy = y - 0.040
-            xr = 0.337 - 0.45 * wy * wy
+            xr = 0.322 - 0.25 * wy * wy
             zr = 0.661 + 0.09 * max(0.0, wy)
             return (x + sx * xr, wy, z + zr + 0.012 + 0.0185)
         # (negative sag = a stuffed crown along the pad)
@@ -439,9 +556,14 @@ def build(kit):
                 name="arm pad")
 
     # ---------------------------------------------------------- metadata
-    kit.support("seat", (0, -0.06, 0.505), (0.50, 0.44))
+    # The seat support (cushion top) ends in front of the back upholstery.
+    kit.support("seat", (0, -0.07, 0.505), (0.50, 0.40))
     kit.anchor("sit", (0, -0.06, 0.505))
-    # One box (§5.3): the whole chair, floor to crest.
-    kit.collider((0, 0.015, 0.529), (0.72, 0.70, 1.058))
+    # Two boxes (§5.1 allows 1-3): the base up to the seat top, so a prop
+    # rested on the "seat" support sits on a collider instead of inside one,
+    # and a slab for the raked back above it (arms stay inside the base
+    # box's footprint).
+    kit.collider((0, 0.015, 0.2525), (0.694, 0.702, 0.505))
+    kit.collider((0, 0.258, 0.7815), (0.60, 0.216, 0.553))
     kit.tag("pile", "seat", "domestic")
     kit.pile("Seat", mass=1, palette="domestic70s", states=["Upright", "Back", "EdgeLean"])

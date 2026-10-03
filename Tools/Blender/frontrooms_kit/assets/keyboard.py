@@ -2,41 +2,53 @@
 that came with every office PC: two-part moulded case, sloped key well,
 numeric pad, straight cable out of the back).
 
-Real-world reference size: 0.46 m wide, 0.17 m deep, 25 mm tall at the back
-and 15 mm at the front (case; keycaps stand ~6 mm proud of the surround).
+Real-world reference size (synthesis §5.3): 0.46 m wide, 0.19 m deep,
+33 mm tall at the back and 21 mm at the front (case); the keycaps stand
+~4.7 mm proud of the surround, so the cap tops reach ~35 mm.
 Keycaps are real geometry: every key is a tapered cap with authored UVs into
 Prop_KeyboardKeys (2048 x 768 layout, 23 x 6.7 key units; uv="keep", see
 _uv_keys): each cap reads its legend cell at true proportions, and the
 numeric pad, which the texture draws as a calculator block, is remapped onto
 the real 101-key pad (Num / * -, 7 8 9 +, 4 5 6, 1 2 3 Enter, 0 .). The nav
-cluster and arrows have no legends in the texture; they sample its darker
-ground, the grey keys of the period two-tone boards. Grey walls in the key
-well give the darker key-field surround.
+cluster and arrows have no legends in the texture; they read plain cap fill
+from the space bar (left / right ends alternately), so their tops stand out
+against the dark ground like every other cap. Grey walls in the key well
+give the darker key-field surround.
 Front (space bar, user side) faces -Y; the cable leaves the back (+Y) and
 ends in its PS/2 plug on the desk.
 
-Budget (synthesis §5.3): 1,200 LOD0 tris, LOD1 0.42, no collider (desk-top
+Budget (synthesis §5.3): 1,200 LOD0 / 120 LOD1 tris, no collider (desk-top
 clutter), pile Small 0, <= 4 slots (KeyboardKeys, PlasticBeige, PlasticGrey,
 PlasticBlack). Where the triangles went:
-* caps keep top, front and sides; a cap's back is dropped where the cap
-  behind it covers it (only a sliver could show, and only from behind), so
-  the back row keeps its walls (_cull_hidden). Dropping the inner side walls
-  too (CULL_SIDES) saved 330 tris but read as hollow caps at 0.5-1 m;
-* the case is one ring-built shell (rounded top edge, moulded parting step,
-  rounded plan corners, flat bottom) instead of a bevelled frame + tray;
+* caps keep top, front, sides and back (a back hidden only from the front
+  still shows from behind and in the pile 'Side' state). Dropping the inner
+  side walls too (CULL_SIDES) saved 330 tris but read as hollow caps at
+  0.5-1 m;
+* the case is one ring-built shell (top edge rolled in one smooth-shaded
+  step, moulded parting step, rounded plan corners, flat bottom) instead of
+  a bevelled frame + tray; the cable is a 4-sided tube, the plug 6-sided;
 * lock LEDs, rubber pads, tilt legs and badge lettering (< 5 mm at 2 m) are
   gone; the LED window and badge are flat grey plates.
+LOD1 is AUTHORED (_deskgear.authored_lod1), not decimated (a collapse turned
+every cap into spikes): a lighter case (chamfered corners, no parting step),
+the key field as one raised slab whose top is a 3 x 4 grid of KEYS cells,
+each mapped to a texture region with the same light-cap / dark-ground
+pattern as the caps it replaces (main block as drawn; nav cluster from the
+F5-F7 / 6-8 keys and the space bar; the 4 x 5 pad squeezed onto the drawn
+3 x 4 calculator block), plus the arrow-up cap. Cable and plug are dropped
+(sub-pixel at the LOD1 switch).
 """
 
 import math
 
 import bmesh
 import bpy
+from mathutils import Vector
 
 import _deskgear as dg
 
 NAME = "Kit_Keyboard"
-LOD1 = 0.42
+LOD1 = 0.1                 # any number: the LOD1 is authored (_build_lod1), not decimated
 SMOOTH_ANGLE = 48          # 3-segment plan corners and the 2-segment top roll shade smooth
 
 BEIGE = "Prop_PlasticBeige"
@@ -44,8 +56,8 @@ DARK = "Prop_PlasticGrey"
 BLACK = "Prop_PlasticBlack"
 KEYS = "Prop_KeyboardKeys"
 
-W, D = 0.46, 0.17
-Z_FRONT, Z_BACK = 0.015, 0.025          # top of the case at the front / back edge
+W, D = 0.46, 0.19
+Z_FRONT, Z_BACK = 0.021, 0.033          # top of the case at the front / back edge (cap tops reach ~35 mm)
 TILT = math.atan2(Z_BACK - Z_FRONT, D)  # slope of the key deck
 SURROUND_T = 0.0095                     # upper shell thickness (parting line this far under the deck)
 WELL_DEPTH = 0.0075                     # key plate top below the surround
@@ -78,6 +90,7 @@ def _pad_cell(c, tr):
     return ((19 + c) * UNIT + 4.0, _row_top(tr) + 4.0)
 
 
+NAV = 15.72                             # key units: left edge of the navigation cluster
 CAP_PX = UNIT - 8.0                     # drawn width of a 1-unit cap (px)
 CELL_H = UNIT_Y - 8.0                   # drawn height of a 1-unit cap (px)
 SPACE = _main_cell(3.5, 5)              # space bar: plain cap fill, no legend
@@ -137,17 +150,18 @@ def _key_rects():
     cap(19, 21, 5, 5, (ox, oy, CAP_PX, CELL_H, "u"))                # 0 (wide)
     cap(21, 22, 5, 5, one(_pad_cell(1, 4)))                         # .
 
-    # Navigation cluster and arrows: no legends in the texture; they sample
-    # the darker texture ground, the grey keys of the period two-tone boards.
-    nav = 15.72
+    # Navigation cluster and arrows: no legends in the texture, so they read
+    # plain cap fill (the space bar's left and right ends alternately, like
+    # Num Lock and '*'); sampling the texture ground made their tops vanish
+    # into the plate around them.
     k = 0
-    def ground():
-        return one(((16.2 + (k % 6) * 0.9) * UNIT, _row_top(0) + 4.0))
+    def blank():
+        return one(SPACE if k % 2 == 0 else space_right)
     for c in range(3):
         for r in (0, 1, 2, 5):                    # Print/Scroll/Pause, Ins/Home/PgUp, Del/End/PgDn, arrows
-            cap(nav + c, nav + c + 1, r, r, ground())
+            cap(NAV + c, NAV + c + 1, r, r, blank())
             k += 1
-    cap(nav + 1, nav + 2, 4, 4, ground())         # arrow up
+    cap(NAV + 1, NAV + 2, 4, 4, blank())          # arrow up
     return rects
 
 
@@ -298,9 +312,11 @@ def _covered(rects):
 
 
 def _cull_hidden(obj, rects):
-    """Drop cap walls that face a close neighbour (after the UVs are authored,
-    so the remaining faces keep their legend mapping). Plate-local normals:
-    sides +-X, back +Y (the caps are not yet tilted onto the deck)."""
+    """With CULL_SIDES, drop cap side walls that face a close neighbour
+    (after the UVs are authored, so the remaining faces keep their legend
+    mapping). Plate-local normals: sides +-X (the caps are not yet tilted
+    onto the deck). Cap backs always stay: from behind ~3-4 mm of each shows
+    over the next row and would render see-through."""
     cover = _covered(rects)
     centres = [((x0 + x1) / 2 * SX - PLATE_W / 2, PLATE_D / 2 - (y0 + y1) / 2 * SY) for x0, x1, y0, y1, _r, _s in rects]
     bm = bmesh.new()
@@ -317,7 +333,7 @@ def _cull_hidden(obj, rects):
         left, right, back = cover[i]
         for f in isl:
             n = f.normal
-            if (CULL_SIDES and ((left and n.x < -0.7) or (right and n.x > 0.7))) or (back and n.y > 0.7):
+            if CULL_SIDES and ((left and n.x < -0.7) or (right and n.x > 0.7)):
                 kill.append(f)
     bmesh.ops.delete(bm, geom=kill, context="FACES")
     bm.to_mesh(obj.data)
@@ -327,7 +343,7 @@ def _cull_hidden(obj, rects):
 def _ps2_plug(kit, end, prev):
     """PS/2 mini-DIN plug lying on the desk at the cable end, pointing along
     the cable's last (horizontal) tangent: round moulded body and the metal
-    shell with its pin face (8 / 6 sides; 44 tris)."""
+    shell with its pin face (6 / 6 sides; 34 tris)."""
     dx, dy = end[0] - prev[0], end[1] - prev[1]
     l = math.hypot(dx, dy) or 1.0
     dx, dy = dx / l, dy / l
@@ -336,16 +352,18 @@ def _ps2_plug(kit, end, prev):
 
     def at(d):
         return (end[0] + dx * d, end[1] + dy * d, zc)
-    kit.cylinder(0.0065, 0.020, at(0.010), BLACK, verts=8, rot=(-90, 0, rz), bevel=0.0, name="plug body")
+    body = kit.cylinder(0.0065, 0.020, at(0.010), BLACK, verts=6, rot=(-90, 0, rz), bevel=0.0, name="plug body")
     shell = kit.cylinder(0.0048, 0.005, at(0.0225), DARK, verts=6, rot=(-90, 0, rz), bevel=0.0, name="plug shell")
     dg.prune(shell, lambda n: n.z < -0.9)             # its back is inside the body
+    return [body, shell]
 
 
 def _case_rings(well_w, well_d, well_cu, well_cv, deck_len):
     """Vertex rings of the one-piece case shell (asset space, 12 verts each,
     counter-clockwise from the front-right corner): flat bottom, lower tray
-    wall, the moulded parting step, the upper wall, a 2-segment roll onto the
-    deck, and the deck itself in to the key-well rim."""
+    wall, the moulded parting step, the upper wall, a one-step roll onto the
+    deck (smooth-shaded, it reads round), and the deck itself in to the
+    key-well rim."""
     rc, rb = 0.0065, 0.0040                  # plan corner radius, top-edge roll radius
 
     def plan(inset):
@@ -354,7 +372,7 @@ def _case_rings(well_w, well_d, well_cu, well_cv, deck_len):
     def on_deck(inset, w):
         return [_deck(u, v, w) for u, v in plan(inset)]
 
-    roll = [on_deck(rb * (1 - math.sin(a)), -rb * (1 - math.cos(a))) for a in (0.0, math.pi / 4, math.pi / 2)]
+    roll = [on_deck(rb * (1 - math.sin(a)), -rb * (1 - math.cos(a))) for a in (0.0, math.pi / 2)]
     top_edge = roll[-1]                       # full plan outline, rb under the deck
     step_in = 0.0008
     inner = on_deck(step_in, -rb)             # the tray wall sits 0.8 mm inside the upper shell
@@ -365,12 +383,129 @@ def _case_rings(well_w, well_d, well_cu, well_cv, deck_len):
     part_lo = [(p[0], p[1], part_z(q)) for p, q in zip(inner, top_edge)]
     bottom = [(p[0], p[1], 0.0) for p in on_deck(step_in + 0.0012, -rb)]
     well = [_deck(u, v, 0.0) for u, v in dg.round_rect(well_w, well_d, 0.0015, seg=2, cx=well_cu, cy=well_cv)]
-    return [bottom, part_lo, part_hi, top_edge, roll[1], roll[0], well]
+    return [bottom, part_lo, part_hi, top_edge, roll[0], well]
 
 
+CAP_TOP = 0.0122            # plate-local height of the cap tops (rows 0.0118 .. 0.0128)
+
+
+def _px_to_plate(px, py):
+    """Texture px (layout) -> plate-local metres (x across, y toward the back)."""
+    return px * SX - PLATE_W / 2, PLATE_D / 2 - py * SY
+
+
+def _lod1_keys(kit, pu, pv, plate_w):
+    """LOD1 key field: one raised slab from the surround up to the cap tops,
+    its top a 3 x 4 grid of KEYS cells. Columns: main block | nav cluster |
+    numeric pad; rows: F row | rows 1-2 | rows 3-4 | bottom row. Each cell
+    maps a texture region whose light-cap / dark-ground pattern matches the
+    caps it replaces (legends are sub-pixel at the LOD1 switch). A full grid,
+    so no T-junctions; the walls are fanned from the same boundary vertices
+    (no cracks to see the desk through). Plus the arrow-up cap as an overlay.
+    Returns (top grid, walls) parts; ~60 tris."""
+    xs = [44.0, NAV * UNIT, (NAV + 3) * UNIT, 23 * UNIT - 4.0]                          # layout px
+    ys = [_row_top(0) + 4.0, _row_top(1) - 9.0, _row_top(3), _row_top(5), _row_top(5) + UNIT_Y - 4.0]
+    pad_y1 = _row_top(4) + UNIT_Y - 4.0                       # bottom of the drawn calculator block
+
+    def tex_of(ci, ri, px, py):
+        """Layout px of a point in cell (column ci, row ri) -> texture px."""
+        if ci == 0:
+            return px, py                                      # main block: as drawn
+        if ci == 1:
+            if ri <= 1:
+                return px - NAV * UNIT + 40 + 6 * UNIT, py     # F5-F7 / 6 7 8 / Y U I
+            if ri == 2:
+                return px - NAV * UNIT + 1400.0, py            # ground between main block and pad
+            return px - NAV * UNIT + 40 + 5 * UNIT, py         # space bar fill (arrow row)
+        if ri == 0:
+            return px, py                                      # ground above the pad
+        tx = xs[2] + (px - xs[2]) * ((22 * UNIT - 4.0) - xs[2]) / (xs[3] - xs[2])
+        ty = ys[1] + (py - ys[1]) * (pad_y1 - ys[1]) / (ys[4] - ys[1])
+        return tx, ty                                          # 4 x 5 pad onto the drawn 3 x 4 block
+
+    def world(px, py, z):
+        x, y = _px_to_plate(px, py)
+        return _deck(pu + x, pv + y, plate_w + z)
+
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.verify()
+    grid = [[bm.verts.new(world(x, y, CAP_TOP)) for x in xs] for y in ys]
+    for ri in range(len(ys) - 1):
+        for ci in range(len(xs) - 1):
+            corners = [(ci, ri), (ci + 1, ri), (ci + 1, ri + 1), (ci, ri + 1)]
+            f = bm.faces.new([grid[r][c] for c, r in corners])
+            for loop, (c, r) in zip(f.loops, corners):
+                tx, ty = tex_of(ci, ri, xs[c], ys[r])
+                loop[uv].uv = (tx / TEX_W, 1.0 - ty / TEX_H)
+    # Arrow-up cap: overlay 0.5 mm above the slab, plain cap fill.
+    ax0, ax1 = (NAV + 1) * UNIT + 4.0, (NAV + 2) * UNIT - 4.0
+    ay0, ay1 = _row_top(4) + 4.0, _row_top(4) + UNIT_Y - 4.0
+    ov = [bm.verts.new(world(x, y, CAP_TOP + 0.0005)) for x, y in ((ax0, ay0), (ax1, ay0), (ax1, ay1), (ax0, ay1))]
+    f = bm.faces.new(ov)
+    for loop, (x, y) in zip(f.loops, ((ax0, ay0), (ax1, ay0), (ax1, ay1), (ax0, ay1))):
+        tx, ty = x - (NAV + 1) * UNIT + 40 + 5 * UNIT, y - _row_top(4) + _row_top(5)
+        loop[uv].uv = (tx / TEX_W, 1.0 - ty / TEX_H)
+    up = Vector(_deck(0, 0, 1)) - Vector(_deck(0, 0, 0))
+    bm.normal_update()
+    for f in bm.faces:
+        if f.normal.dot(up) < 0:
+            f.normal_flip()
+    top = kit._new_object("LOD1 key slab top", bm, KEYS, "keep", "xz")
+
+    # Walls: from the surround (plate z = WELL_DEPTH) up to the grid boundary.
+    z_base = -plate_w
+    bm = bmesh.new()
+    T = [[bm.verts.new(world(x, y, CAP_TOP)) for x in xs] for y in ys]
+    B = {k: bm.verts.new(world(x, y, z_base)) for k, (x, y) in
+         {"fl": (xs[0], ys[-1]), "fr": (xs[-1], ys[-1]), "bl": (xs[0], ys[0]), "br": (xs[-1], ys[0])}.items()}
+    sides = [([row[0] for row in T], B["bl"], B["fl"]),          # left: back -> front
+             ([row[-1] for row in T], B["br"], B["fr"]),         # right
+             (T[0], B["bl"], B["br"]),                            # back: left -> right
+             (T[-1], B["fl"], B["fr"])]                           # front
+    for tops, b0, b1 in sides:
+        m = len(tops) // 2
+        for i in range(len(tops) - 1):
+            bm.faces.new((b0 if i < m else b1, tops[i], tops[i + 1]))
+        bm.faces.new((b0, tops[m], b1))
+    bm.normal_update()
+    centre = Vector(world((xs[0] + xs[-1]) / 2, (ys[0] + ys[-1]) / 2, (CAP_TOP + z_base) / 2))
+    for f in bm.faces:
+        if f.normal.dot(f.calc_center_median() - centre) < 0:
+            f.normal_flip()
+    walls = kit._new_object("LOD1 key slab walls", bm, BEIGE, "metres", "xz")
+    corners = [world(x, y, z_base) for x, y in ((xs[-1], ys[-1]), (xs[-1], ys[0]), (xs[0], ys[0]), (xs[0], ys[-1]))]
+    return top, walls, corners
+
+
+def _lod1_case(kit, deck_len, slab_corners):
+    """LOD1 case: chamfered plan corners, no parting step, the top edge as one
+    chamfer, and the deck surround straight in to the key slab (12 tris)."""
+    rc, rb = 0.0065, 0.0040
+
+    def ring(inset, w, z=None):
+        pts = [_deck(u, v, w) for u, v in dg.round_rect(W - 2 * inset, deck_len - 2 * inset, rc - inset, seg=1)]
+        return pts if z is None else [(p[0], p[1], z) for p in pts]
+    bottom, top_edge, deck_edge = ring(0.002, -rb, 0.0), ring(0.0, -rb), ring(rb, 0.0)
+    shell = dg.rings_mesh(kit, [bottom, top_edge, deck_edge], BEIGE, name="LOD1 case", cap_first=True)
+    # Surround: deck_edge (8 verts from the front-right corner, CCW) to the
+    # slab's base corners (front-right, back-right, back-left, front-left).
+    bm = bmesh.new()
+    o = [bm.verts.new(p) for p in deck_edge]
+    c = [bm.verts.new(p) for p in slab_corners]
+    for f in ((o[1], o[2], c[1], c[0]), (o[3], o[4], c[2], c[1]), (o[5], o[6], c[3], c[2]), (o[7], o[0], c[0], c[3]),
+              (o[0], o[1], c[0]), (o[2], o[3], c[1]), (o[4], o[5], c[2]), (o[6], o[7], c[3])):
+        bm.faces.new(f)
+    up = Vector(_deck(0, 0, 1)) - Vector(_deck(0, 0, 0))
+    bm.normal_update()
+    for f in bm.faces:
+        if f.normal.dot(up) < 0:
+            f.normal_flip()
+    surround = kit._new_object("LOD1 surround", bm, BEIGE, "metres", "xz")
+    return [shell, surround]
 
 
 def build(kit):
+    dg.authored_lod1(kit)
     deck_len = D / math.cos(TILT)
 
     # ------------------------------------------------------------ key field
@@ -380,7 +515,7 @@ def build(kit):
     kx1 = max(r[1] for r in rects) * SX - PLATE_W / 2
     ky1 = PLATE_D / 2 - min(r[2] for r in rects) * SY     # back edge of the keys (plate coords)
     ky0 = PLATE_D / 2 - max(r[3] for r in rects) * SY     # front edge
-    front_border = 0.0145
+    front_border = 0.020
     # Plate centre in deck coordinates so the keys are centred across and
     # sit front_border behind the front edge.
     pu = -(kx0 + kx1) / 2
@@ -424,19 +559,19 @@ def build(kit):
     # (a 0.8 mm ledge that reads as the line between the two mouldings), the
     # upper wall rolling onto the sloped deck, the deck in to the well rim.
     rings = _case_rings(well_w, well_d, well_cu, well_cv, deck_len)
-    dg.rings_mesh(kit, rings, BEIGE, name="case", cap_first=True)
+    case = dg.rings_mesh(kit, rings, BEIGE, name="case", cap_first=True)
     # Grey key-well walls down to the plate: the darker key-field surround.
     # They draft 2.4 mm inward, so their foot lands on the plate everywhere
     # (the numeric pad runs to within 0.8 mm of the plate's right edge).
     well_top = rings[-1]
     well_bot = [_deck(u, v, plate_w) for u, v in dg.round_rect(well_w - 0.0048, well_d - 0.0048, 0.0010, seg=2,
                                                                  cx=well_cu, cy=well_cv)]
-    dg.rings_mesh(kit, [well_top, well_bot], DARK, name="well walls", orient="in")
+    well = dg.rings_mesh(kit, [well_top, well_bot], DARK, name="well walls", orient="in")
 
     # Lock-LED window over the numeric pad and the maker's badge over the F
     # keys: flat grey plates on the back border (LEDs and lettering < 5 mm).
     led_u = pu + (TEX_W - 2.0 * UNIT) * SX - PLATE_W / 2
-    led_v = well_cv + well_d / 2 + 0.0105
+    led_v = (well_cv + well_d / 2 + deck_len / 2) / 2        # mid back border
     for nm, u, w_ in (("LED window", led_u, 0.062), ("badge", -W / 2 + 0.050, 0.046)):
         q = kit.quad(w_, 0.0095, _deck(u, led_v, 0.0003), DARK, facing="+z", name=nm, uv="metres")
         q.rotation_euler = (TILT, 0, 0)
@@ -450,10 +585,17 @@ def build(kit):
     dg.prune(grommet, lambda n: n.z > 0.9)                 # its wide end is buried in the case
     r = 0.0021
     ctrl = [(gx, D / 2 + 0.006, gz), (gx - 0.001, D / 2 + 0.012, gz - 0.0008), (gx - 0.002, D / 2 + 0.018, gz - 0.0035),
-            (gx - 0.004, D / 2 + 0.027, 0.0028), (gx - 0.008, D / 2 + 0.040, r), (gx - 0.008, D / 2 + 0.054, r + 0.0003),
+            (gx - 0.004, D / 2 + 0.027, 0.0028), (gx - 0.008, D / 2 + 0.042, r),
             (gx - 0.003, D / 2 + 0.065, 0.0045), (gx + 0.007, D / 2 + 0.073, 0.0065)]
-    dg.tube(kit, [(x, y, max(z, r)) for x, y, z in ctrl], r, BLACK, verts=5, name="cable")
-    _ps2_plug(kit, ctrl[-1], ctrl[-2])
+    cable = dg.tube(kit, [(x, y, max(z, r)) for x, y, z in ctrl], r, BLACK, verts=5, name="cable")
+    plug = _ps2_plug(kit, ctrl[-1], ctrl[-2])
+
+    # ------------------------------------------------------------ LOD1
+    # Authored, not decimated: the LOD0 key field, case, well, cable and plug
+    # give way to a lighter case and the raised key slab (see _lod1_keys).
+    dg.lod0_only(keyfield, case, well, grommet, cable, *plug)
+    slab_top, slab_walls, slab_corners = _lod1_keys(kit, pu, pv, plate_w)
+    dg.lod1_only(slab_top, slab_walls, *_lod1_case(kit, deck_len, slab_corners))
 
     kit.anchor("keys_centre", _deck(well_cu, well_cv, 0.006))
     kit.no_collider()

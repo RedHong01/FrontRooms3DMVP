@@ -12,34 +12,44 @@ Construction:
   slat taller with an arched top edge).
 * Seat rails (aprons) with an arched front rail; box stretcher of turned
   rungs: decorative front rung, swelled (cigar) side and back rungs.
-* Padded drop-in seat in teal fabric; the piping round its top is a bead
-  between two creases in the pad's own profile (reads like the cord).
-* Underside (seen whenever a pile turns the chair over): seat board inside
-  the rails and four glued corner blocks.
+* Solid oak seat (B11 is an all-oak hotel chair; §5.3 one slot): a 34 mm
+  board resting on the rails and lapping the back rail, notched round the
+  back posts, rounded top edge and a shallow saddle. PAD_SLOT switches it
+  back to an upholstered drop-in pad on a board (a neutral fabric; teal is
+  the B16 escapee's colour; the pad version is ~1,880 tris, so trim before
+  shipping it).
+* Underside (seen whenever a pile turns the chair over): the seat's own
+  underside between the rails and four glued corner blocks.
 
-Real-world reference size: 0.45 W x 0.50 D x 0.965 H, seat at 0.467 m
+Asset name: §5.3 calls it Kit_LadderBackChair; the export keeps
+Kit_LadderChair until Red renames it (nothing in Unity references either).
+
+Real-world reference size: 0.45 W x 0.50 D x 0.965 H, seat top 0.448 m
 (§5.3: 0.45 x 0.50 x 0.98, seat 0.46). Front faces -Y. Must read from any
 side, upside-down included.
 
-Budget (§5.3 Kit_LadderBackChair 1,800 / 700): ~1.78k tris LOD0 (was 3.9k),
-LOD1 0.40 (~710).
+Budget (§5.3 Kit_LadderBackChair 1,800 / 700): 1,778 LOD0, LOD1 0.388 (~690).
 * Turned parts are 8-sided: at 41 mm stock an octagon departs from the
   circle by 1.6 mm (sub-pixel at 2 m) and SMOOTH_ANGLE 50 shades it round;
   profiles keep only the points that change the silhouette (foot, rings,
-  neck, the acorn finial). Ends buried in blocks / legs are left open.
+  neck, the acorn finial with its shoulder). Ends buried in blocks / legs
+  are left open (leg tops run 2-3 mm on into the blocks, so a raked leg's
+  tilted top ring can't dip below the block), and every open lathe is
+  checked for outward winding (_face_outward): recalc_face_normals can
+  guess an open tube inside out, and Unity culls back faces.
 * Slats are a chamfered 8-point section swept along the plan bow, open at
-  the mortices; seat rails and leg blocks are chamfered prisms (the 45-deg
-  chamfer shades as a round-over at SMOOTH_ANGLE 50) instead of 2-segment
-  bevelled boxes. The seat board and glue blocks under the seat are
-  single-sided panels (only their undersides can be seen).
-* Seat pad: 3-step corners, no mid-edge points (the warp only tapers it
-  linearly), open underside, piping folded into the profile (was a
-  separate 224-tri cord).
-* Two slots only: Prop_WoodOak (the seat board is oak too, it was the only
-  Plywood part) and Prop_FabricTeal.
+  the mortices; seat rails are chamfered prisms (the 45-deg chamfer shades
+  as a round-over at SMOOTH_ANGLE 50) instead of 2-segment bevelled boxes;
+  leg blocks are chamfered on their vertical corners and their top rim.
+  The glue blocks under the seat are single-sided panels (only their
+  undersides can be seen), set 2 mm into the rails.
+* Seat (158 tris): 3-step corners, no mid-edge points, a square bottom
+  edge, a two-step top round-over, closed underside (n-gon), small centre
+  fan for the saddle.
+* One slot: Prop_WoodOak.
 
-Grain: kitlib's metre UVs are grain-aware for wood now; slats, rails and
-rungs set fr_grain along their length (assets/_seating_grain.horizontal),
+Grain: kitlib's metre UVs are grain-aware for wood now; slats, rails, rungs
+and the seat set fr_grain along their length (assets/_seating_grain.horizontal),
 legs, posts and blocks keep vertical grain; neighbouring boards get a
 fr_uv_offset so they don't share one sheet of figure.
 """
@@ -52,11 +62,13 @@ from mathutils import Vector
 import _seating_grain as grain
 
 NAME = "Kit_LadderChair"
-LOD1 = 0.40
+LOD1 = 0.388          # ~690 of 1,778: §5.3 LOD1 budget 700
 SMOOTH_ANGLE = 50.0
 
 OAK = "Prop_WoodOak"
-FABRIC = "Prop_FabricTeal"
+# None = solid oak seat (§5.3, one slot). A slot name (Prop_FabricBeige or
+# Prop_FabricCharcoal, never the B16 teal) builds the padded drop-in seat.
+PAD_SLOT = None
 
 RAKE = 7.0                 # back post rake, degrees
 SEAT_TOP_RAIL = 0.415      # top of the seat rails
@@ -72,14 +84,42 @@ def _rot_to(d):
     return tuple(math.degrees(a) for a in e)
 
 
-def _turned(kit, name, profile, p0, p1, verts=TURN_SIDES, close_bottom=True, close_top=True):
+def _face_outward(obj):
+    """Make an open lathe's winding face away from its (local Z) axis.
+    recalc_face_normals guesses the side of an open tube from its shape and
+    can turn it inside out (Unity culls back faces: hollow, dark legs). If
+    most side faces point at the axis, reverse the whole part. No tri cost."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.normal_update()
+    side = [f for f in bm.faces if abs(f.normal.z) < 0.7]
+    inward = 0
+    for f in side:
+        c = f.calc_center_median()
+        if c.x * f.normal.x + c.y * f.normal.y < 0:
+            inward += 1
+    if side and inward * 2 > len(side):
+        bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+        bm.to_mesh(obj.data)
+        obj.data.update()
+    bm.free()
+    return obj
+
+
+def _turned(kit, name, profile, p0, p1, verts=TURN_SIDES, close_bottom=True, close_top=True, embed=0.0):
     """Lathe ``profile`` [(radius, t)] with t in 0..1 of the p0->p1 length,
-    standing on p0 and pointing at p1. Ends buried in other parts stay open."""
+    standing on p0 and pointing at p1. Ends buried in other parts stay open
+    (and the winding is then checked: see _face_outward); ``embed`` runs
+    the top on past p1 so an open end is fully inside the part it enters
+    (a raked leg's tilted top ring would otherwise dip below the block and
+    leave a sliver to see into the open tube at grazing angles)."""
     p0, p1 = Vector(p0), Vector(p1)
+    p1 = p1 + (p1 - p0).normalized() * embed
     length = (p1 - p0).length
     prof = [(r, t * length) for r, t in profile]
-    return kit.lathe(prof, tuple(p0), OAK, verts=verts, rot=_rot_to(p1 - p0), name=name,
-                     close_bottom=close_bottom, close_top=close_top)
+    obj = kit.lathe(prof, tuple(p0), OAK, verts=verts, rot=_rot_to(p1 - p0), name=name,
+                    close_bottom=close_bottom, close_top=close_top)
+    return _face_outward(obj)
 
 
 def _rrect(hw, hd, r, nc, nx, ny):
@@ -103,11 +143,12 @@ def _rrect(hw, hd, r, nc, nx, ny):
     return pts
 
 
-def _soft_block(kit, name, slot, hw, hd, r, profile, loc, warp=None, nc=2, nx=2, ny=2, cap_bottom=False):
-    """Upholstery pad: rounded-rect rings lofted through ``profile`` [(inset,
-    z)] bottom to top (a negative inset bulges out: piping), fan-capped on
-    top; ``warp(x, y, z)`` reshapes it. The bottom sits on the seat board
-    and is left open unless cap_bottom."""
+def _soft_block(kit, name, slot, hw, hd, r, profile, loc, warp=None, nc=2, nx=2, ny=2, cap_bottom=True):
+    """Seat: rounded-rect rings lofted through ``profile`` [(inset, z)]
+    bottom to top (a negative inset bulges out: piping), fan-capped on top
+    so ``warp(x, y, z)`` can dish it. cap_bottom: True = fan, "ngon" = one
+    flat polygon (2 tris fewer), False = open (only if the bottom is buried:
+    an open seat shows its culled inside wherever it overhangs a rail)."""
     bm = bmesh.new()
 
     def vert(x, y, z):
@@ -122,11 +163,13 @@ def _soft_block(kit, name, slot, hw, hd, r, profile, loc, warp=None, nc=2, nx=2,
         for i in range(n):
             j = (i + 1) % n
             bm.faces.new((a[i], a[j], b[j], b[i]))
-    caps = [(rings[-1], profile[-1][1])] + ([(rings[0], profile[0][1])] if cap_bottom else [])
+    caps = [(rings[-1], profile[-1][1])] + ([(rings[0], profile[0][1])] if cap_bottom is True else [])
     for ring, z in caps:
         c = vert(0.0, 0.0, z)
         for i in range(n):
             bm.faces.new((ring[i], ring[(i + 1) % n], c))
+    if cap_bottom == "ngon":
+        bm.faces.new(list(reversed(rings[0])))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     obj = kit._new_object(name, bm, slot, "metres", "xz")
     kit._place(obj, loc, (0, 0, 0))
@@ -198,15 +241,39 @@ def _panels(kit, name, polys):
     return obj
 
 
+def _block(kit, name, cx, cy, z0, z1, side=0.042, corner=0.004, top=0.0025):
+    """Square leg block (the unturned part of the blank): chamfered vertical
+    corners plus a ``top`` chamfer round the top rim (one extra ring, so no
+    raw 90-degree edge shows beside the seat). The bottom rim meets the
+    turning's shoulder and stays square."""
+    bm = bmesh.new()
+    lo = _chamfered_rect(side, side, corner)
+    # Inset outline: sides move in by ``top``, the corner chamfer shrinks by (2 - sqrt 2) * top.
+    hi = _chamfered_rect(side - 2 * top, side - 2 * top, corner - (2 - math.sqrt(2)) * top)
+    rings = [[bm.verts.new((cx + u, cy + v, z)) for u, v in pts] for pts, z in ((lo, z0), (lo, z1 - top), (hi, z1))]
+    n = len(lo)
+    for a, b in zip(rings, rings[1:]):
+        for i in range(n):
+            j = (i + 1) % n
+            bm.faces.new((a[i], a[j], b[j], b[i]))
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return kit._new_object(name, bm, OAK, "metres", "xz")
+
+
 # Lathe profiles as (radius, fraction of length). Legs and posts are turned
 # from 42 mm square stock (the blocks are the unturned blank), so no radius
 # exceeds 0.0205. Only silhouette points are kept.
 LEG_LOWER = [(0.0150, 0.0), (0.0185, 0.36), (0.0205, 0.39), (0.0205, 0.425), (0.0178, 0.455),
              (0.0196, 0.865), (0.0205, 0.90), (0.0170, 0.94), (0.0205, 1.0)]
+# Acorn finial: neck (0.925), bulb with its shoulder (0.968), rounded tip.
 POST_UPPER = [(0.0205, 0.0), (0.0190, 0.05), (0.0178, 0.86), (0.0200, 0.89), (0.0150, 0.925),
-              (0.0188, 0.955), (0.0166, 0.982), (0.0095, 0.996), (0.0000, 1.0)]
+              (0.0183, 0.950), (0.0190, 0.968), (0.0164, 0.984), (0.0095, 0.996), (0.0000, 1.0)]
 RUNG_PLAIN = [(0.0092, 0.0), (0.0122, 0.5), (0.0092, 1.0)]      # swelled (cigar) rung
-RUNG_FRONT = [(0.0085, 0.0), (0.0128, 0.25), (0.0104, 0.31), (0.0158, 0.45), (0.0158, 0.55),
+# Decorative front rung: rings near each end, a long swell to the centre
+# (a crest of ~8 deg, which SMOOTH_ANGLE 50 shades as one smooth belly).
+RUNG_FRONT = [(0.0085, 0.0), (0.0128, 0.25), (0.0104, 0.31), (0.0160, 0.50),
               (0.0104, 0.69), (0.0128, 0.75), (0.0085, 1.0)]
 
 
@@ -225,17 +292,15 @@ def build(kit):
             return ry
         return ry + (z - BLOCK_HI) * tr
 
-    blank = _chamfered_rect(0.042, 0.042, 0.004)
     for s in (-1, 1):
         # Front leg: turned lower part (top buried in the block), square block.
-        _turned(kit, "front leg", LEG_LOWER, (s * fx, fy, 0.0), (s * fx, fy, BLOCK_LO), close_top=False)
-        kit.extrude(blank, SEAT_TOP_RAIL - BLOCK_LO, (s * fx, fy, (BLOCK_LO + SEAT_TOP_RAIL) / 2), OAK,
-                    plane="xy", bevel=0.0, name="front leg block")
+        _turned(kit, "front leg", LEG_LOWER, (s * fx, fy, 0.0), (s * fx, fy, BLOCK_LO), close_top=False, embed=0.002)
+        _block(kit, "front leg block", s * fx, fy, BLOCK_LO, SEAT_TOP_RAIL)
         # Rear leg: turned lower part, block, raked post with finial.
         # (foot lifted 0.65 mm: the 2.4 deg back splay tips the foot disc's rear edge to z = 0)
-        _turned(kit, "rear leg", LEG_LOWER, (s * rx, ry_floor, 0.00065), (s * rx, ry, BLOCK_LO), close_top=False)
-        kit.extrude(blank, BLOCK_HI - BLOCK_LO, (s * rx, ry, (BLOCK_LO + BLOCK_HI) / 2), OAK,
-                    plane="xy", bevel=0.0, name="rear leg block")
+        _turned(kit, "rear leg", LEG_LOWER, (s * rx, ry_floor, 0.00065), (s * rx, ry, BLOCK_LO), close_top=False,
+                embed=0.003)
+        _block(kit, "rear leg block", s * rx, ry, BLOCK_LO, BLOCK_HI)
         post_len = (TOP_Z - BLOCK_HI) / math.cos(math.radians(RAKE))
         top = (s * rx, ry + post_len * math.sin(math.radians(RAKE)), TOP_Z)
         _turned(kit, "back post", POST_UPPER, (s * rx, ry - 0.0012, BLOCK_HI - 0.008), top, close_bottom=False)
@@ -250,7 +315,7 @@ def build(kit):
                        bevel=0.003, segments=1, name="front rail")
     grain.horizontal(rail, "x")["fr_uv_offset"] = (0.31, 0.12)
     # Side rails (front block to rear block) and back rail: prisms with the
-    # outer top and bottom edges chamfered (the inner faces are under the pad).
+    # outer top and bottom edges chamfered (the inner faces are under the seat).
     for s in (-1, 1):
         a = Vector((s * (fx - 0.008), fy))
         b = Vector((s * (rx - 0.008), ry))
@@ -265,22 +330,68 @@ def build(kit):
     r = kit.extrude(back, 2 * rx, (0, ry + 0.004, z_top - 0.030), OAK, plane="yz", bevel=0.0, name="back rail")
     grain.horizontal(r, "x")["fr_uv_offset"] = (0.07, 0.53)
 
-    # Underside: seat board inside the rails (only its underside shows),
-    # glued corner blocks.
+    # Seat. Its back edge laps 4 mm onto the back rail (y 0.198 against the
+    # rail's inner face at 0.194: no slot to look through to the floor), it
+    # tapers 12.5 % toward the back and is notched round the posts (the back
+    # corners run into the rear blocks). Both versions have a closed
+    # underside: the seat overhangs the side rails by 3-8 mm.
+    seat_hw, seat_hd, seat_cy = 0.222, 0.2045, -0.0065
     fy_in = fy - 0.021 + 0.003 + rail_t
     ry_in = ry + 0.004 - rail_t / 2
     fx_in, rx_in = fx - 0.018, rx - 0.018
-    zb = z_top - 0.013
-    board = [(fx_in, fy_in, zb), (rx_in, ry_in, zb), (-rx_in, ry_in, zb), (-fx_in, fy_in, zb)]
-    grain.horizontal(_panels(kit, "seat board", [(board, (0, 0, -1))]), "x")["fr_uv_offset"] = (0.6, 0.2)
+    if PAD_SLOT is None:
+        # Solid oak, 34 mm, resting on the rails: square bottom edge (it sits
+        # on the rails; a 2 mm ease there is sub-pixel at 2 m and cost 32
+        # tris), 12 mm round-over on top (two steps that SMOOTH_ANGLE 50
+        # shades round), a 4 mm saddle.
+        seat_t, dish = 0.034, 0.004
+        seat_z = z_top - 0.001
+
+        def seat_warp(x, y, z):
+            f = (y + seat_hd) / (2 * seat_hd)
+            if z > seat_t - 1e-6:
+                z -= dish * math.exp(-(x / 0.11) ** 2 - ((y - 0.02) / 0.12) ** 2)
+            return (x * (1.0 - 0.125 * f), y + seat_cy, z)
+
+        prof = [(0.0, 0.0), (0.0, 0.022), (0.0035, 0.0305), (0.012, seat_t), (0.060, seat_t)]
+        seat = _soft_block(kit, "seat", OAK, seat_hw, seat_hd, 0.035, prof, (0, 0, seat_z), warp=seat_warp,
+                           nc=3, nx=1, ny=1, cap_bottom="ngon")
+        grain.horizontal(seat, "x")["fr_uv_offset"] = (0.6, 0.2)
+        seat_top = seat_z + seat_t
+        sit_z = seat_top - dish
+        under = seat_z
+    else:
+        # Upholstered drop-in pad on a board; the piping is the bead ring
+        # in the profile.
+        pad_h = 0.052
+
+        def seat_warp(x, y, z):
+            f = (y + seat_hd) / (2 * seat_hd)
+            return (x * (1.0 - 0.125 * f), y + seat_cy, z)
+
+        prof = [(0.008, 0.0), (0.0, 0.010), (0.0008, 0.0170), (-0.0034, 0.0215), (0.0020, 0.0258), (0.022, 0.039),
+                (0.062, 0.047), (0.150, pad_h)]
+        _soft_block(kit, "seat pad", PAD_SLOT, seat_hw, seat_hd, 0.035, prof, (0, 0, z_top), warp=seat_warp,
+                    nc=3, nx=1, ny=1, cap_bottom=True)
+        under = z_top - 0.013
+        board = [(fx_in, fy_in, under), (rx_in, ry_in, under), (-rx_in, ry_in, under), (-fx_in, fy_in, under)]
+        grain.horizontal(_panels(kit, "seat board", [(board, (0, 0, -1))]), "x")["fr_uv_offset"] = (0.6, 0.2)
+        seat_top = sit_z = z_top + pad_h
+
+    # Glued corner blocks under the seat (seen when a pile turns it over).
+    # Single-sided, so their corner sits 2 mm into the rails: an edge left
+    # standing proud of a rail's inner face opens a sliver onto their back.
+    e = 0.002
     blocks = []
-    for (cx, cy), (ax, ay), (bx, by) in (((fx_in, fy_in), (-1, 0), (-0.05, 1)), ((-fx_in, fy_in), (1, 0), (0.05, 1)),
-                                         ((rx_in, ry_in), (-1, 0), (0.05, -1)), ((-rx_in, ry_in), (1, 0), (-0.05, -1))):
+    for (cx, cy), (ax, ay), (bx, by) in (((fx_in + e, fy_in - e), (-1, 0), (-0.05, 1)),
+                                         ((-fx_in - e, fy_in - e), (1, 0), (0.05, 1)),
+                                         ((rx_in + e, ry_in + e), (-1, 0), (0.05, -1)),
+                                         ((-rx_in - e, ry_in + e), (1, 0), (-0.05, -1))):
         leg = 0.065
         p, q = (cx + ax * leg, cy + ay * leg), (cx + bx * leg, cy + by * leg)
-        lo = zb - 0.040
+        lo = under - 0.040
         inward = (-cx, -cy, 0)
-        blocks.append(([(p[0], p[1], lo), (q[0], q[1], lo), (q[0], q[1], zb), (p[0], p[1], zb)], inward))
+        blocks.append(([(p[0], p[1], lo), (q[0], q[1], lo), (q[0], q[1], under), (p[0], p[1], under)], inward))
         blocks.append(([(cx, cy, lo), (p[0], p[1], lo), (q[0], q[1], lo)], (0, 0, -1)))
     _panels(kit, "corner blocks", blocks)
 
@@ -314,23 +425,9 @@ def build(kit):
             tops.append(h / 2 + (0.014 * f if top_slat else 0.0))
         _slat(kit, "back slat", path, up, 0.0068, bots, tops)["fr_uv_offset"] = (0.11 * i, 0.37 * i)
 
-    # Padded drop-in seat; the piping is the bulge ring in the profile.
-    seat_hw, seat_hd, seat_cy = 0.222, 0.197, -0.014
-    pad_h = 0.052
-
-    def seat_warp(x, y, z):
-        f = (y + seat_hd) / (2 * seat_hd)
-        return (x * (1.0 - 0.125 * f), y + seat_cy, z)
-
-    prof = [(0.008, 0.0), (0.0, 0.010), (0.0008, 0.0170), (-0.0034, 0.0215), (0.0020, 0.0258), (0.022, 0.039),
-            (0.062, 0.047), (0.150, pad_h)]
-    _soft_block(kit, "seat pad", FABRIC, seat_hw, seat_hd, 0.035, prof, (0, 0, z_top), warp=seat_warp,
-                nc=3, nx=1, ny=1)
-
     # ------------------------------------------------------------ metadata
-    seat_top = z_top + pad_h
-    kit.support("seat", (0, seat_cy, seat_top), (0.36, 0.34))
-    kit.anchor("sit", (0, seat_cy, seat_top))
+    kit.support("seat", (0, seat_cy, (seat_top + sit_z) / 2), (0.36, 0.34))
+    kit.anchor("sit", (0, seat_cy, sit_z))
     # §5.3: one box (pile pieces swap it for blockers anyway).
     y0, y1 = fy - 0.0215, ry + (TOP_Z - BLOCK_HI) * tr + 0.02
     kit.collider((0, (y0 + y1) / 2, TOP_Z / 2), (0.45, y1 - y0, TOP_Z))

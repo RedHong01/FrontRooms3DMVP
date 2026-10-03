@@ -18,12 +18,112 @@ the faces that show:
                vertical, unlike kit.tube); caps off by default (cable ends
                are buried in grommets and plugs).
 * smooth()     Catmull-Rom resample of a polyline.
+* lod0_only() / lod1_only() / authored_lod1()  an AUTHORED LOD1 instead of
+               kitlib's blind collapse-decimate (which turns keycaps into
+               spikes and eats thin faceplates). See authored_lod1().
 """
 
 import math
 
 import bmesh
+import bpy
 from mathutils import Matrix, Vector
+
+# ------------------------------------------------------------ authored LOD1
+LOD_ATTR = "fr_lod"        # face int: 0 = both LODs, 1 = LOD0 only, 2 = LOD1 only
+
+
+def _tag_lod(objs, value):
+    for obj in objs:
+        me = obj.data
+        attr = me.attributes.get(LOD_ATTR) or me.attributes.new(LOD_ATTR, "INT", "FACE")
+        attr.data.foreach_set("value", [value] * len(me.polygons))
+    return objs[0] if len(objs) == 1 else objs
+
+
+def lod0_only(*objs):
+    """Flag whole parts (before kit.finish) as LOD0 detail: dropped from LOD1."""
+    return _tag_lod(objs, 1)
+
+
+def lod1_only(*objs):
+    """Flag whole parts as the LOD1 stand-in for LOD0 detail: dropped from LOD0."""
+    return _tag_lod(objs, 2)
+
+
+def _tris(obj):
+    return sum(len(p.vertices) - 2 for p in obj.data.polygons)
+
+
+def _drop_tagged(obj, value):
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    layer = bm.faces.layers.int.get(LOD_ATTR)
+    if layer is not None:
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[layer] == value], context="FACES")
+    bm.to_mesh(obj.data)
+    bm.free()
+    if obj.data.attributes.get(LOD_ATTR) is not None:
+        obj.data.attributes.remove(obj.data.attributes[LOD_ATTR])
+
+
+def _prune_slots(obj):
+    """Remove material slots no face uses any more (no empty submeshes)."""
+    me = obj.data
+    used = sorted({p.material_index for p in me.polygons})
+    if len(used) == len(me.materials):
+        return
+    remap = {old: new for new, old in enumerate(used)}
+    idx = [remap[p.material_index] for p in me.polygons]
+    keep = [me.materials[i] for i in used]
+    me.materials.clear()
+    for m in keep:
+        me.materials.append(m)
+    me.polygons.foreach_set("material_index", idx)
+    me.update()
+
+
+def authored_lod1(kit):
+    """Replace THIS Kit instance's make_lod1 (kitlib is not edited): LOD1 =
+    LOD0 without the parts flagged lod0_only(), plus the parts flagged
+    lod1_only() (which LOD0 drops). No decimation, so UVs, decals and
+    silhouettes survive exactly; sharp edges come from finish(). The
+    module keeps a numeric LOD1 so build_asset calls the hook; its value is
+    ignored. LOD0's triangle count and bounds are re-measured afterwards."""
+    if getattr(kit, "_fr_authored_lod1", False):
+        return
+    base = kit.make_lod1
+
+    def make_lod1(ratio):
+        src = kit.object
+        if not ratio or src.data.attributes.get(LOD_ATTR) is None:
+            return base(ratio)
+        old = getattr(kit, "lod1", None)
+        if old is not None:
+            bpy.data.objects.remove(old, do_unlink=True)
+            kit.lod1 = None
+        lod1 = src.copy()
+        lod1.data = src.data.copy()
+        bpy.context.scene.collection.objects.link(lod1)
+        _drop_tagged(lod1, 1)
+        _drop_tagged(src, 2)
+        for o in (src, lod1):
+            _prune_slots(o)
+        src.name = kit.name + "_LOD0"
+        lod1.name = kit.name + "_LOD1"
+        kit.lod1 = lod1
+        me = src.data
+        xs = [v.co.x for v in me.vertices]
+        ys = [v.co.y for v in me.vertices]
+        zs = [v.co.z for v in me.vertices]
+        kit.meta["boundsMin"] = [min(xs), min(ys), min(zs)]
+        kit.meta["boundsMax"] = [max(xs), max(ys), max(zs)]
+        kit.meta["triangles"] = _tris(src)
+        kit.meta["trianglesLod1"] = _tris(lod1)
+        kit.meta["slots"] = [m.name for m in me.materials]
+
+    kit.make_lod1 = make_lod1
+    kit._fr_authored_lod1 = True
 
 # facing -> rotation (degrees) taking the -Y-facing local build to that facing.
 _FACING_ROT = {"-y": (0, 0, 0), "+y": (0, 0, 180), "-x": (0, 0, -90), "+x": (0, 0, 90),

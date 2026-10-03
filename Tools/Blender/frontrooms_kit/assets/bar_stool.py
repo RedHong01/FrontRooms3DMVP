@@ -10,18 +10,23 @@ Construction:
   the seat.
 * Steam-bent foot ring at 0.28 m (0.52 m outside diameter) on the outside
   of the legs.
-* Nail-on chrome glides under the feet; a paper maker's label under the
-  seat (Prop_Label atlas cell 11, seen whenever a pile turns the stool over).
+* Feet cut level (the ends of splayed legs are trimmed flat to sit on the
+  floor) with nail-on chrome glides under them; a paper maker's label
+  under the seat (Prop_Label atlas cell 11, seen whenever a pile turns the
+  stool over).
 
 Real-world reference size: 0.52 W x 0.52 D (foot ring) x 0.76 H, seat 0.38
 dia. Front faces -Y (two legs either side of the front; a stool reads the
 same from every side).
 
-Budget (§5.3 1,600 / 700): ~1.6k tris LOD0, LOD1 0.44.
+Budget (§5.3 1,600 / 700): 1,600 tris LOD0, LOD1 0.43 (~690).
 * Seat and foot ring 28 sides (the two big round silhouettes; 1.2-1.6 mm
   chord error), an 8-point ring section, legs 10 sides with only the
   silhouette points of the turning, glides 8 sides; buried ends (leg
-  tops, glide tops) left open.
+  tops, glide tops) left open. A glide's open top must stay inside the
+  leg: the leg's foot is levelled (zero tris) so the vertical glide seats
+  flush instead of leaving a wedge-shaped sliver under the splayed foot
+  (Unity culls back faces, so the sliver showed through the open glide).
 * The ring's brass screws (8 mm heads) are gone: below the 5 mm-at-2 m
   rule and they cost a slot. Three slots: Prop_WoodWalnut, Prop_Chrome
   (glides), Prop_Label.
@@ -35,12 +40,12 @@ SMOOTH_ANGLE 50 lets the 10-sided legs and 8-sided glides shade round.
 
 import math
 
-from mathutils import Vector
+from mathutils import Euler, Vector
 
 import _seating_grain as grain
 
 NAME = "Kit_BarStool"
-LOD1 = 0.44
+LOD1 = 0.43            # ~690 of 1,600: §5.3 LOD1 budget 700
 SMOOTH_ANGLE = 50.0
 
 WOOD = "Prop_WoodWalnut"
@@ -72,6 +77,18 @@ def _leg_point(a, z):
     return Vector((r * math.cos(a), r * math.sin(a), z))
 
 
+def _level_foot(obj, rot):
+    """Slide the lathe's first ring (local z = 0) along the turning axis
+    onto the world plane through its centre: a level-cut foot."""
+    m = Euler([math.radians(a) for a in rot], "XYZ").to_matrix()
+    az = (m @ Vector((0, 0, 1))).z
+    for v in obj.data.vertices:
+        if abs(v.co.z) < 1e-7:
+            v.co.z -= (m @ v.co).z / az
+    obj.data.update()
+    return obj
+
+
 def build(kit):
     grain.install(kit)
 
@@ -87,11 +104,13 @@ def build(kit):
         foot = _leg_point(a, GLIDE_H)
         top = _leg_point(a, SEAT_BOTTOM + 0.006)
         length = (top - foot).length
-        leg = kit.lathe([(r, f * length) for r, f in LEG], tuple(foot), WOOD, verts=10,
-                        rot=_rot_to(top - foot), name="leg", close_top=False)
+        rot = _rot_to(top - foot)
+        leg = _level_foot(kit.lathe([(r, f * length) for r, f in LEG], tuple(foot), WOOD, verts=10,
+                                    rot=rot, name="leg", close_top=False), rot)
         grain.axial(leg, foot, top, out=(math.cos(a), math.sin(a), 0.0))["fr_uv_offset"] = (0.13 * k, 0.29 * k)
-        # Nail-on glide: a shallow chrome dome under the foot (top buried).
-        kit.lathe([(0.0138, 0.0), (0.0152, GLIDE_H + 0.0010)], (foot.x, foot.y, 0.0), GLIDE,
+        # Nail-on glide: a shallow chrome dome under the level foot, its open
+        # top 1 mm up inside the leg (0.0146 < the decagon's 0.0152 flats).
+        kit.lathe([(0.0132, 0.0), (0.0146, GLIDE_H + 0.0010)], (foot.x, foot.y, 0.0), GLIDE,
                   verts=8, close_top=False, name="glide")
 
     # Steam-bent foot ring on the outside of the legs.

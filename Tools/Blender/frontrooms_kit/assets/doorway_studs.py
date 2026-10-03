@@ -1,24 +1,39 @@
 """Unfinished stud doorway (the raw framed opening outlined in blue
 painter's tape beside the low pile in A24 "Backrooms" Still A).
 
-Real-world reference: a rough door opening framed in kiln-dried SPF 2x4s
-(38 mm faces, eased 3 mm edges), the way a framing crew leaves it before
-drywall: a sill (bottom) plate still running through the opening, a king
-stud each side running plate to plate, a jack (trimmer) stud inside each
-king carrying a doubled header (two 2x6 plies on edge with a spacer), two
-short cripple studs on the 16-inch layout above the header, and a doubled
-top plate. Somebody has outlined the opening on the room side with 48 mm
-blue painter's tape: one strip up each jamb, one along the underside of the
-header, one along the sill, laid by hand (each a little off square, the
-ends overlapping, one strip re-laid at the top corner).
+Real-world reference: a rough opening in a non-bearing partition, framed in
+kiln-dried SPF lumber (38 mm faces, eased 3 mm edges) the way a framing crew
+leaves it before drywall: a sill (bottom) plate still running through the
+opening, a king stud each side running plate to plate, a jack (trimmer)
+stud inside each king carrying a doubled header (two 2x4 plies on edge with
+a spacer, set tight under the single top plate, so no cripples). Somebody
+has outlined the opening on the room side with 48 mm blue painter's tape:
+one strip up each jamb, one along the header's lower edge, one along the
+sill, laid by hand (each a little off square, ends overlapping, one strip
+re-laid at the top corner).
 
-Module: 1.20 m wide x 2.40 m tall x 0.14 m deep (a 4 x 8 ft framing module
-that drops into a 0.16 m wall slot with 1 cm to spare each side, so the
-members are 140 mm deep: 2x4 faces at the slot's depth). Clear opening
-1.048 m x 2.03 m (header underside). Origin = bottom centre, room side -Y.
-Budget 800 tris LOD0 / 300 LOD1. Slots: Studs, TapeBlue.
-Colliders: one per stud pair (king + jack each side) and one for the
-header assembly; the sill plate stays walkable (38 mm).
+Arch contract (LEVEL_MODULE_SPEC §3: arches 1.1-1.8 m wide, top 2.2 m; the
+Relay walks at up to 2.05 m). The CLEAR passage is never narrower or lower
+than the arch it dresses: CLEAR wide x 2.20 m (ArchTop) to the header's
+underside; the 38 mm sill plate stays walkable (step 0.3). The framing sits
+OUTSIDE the clear passage, so the wall's rough opening for this piece is
+W = CLEAR + 4 x 0.038 (a king + jack each side) by H = 2.327 m (header 2.20
++ 0.089 + top plate 0.038), through the 0.16 m wall. Three widths, the map
+snapping a stud arch to one of them:
+  Kit_DoorwayStuds     clear 1.10 (ArchMinWidth)  outer 1.252
+  Kit_DoorwayStuds140  clear 1.40                 outer 1.552
+  Kit_DoorwayStuds180  clear 1.80 (ArchMaxWidth)  outer 1.952
+Anchors clear_corner_a / _b are opposite corners of the clear box. The
+map must keep the OUTER edge (0.076 past the clear edge) inside its 0.2 m
+corner margin. H 2.327 keeps the sidecar minCeiling (top + 0.05) at 2.377,
+under the 2.4 m Low ceiling. Not wired yet: the map chat has to agree the
+snap + wider cut (no code places Kit_DoorwayStuds today).
+
+Members are 140 mm deep (2x6 section) to fill the 0.16 m wall slot with
+1 cm to spare each side (Red's call whether to go true 2x4 + blocking).
+Origin = bottom centre, room side -Y. Budget 800 tris LOD0 / 300 LOD1.
+Slots: Studs, TapeBlue. Colliders: one per stud pair (king + jack each
+side) and one for the header assembly.
 """
 
 import math
@@ -28,18 +43,20 @@ import bmesh
 from mathutils import Vector
 
 NAME = "Kit_DoorwayStuds"
+CLEAR = 1.10                   # clear passage width (ArchMinWidth)
 LOD1 = 0.42
 SMOOTH_ANGLE = 35.0
 
 STUD = "Prop_Studs"
 TAPE = "Prop_TapeBlue"
 
-W, H, D = 1.20, 2.40, 0.14
+D = 0.14
 T = 0.038                      # 2x face
 EASE = 0.003                   # eased edge of dimensional lumber
-HEADER_Z0 = 2.032              # underside of the header (80-inch rough opening)
-HEADER_H = 0.140               # 2x6 on edge
-TOP_Z0 = H - 2 * T             # underside of the doubled top plate
+HEADER_Z0 = 2.20               # underside of the header = ModuleUnits.ArchTop
+HEADER_H = 0.089               # doubled 2x4 on edge
+TOP_Z0 = HEADER_Z0 + HEADER_H  # single top plate sits on the header
+H = TOP_Z0 + T                 # 2.327
 TAPE_W = 0.048
 TAPE_Y = -D / 2 - 0.0008       # tape plane, just proud of the room-side faces
 
@@ -84,34 +101,30 @@ def _tape(kit, length, centre, angle_deg, name, rng, facing="-y", lift=0.0, torn
     return kit._new_object(name, bm, TAPE, "metres", "xz")
 
 
-def build(kit):
-    rng = random.Random(2400)
+def build_frame(kit, clear, seed=2400):
+    rng = random.Random(seed)
+    W = clear + 4 * T                  # outer width = the wall's rough opening
     xk = W / 2 - T / 2                 # king stud centre
     xj = W / 2 - T - T / 2             # jack stud centre
-    x_open = W / 2 - 2 * T             # half the clear opening
+    x_open = clear / 2                 # half the clear passage
 
     # Plates.
     _board(kit, (W, D, T), (0, 0, T / 2), "sill plate", "x")
     _board(kit, (W, D, T), (0, 0, TOP_Z0 + T / 2), "top plate", "x")
-    _board(kit, (W, D, T), (0, 0, TOP_Z0 + 1.5 * T), "top plate cap", "x")
 
     # King studs (plate to plate) and jack studs (sill to header).
     for sx in (-1, 1):
         _board(kit, (T, D, TOP_Z0 - T), (sx * xk, 0, T + (TOP_Z0 - T) / 2), "king stud", "z")
         _board(kit, (T, D, HEADER_Z0 - T), (sx * xj, 0, T + (HEADER_Z0 - T) / 2), "jack stud", "z")
 
-    # Doubled header: two 2x6 plies on edge at the faces, a spacer between
-    # (set 6 mm up so the underside shows the lamination).
+    # Doubled header between the kings, on the jacks: two 2x4 plies on edge
+    # at the faces and a spacer between, set 6 mm up so the underside shows
+    # the lamination (eased like the rest: its edges show from below).
     hl = W - 2 * T
     hz = HEADER_Z0 + HEADER_H / 2
     for sy in (-1, 1):
         _board(kit, (hl, T, HEADER_H), (0, sy * (D / 2 - T / 2), hz), "header ply", "x")
-    kit.box((hl - 0.004, D - 2 * T + 0.002, HEADER_H - 0.012), (0, 0, hz), STUD, bevel=0.0, name="header spacer")
-
-    # Cripple studs on the 16-inch layout from the module's left end.
-    zc0, zc1 = HEADER_Z0 + HEADER_H, TOP_Z0
-    for x in (-W / 2 + 0.406, -W / 2 + 0.812):
-        _board(kit, (T, D, zc1 - zc0), (x, 0, (zc0 + zc1) / 2), "cripple stud", "z")
+    _board(kit, (hl - 0.004, D - 2 * T + 0.002, HEADER_H - 0.012), (0, 0, hz), "header spacer", "x")
 
     # Each board on its own patch of grain.
     for obj in kit.parts:
@@ -120,25 +133,32 @@ def build(kit):
     # --- Blue painter's tape on the room side ---------------------------
     # Jamb strips on the jack + king faces (76 mm of wood for 48 mm of tape),
     # each laid a little off plumb: the inner edge touches the opening edge
-    # at one end and wanders 25 mm off it at the other.
+    # at one end and wanders ~25 mm off it at the other.
     jl = HEADER_Z0 + 0.03
     lean = 0.7
     swing = jl / 2 * math.sin(math.radians(lean))
-    _tape(kit, jl, (-(x_open + TAPE_W / 2 + swing + 0.001), jl / 2), lean, "tape jamb left", rng, torn=(True, False))
+    _tape(kit, jl, (-(x_open + TAPE_W / 2 + swing + 0.001), jl / 2 + 0.005), lean, "tape jamb left", rng, torn=(True, False))
     _tape(kit, jl - 0.014, (x_open + TAPE_W / 2 + swing * 0.8 + 0.001, (jl - 0.014) / 2 + 0.006), lean * 0.8,
           "tape jamb right", rng, torn=(True, False))
-    # Header strip on the header face along its underside, ends lapping onto
-    # the jamb strips (and slightly off level).
-    _tape(kit, 2 * x_open + 0.12, (0.006, HEADER_Z0 + TAPE_W / 2 - 0.003), -89.6, "tape header", rng, lift=0.0004)
+    # Header strip along the header's lower edge (kept on the face: 0.4 deg
+    # off level over the span), its ends lapping onto the king faces.
+    _tape(kit, 2 * x_open + 0.12, (0.006, HEADER_Z0 + TAPE_W / 2 + 0.005), -89.6, "tape header", rng, lift=0.0004)
     # Re-laid corner: a short second piece over the top-left joint.
-    _tape(kit, 0.17, (-x_open + 0.035, HEADER_Z0 + 0.016), 86.0, "tape patch", rng, lift=0.0008)
+    _tape(kit, 0.17, (-x_open + 0.035, HEADER_Z0 + 0.020), 86.0, "tape patch", rng, lift=0.0008)
     # Sill strip: along the room-side edge of the sill plate, across the opening.
     _tape(kit, 2 * x_open + 0.03, (0.006, -D / 2 + TAPE_W / 2 + 0.005), 0.6, "tape sill", rng, facing="+z")
 
     # --- Metadata -------------------------------------------------------
     for sx in (-1, 1):
-        kit.collider((sx * (xk + xj) / 2, 0, (TOP_Z0) / 2), (2 * T, D, TOP_Z0))
-    kit.collider((0, 0, (HEADER_Z0 + H) / 2), (W - 4 * T, D, H - HEADER_Z0))
+        kit.collider((sx * (xk + xj) / 2, 0, H / 2), (2 * T, D, H))
+    kit.collider((0, 0, (HEADER_Z0 + H) / 2), (clear, D, H - HEADER_Z0))
     kit.anchor("opening", (0, 0, 0))
     kit.anchor("header", (0, -D / 2, HEADER_Z0))
+    # Opposite corners of the clear passage box (take min / max per axis).
+    kit.anchor("clear_corner_a", (-x_open, -D / 2, 0))
+    kit.anchor("clear_corner_b", (x_open, D / 2, HEADER_Z0))
     kit.tag("arch", "wall_decor")
+
+
+def build(kit):
+    build_frame(kit, CLEAR)

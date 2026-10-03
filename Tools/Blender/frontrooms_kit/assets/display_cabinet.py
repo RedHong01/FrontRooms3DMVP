@@ -145,4 +145,5 @@ def build(kit):
     kit.pile("Case", mass=2, states=["Upright", "Back", "Side", "EdgeLean"], palette="domestic70s")
 
     nc.scatter(kit, 1806, (OAK, BACK))
+    nc.grain_on_u(kit)
     nc.lod1_sharp(kit, SMOOTH_ANGLE)

@@ -9,8 +9,8 @@ ISO 780 "this way up" arrows on the right end and the back, KEEP DRY on the
 left end. The grab cleats bridge the two vertical cleats of each end and are
 nailed into them.
 
-Budget pass (2026-10-02, §5.3: 1.00 x 0.80 x 0.75 m, 700 LOD0 / 250 LOD1,
-Crate 2; U, S, one collider):
+Budget pass (2026-10-02, §5.3: 1.00 x 0.80 x 0.75 m, 600 LOD0 / 250 LOD1,
+Crate 2; U, S, one collider; live ~700 / ~290, 1.16x):
 * slots: Prop_Plywood, Prop_PinePallet (cleats, skids), Prop_SteelBlack
   (nail heads), Prop_StencilBlack (alpha-clipped spray stencil atlas, quads
   0.7 mm off the plywood). The packing-list pouch is gone (5th slot).
@@ -18,6 +18,12 @@ Crate 2; U, S, one collider):
   4 mm chamfer that catches the light, the ends and the face against the
   plywood stay square (butt joints, as nailed up). Nail heads are 7 mm quads.
 * +X / +Y facing decals are mapped with U swapped so they read correctly.
+* fix pass: _pilecases_grain.install transposes the Plywood / PinePallet UVs
+  (both albedos have their grain on U), snaps every cleat and skid into one
+  plank of the Planks021 sheet with no painted nail dot on cleats under
+  0.7 m, keeps LOD1's sharp edges and alpha-clips the stencils in the
+  preview stills. TODO when Prop_Atlas exists: move the stencil cells into
+  it and drop Prop_StencilBlack (URP/Lit alpha test, a second shader).
 
 Size: 1.00 m wide over the grab cleats (0.96 m body), 0.80 m deep, 0.75 m
 tall (skids 60 mm, cleats 20 x 80 mm). Front (FRAGILE) faces -Y.
@@ -78,6 +84,7 @@ def _cleat(kit, axis, outward, length, width, centre, slot=PINE, name="cleat", t
     outline = [(b, n) if v_ax == n_ax else (n, b) for b, n in bn]
     obj = kit.extrude(outline, length, centre, slot, plane=plane, bevel=0.0, name=name)
     obj["fr_grain"] = axis
+    obj["fr_face"] = tuple(float(s) if a == n_ax else 0.0 for a in "xyz")    # plank-snap the outer face
     return obj
 
 
@@ -184,6 +191,7 @@ def build(kit):
     for sy in (-1, 1):
         sk = kit.extrude(outline, 0.090, (0, sy * 0.265, 0.0), PINE, plane="xz", bevel=0.0, name="skid")
         sk["fr_grain"] = "x"
+        sk["fr_face"] = (0.0, float(sy), 0.0)
 
     # Spray stencils (Prop_StencilBlack, alpha-clipped), 0.7 mm off the
     # plywood inside the cleat frames.
@@ -207,4 +215,4 @@ def build(kit):
     # PinePallet TileSize 1.4 m, Plywood 0.5 m. Grain direction: kitlib.
     grain.scatter_offsets(kit, seed=9013, slots=(PINE,), tile=(1.4, 1.4))
     grain.scatter_offsets(kit, seed=9014, slots=(PLY,), tile=(0.5, 0.5))
-    grain.install(kit)
+    grain.install(kit, 35.0, planks={PINE: grain.PINE_PLANKS})

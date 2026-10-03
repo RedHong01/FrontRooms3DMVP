@@ -7,7 +7,8 @@ rails, recessed plinth, a 28 mm top that overhangs the carcass by 12 mm with a
 rounded (bullnose) edge, brass bail pulls on stamped backplates, tempered
 hardboard back panel with the maker's paper label.
 
-Budget pass (2026-10-02, §5.3 Kit_Chest5 / Kit_Dresser70s: 1,800 LOD0):
+Budget pass (2026-10-02, §5.3 Kit_Chest5 / Kit_Dresser70s: 1,500 / 600;
+fix pass: resized to the §5.3 0.86 x 0.46 x 1.22, ~1,610 / ~680 tris):
 * slots: Prop_WoodTeak, Prop_Brass, Prop_Hardboard (back, interior seen
   through the shut lines, plinth glue blocks), Prop_Label (atlas cell 11,
   maker's label). The nylon glides and the 4 mm back brads are gone (below
@@ -15,15 +16,18 @@ Budget pass (2026-10-02, §5.3 Kit_Chest5 / Kit_Dresser70s: 1,800 LOD0):
 * bevels: 3-segment bullnose on the top (the silhouette), 1 segment on the
   sides and drawer fronts, none on the rails/stile (they only border the dark
   shut lines) or on parts hidden inside the plinth.
-* pulls: stadium backplate, two 6-sided posts and a 6-sided bail tube on a
-  4-segment arc (~124 tris each, 8 pulls).
+* pulls: stadium backplate (3-segment ends), two 6-sided posts and a
+  6-sided bail tube on a 4-segment arc (~116 tris each, 8 pulls).
 
 Wood grain: kitlib's metre UVs follow each board's length (horizontal on
 drawer fronts, rails and top, vertical on the sides and stile);
-_pilecases_grain.scatter_offsets gives each board its own patch of veneer.
+_pilecases_grain.install transposes them for the teak albedo (grain on U),
+fixes the LOD1 sharp edges, and scatter_offsets gives each board its own
+patch of veneer.
 
-Size: 0.90 m wide, 0.45 m deep (top), 1.10 m tall. Drawers: 2 small side by
-side on top, 3 wide graduated below. Front (drawer faces) looks -Y.
+Size (§5.3 Kit_Chest5): 0.86 m wide, 0.46 m deep (top), 1.22 m tall. Drawers:
+2 small side by side on top, 3 wide graduated below (rows scaled x1.135 to
+fill the taller stack). Front (drawer faces) looks -Y.
 """
 
 import math
@@ -40,11 +44,11 @@ BRASS = "Prop_Brass"
 BACK = "Prop_Hardboard"        # back panel, interior shadow, glue blocks
 LABEL = "Prop_Label"
 
-W, D, H = 0.90, 0.45, 1.10
+W, D, H = 0.86, 0.46, 1.22
 SIDE_T = 0.018
-CX = 0.438                     # outer half-width of the carcass
-Y_FRONT = -0.212               # front edge of sides / rails / drawer faces
-Y_BACK = 0.222
+CX = 0.418                     # outer half-width of the carcass
+Y_FRONT = -0.217               # front edge of sides / rails / drawer faces
+Y_BACK = 0.227
 PLINTH_H = 0.075
 TOP_T = 0.028
 TOP_Z0 = H - TOP_T             # underside of the top
@@ -61,7 +65,7 @@ def _label_rect(mirror=False):
     return (r[2], r[1], r[0], r[3]) if mirror else r
 
 
-def _stadium(w, h, n=4):
+def _stadium(w, h, n=3):
     """Rounded-end plate outline (u = x, v = z), centred on 0."""
     r = h / 2
     cx = w / 2 - r
@@ -122,23 +126,24 @@ def build(kit):
 
     # Recessed plinth: an open ring of boards, 30 mm back from the front,
     # standing on the floor; dark glue blocks in its corners.
-    ph = PLINTH_H - 0.002
-    kit.frame((0.83, 0.40), (0.794, 0.364), ph, (0, 0.017, ph / 2), TEAK,
+    ph = PLINTH_H                  # floor to carcass: no seam under the bottom rail
+    py = 0.018
+    kit.frame((0.79, 0.41), (0.754, 0.374), ph, (0, py, ph / 2), TEAK,
               rot=(90, 0, 0), bevel=0.0, name="plinth")
-    kit.box((0.80, 0.37, 0.004), (0, 0.017, PLINTH_H - 0.004), BACK, bevel=0.0, name="plinth shadow")
+    kit.box((0.76, 0.38, 0.004), (0, py, PLINTH_H - 0.004), BACK, bevel=0.0, name="plinth shadow")
     for sx in (-1, 1):
         for sy in (-1, 1):
-            bx, by = sx * (0.397 - 0.0225), 0.017 + sy * (0.182 - 0.0225)
+            bx, by = sx * (0.377 - 0.0225), py + sy * (0.187 - 0.0225)
             kit.box((0.045, 0.045, 0.05), (bx, by, PLINTH_H - 0.004 - 0.025), BACK, bevel=0.0, name="glue block")
 
     # Back: hardboard panel set 2 mm into the rabbet, with the maker's label
     # (Prop_Label cell 11) 0.6 mm proud of its outer face (Y_BACK - 0.002).
     kit.box((2 * CX - 0.012, 0.005, car_h - 0.004), (0, Y_BACK - 0.0045, car_zc), BACK, bevel=0.0, name="back panel")
-    kit.quad(0.11, 0.088, (0.22, Y_BACK - 0.0014, 0.86), LABEL, facing="+y", name="maker label",
+    kit.quad(0.11, 0.088, (0.21, Y_BACK - 0.0014, 0.95), LABEL, facing="+y", name="maker label",
              uv_rect=_label_rect(mirror=True))
 
     # --- Drawer rows (bottom to top) -------------------------------------
-    rows = [0.266, 0.244, 0.222, 0.157]
+    rows = [0.302, 0.277, 0.252, 0.178]           # fills the 1.009 m stack
     z = PLINTH_H + 0.020
     ft = 0.019
     for k, h in enumerate(rows):
@@ -146,7 +151,7 @@ def build(kit):
         if k < 3:
             kit.box((2 * inner - 2 * GAP, ft, h), (0, Y_FRONT + ft / 2, zc), TEAK,
                     bevel=0.003, segments=1, name="wide drawer front")
-            for px in (-0.215, 0.215):
+            for px in (-0.205, 0.205):
                 _bail_pull(kit, px, zc + 0.012)
         else:
             stile = 0.016
@@ -163,12 +168,12 @@ def build(kit):
             z += RAIL
 
     # --- Metadata ----------------------------------------------------------
-    kit.support("top", (0, 0, H), (0.86, 0.42))
+    kit.support("top", (0, 0, H), (W - 0.04, D - 0.04))
     kit.anchor("top", (0, 0, H))
-    kit.collider((0, 0, H / 2), (W, D, H))
+    kit.collider((0, -0.0023, H / 2), (W, 0.4605, H))     # top + the pulls' 2.5 mm
     kit.tag("domestic", "case_goods", "pile", "pile_piece")
     kit.pile("Case", mass=3, palette="domestic70s", states=["Upright", "Back", "Front", "Side", "EdgeLean"])
 
     # Grain along each board (kitlib), each board on its own patch of veneer.
     grain.scatter_offsets(kit, seed=7031, slots=(TEAK,), tile=(1.0, 1.0))      # Teak TileSize 1.0 m
-    grain.install(kit)
+    grain.install(kit, SMOOTH_ANGLE)

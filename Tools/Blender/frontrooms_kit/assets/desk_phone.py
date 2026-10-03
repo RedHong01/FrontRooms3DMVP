@@ -2,51 +2,65 @@
 Nortel Meridian / AT&T Partner family): beige wedge base with a raised
 handset cradle on the left (two cups and a hookswitch between them), the
 handset resting in it, coiled handset cord to a jack in the cradle's front,
-dark grey faceplate with the LCD strip, soft keys, the 3 x 4 dial pad and
-its feature keys (HOLD / XFER / CONF / REDIAL / MSG), a column of line keys
-with the designation strip, volume rocker and a speaker grille at the
-front; flat line cord out of the back to an RJ-11 plug.
+dark grey faceplate with the smoked display window, soft keys, the 3 x 4
+dial pad and its feature keys (HOLD / XFER / CONF / REDIAL / MSG), a column
+of line keys with the designation strip, volume rocker and a speaker grille
+at the front; flat line cord out of the back to an RJ-11 plug.
 
-Real-world reference size: 0.22 m wide, 0.20 m deep, 0.09 m tall over the
-handset (base 26 mm at the front rising to 50 mm at the back, ~8 deg deck;
-the cradle stands 10 mm proud of the deck).
+Real-world reference size (synthesis §5.3): 0.20 m wide, 0.22 m deep,
+0.09 m tall over the handset (base 26 mm at the front rising to 50 mm at
+the back, ~7 deg deck; the cradle stands 10 mm proud of the deck). The
+handset overhangs the base front by ~4 mm, so its cord drops clear of the
+cradle.
 Front (dial pad, user side) faces -Y. Origin = desk under the base centre.
 
-Budget (synthesis §5.3): 900 LOD0 tris, LOD1 0.42, no collider (desk-top
-clutter), pile Small 0, <= 4 slots: PlasticBeige, PlasticGrey (faceplate,
+Budget (synthesis §5.3): 900 LOD0 / 300 LOD1 tris, no collider (desk-top
+clutter), pile Small 0, 4 slots: PlasticBeige, PlasticGrey (faceplate,
 cords, trims), Prop_PhoneKeys (keypad decal: dial pad on the left 60 %,
-feature keys on the right) and Prop_LCD (display).
+feature keys on the right) and Prop_GlassCRT (the display: dark smoked
+glass in the grey bezel reads as a display at 2 m; the pale Prop_LCD
+tint vanished against the grey faceplate).
 How: the keypad caps are real tapered caps joined with their plate into one
 decal part, so each cap shows its own legend cell; the handset is one
-ring-built rounded extrusion (152 tris; the bevelled extrude + two lathed
-pods were 904); the coiled cord is a helical band, 8 steps a turn (the
-8 x 5-sided wire coil was 1,270); LEDs, rules, seams and holes < 5 mm are gone.
+ring-built rounded extrusion (the bevelled extrude + two lathed pods were
+904); the coiled cord is a closed 6-sided corrugated sleeve, ridges every
+5.5 mm slanted like helix turns (the 8 x 5-sided wire coil was 1,270; a
+one-sided helical band read as a paper streamer and culled to loose arcs;
+a wound 3-sided wire cost 2x as much and read as a faceted zig-zag); the
+soft keys, line keys and rocker are real caps (each keeps its back);
+LEDs, rules, seams and holes < 5 mm are gone.
+LOD1 is AUTHORED (_deskgear.authored_lod1), not decimated (a collapse ate
+the faceplate and folded the caps): unbevelled base and cradle, a coarser
+handset, the keypad as its flat decal (caps dropped, legends stay in the
+texture), flat stand-ins for the soft / line keys and rocker, the coil as
+a straight 4-sided tube, no plugs.
 """
 
 import math
 
 import bmesh
 import bpy
+from mathutils import Vector
 
 import _deskgear as dg
 
 NAME = "Kit_DeskPhone"
-LOD1 = 0.42
+LOD1 = 0.33                # any number: the LOD1 is authored (see build), not decimated
 
 BEIGE = "Prop_PlasticBeige"
 GREY = "Prop_PlasticGrey"
 KEYS = "Prop_PhoneKeys"
-LCD = "Prop_LCD"
+GLASS = "Prop_GlassCRT"
 
-W, D = 0.22, 0.20
-DECK_FRONT_Y, DECK_BACK_Y = -0.088, 0.084
+W, D = 0.20, 0.22
+DECK_FRONT_Y, DECK_BACK_Y = -0.098, 0.094
 DECK_FRONT_Z, DECK_BACK_Z = 0.026, 0.050
 TILT = math.atan2(DECK_BACK_Z - DECK_FRONT_Z, DECK_BACK_Y - DECK_FRONT_Y)
 Z0 = DECK_FRONT_Z + (0 - DECK_FRONT_Y) * math.tan(TILT)      # deck height above y = 0
 
-# Cradle block on the left: x -0.110 .. -0.040, full depth, its top 10 mm
+# Cradle block on the left: x -0.100 .. -0.036, full depth, its top 10 mm
 # above the deck; cups 6 mm deep (floor 4 mm above the deck).
-CRADLE_X0, CRADLE_X1 = -W / 2, -0.040
+CRADLE_X0, CRADLE_X1 = -W / 2, -0.036
 CRADLE_U = (CRADLE_X0 + CRADLE_X1) / 2
 CRADLE_W = CRADLE_X1 - CRADLE_X0
 CUP_FLOOR, CRADLE_TOP = 0.004, 0.010
@@ -54,13 +68,14 @@ CUP_U, CUP_V = 0.050, 0.044          # cup opening (across, along)
 SLOT_V = 0.018                       # hookswitch slot between the cups
 
 HANDSET_U = CRADLE_U
-HANDSET_V = 0.001
+HANDSET_V = -0.011                   # forward of centre: the mouthpiece end overhangs the base front
 POD_V = 0.074                        # earpiece / mouthpiece centres from the handset centre
 
 # Keypad decal (Prop_PhoneKeys, 512 x 512): where it lies on the faceplate
 # (deck u, v of its lower-left corner) and its size.
-FIELD_U0, FIELD_V0 = -0.030, -0.041
+FIELD_U0, FIELD_V0 = -0.029, -0.041
 FIELD_W, FIELD_D = 0.082, 0.068
+TOP = 0.0016                         # faceplate surface (deck w)
 
 
 def _deck(u, v, w):
@@ -90,6 +105,24 @@ def _cap(kit, x, y, w, h, slot, back=True, name="key"):
     # rot X 90, so its base is local -Y and its back (world +Y) local -Z.
     dg.prune(cap, lambda n: n.y < -0.99 or (not back and n.z < -0.7))
     return cap
+
+
+def _deck_cap(kit, u, v, w, h, name="key"):
+    """A standalone cap standing on the faceplate at deck (u, v): the cap's
+    stand-up rotation and the deck tilt compose (X 90 + TILT); setting only
+    the tilt (as _on_deck does) laid the caps on their sides with their open
+    base toward the user."""
+    cap = _cap(kit, 0, 0, w, h, BEIGE, name=name)
+    cap.rotation_mode = "XYZ"
+    cap.rotation_euler = (math.pi / 2 + TILT, 0, 0)
+    cap.location = _deck(u, v, TOP + 0.00225)
+    return cap
+
+
+def _flat_key(kit, u, v, w, h, slot=BEIGE, name="LOD1 key"):
+    """LOD1 stand-in for a cap: its top as a flat quad on the faceplate."""
+    q = kit.quad(w - 0.0024, h - 0.0024, (0, 0, 0), slot, facing="+z", name=name, uv="metres")
+    return _on_deck(q, u, v, TOP + 0.0004)
 
 
 def _join(kit, objs):
@@ -123,29 +156,35 @@ def _offset(poly, d):
     return out
 
 
-def _handset(kit, hu, hv, wb):
+def _handset(kit, hu, hv, wb, coarse=False):
     """Handset: the side outline (v along it, w up) extruded 40 mm across
-    with its long edges rolled over a 6.5 mm radius in two steps, built as
-    vertex rings (cap, roll, side band, roll, cap). Returns the part."""
-    end = [(0.094, 0.0), (0.1005, 0.0025), (0.1035, 0.0085), (0.1035, 0.0225), (0.1010, 0.0295), (0.0945, 0.0335)]
-    outline = ([(-v, w) for v, w in reversed(end[:3])] + [(-0.056, 0.0), (-0.042, 0.0125), (0.042, 0.0125), (0.056, 0.0)]
-               + end + [(0.0, 0.0350)] + [(-v, w) for v, w in reversed(end[3:])])
+    with its long edges rolled over a 6.5 mm radius, built as vertex rings
+    (cap, roll, side band, roll, cap). coarse (LOD1): 4-point ends and a
+    one-step roll (~100 tris instead of 200)."""
+    if coarse:
+        end = [(0.094, 0.0), (0.1035, 0.0060), (0.1035, 0.0250), (0.0945, 0.0335)]
+        lo, hi = end[:2], end[2:]
+        steps = (0.0, 90.0)
+    else:
+        end = [(0.094, 0.0), (0.1005, 0.0025), (0.1035, 0.0085), (0.1035, 0.0225), (0.1010, 0.0295), (0.0945, 0.0335)]
+        lo, hi = end[:3], end[3:]
+        steps = (0.0, 45.0, 90.0)
+    outline = ([(-v, w) for v, w in reversed(lo)] + [(-0.056, 0.0), (-0.042, 0.0125), (0.042, 0.0125), (0.056, 0.0)]
+               + end + [(0.0, 0.0350)] + [(-v, w) for v, w in reversed(hi)])
     hw, r = 0.020, 0.0065
     rings = []
     for side in (-1, 1):
-        steps = (0.0, 45.0, 90.0) if side < 0 else (90.0, 45.0, 0.0)
-        for a in steps:
+        for a in (steps if side < 0 else tuple(reversed(steps))):
             t = math.radians(a)
             inset = r * (1 - math.sin(t))
             u = side * (hw - r * (1 - math.cos(t)))
             rings.append([(u, v, w) for v, w in _offset(outline, inset)])
-    obj = dg.rings_mesh(kit, rings, BEIGE, name="handset", cap_first=True, cap_last=True)
-    # rings are in handset-local (u across, v along, w up): place on the deck.
+    obj = dg.rings_mesh(kit, rings, BEIGE, name="LOD1 handset" if coarse else "handset", cap_first=True, cap_last=True)
+    # rings are in handset-local (u across, v along, w up) = (x, y, z):
+    # the deck rotation places them on the deck.
     obj.location = _deck(hu, hv, wb)
     obj.rotation_mode = "XYZ"
     obj.rotation_euler = (TILT, 0, 0)
-    # local (u, v, w) must map to deck (u, v, w): the mesh is built with
-    # x = u, y = v, z = w already, so the deck rotation is enough.
     return obj
 
 
@@ -157,23 +196,23 @@ def _rj11(kit, end, prev):
     dx, dy = dx / l, dy / l
     rz = math.degrees(math.atan2(-dx, dy))           # local +Y along the cord
     c = (end[0] + dx * 0.010, end[1] + dy * 0.010)
-    dg.box_faces(kit, (0.0095, 0.020, 0.0065), (c[0], c[1], 0.00325), BEIGE, faces=("-x", "+x", "-y", "+y", "+z"),
-                 rot=(0, 0, rz), name="rj11 plug")
+    return dg.box_faces(kit, (0.0095, 0.020, 0.0065), (c[0], c[1], 0.00325), BEIGE, faces=("-x", "+x", "-y", "+y", "+z"),
+                        rot=(0, 0, rz), name="rj11 plug")
 
 
-def _coil(kit, centre, radius, pitch, per_turn, width, slot, name="coiled cord"):
-    """Coiled cord as a helical band: each turn is a strip ``width`` wide
-    (across the turn) facing out from the coil axis, ``per_turn`` steps
-    round. Seen from outside it reads as the round wire's lit outer face;
-    2 tris a step, so 8 steps a turn cost what a 3-sided wire costs at 2.7.
-    The far half of each turn faces away and is culled in Unity, like the
-    wire behind the near turns."""
-    from mathutils import Vector
+def _coil(kit, centre, r_peak, r_valley, pitch, slot, sides=6, slant=0.25, r_end=0.0019, name="coiled cord"):
+    """Coiled cord as a closed corrugated sleeve along the ``centre`` polyline:
+    ``sides``-sided rings every half ``pitch``, alternating ``r_peak`` (the
+    outside of a turn) and ``r_valley`` (the gap between turns). Each ring is
+    slanted along the cord by ``slant`` x its radius, so the ridges lean like
+    the turns of a helix. The end rings shrink to ``r_end`` to meet the
+    straight leads. Closed section: reads as a dark ribbed coil from every
+    side (12 tris a ring, ~1/3 of a wound wire of the same smoothness)."""
     lengths = [0.0]
     for a, b in zip(centre, centre[1:]):
         lengths.append(lengths[-1] + (Vector(b) - Vector(a)).length)
     total = lengths[-1]
-    n = max(8, int(round(total / pitch * per_turn)))
+    n = max(4, int(round(total / (pitch / 2))))
     samples = []
     for k in range(n + 1):
         s_ = total * k / n
@@ -184,36 +223,47 @@ def _coil(kit, centre, radius, pitch, per_turn, width, slot, name="coiled cord")
                 samples.append(Vector(centre[i]).lerp(Vector(centre[i + 1]), t))
                 break
     bm = bmesh.new()
-    rows = []
+    rings, mids = [], []
     for k, (p, t, nrm, b) in enumerate(dg.frames(samples)):
-        phi = 2 * math.pi * k / per_turn
-        out = nrm * math.cos(phi) + b * math.sin(phi)
-        h = p + out * radius
-        rows.append((bm.verts.new(h - t * (width / 2)), bm.verts.new(h + t * (width / 2)), out))
-    for (a0, a1, o0), (b0, b1, o1) in zip(rows, rows[1:]):
-        f = bm.faces.new((a0, a1, b1, b0))
-        f.normal_update()
-        if f.normal.dot(o0 + o1) < 0:
-            f.normal_flip()
+        r = r_end if k in (0, n) else (r_peak if k % 2 else r_valley)
+        ring = []
+        for i in range(sides):
+            a = 2 * math.pi * (i + 0.5) / sides
+            ring.append(bm.verts.new(p + (nrm * math.cos(a) + b * math.sin(a)) * r + t * (math.sin(a) * r * slant)))
+        rings.append(ring)
+        mids.append(p)
+    for k in range(n):
+        for i in range(sides):
+            j = (i + 1) % sides
+            f = bm.faces.new((rings[k][i], rings[k][j], rings[k + 1][j], rings[k + 1][i]))
+            f.normal_update()
+            if f.normal.dot(f.calc_center_median() - (mids[k] + mids[k + 1]) / 2) < 0:
+                f.normal_flip()
     return kit._new_object(name, bm, slot, "metres", "xz")
 
 
 def build(kit):
+    dg.authored_lod1(kit)
+    lod0, lod1 = [], []
     tilt = math.degrees(TILT)
 
     # ------------------------------------------------------------ base
     # Main body right of the cradle: wedge side profile (front chamfer, deck,
     # rear hump), one chamfered extrusion. Its left end is buried 4 mm inside
     # the cradle block.
-    prof = [(-D / 2, 0.0), (D / 2, 0.0), (D / 2, 0.044), (0.093, 0.052), (DECK_BACK_Y, DECK_BACK_Z),
+    prof = [(-D / 2, 0.0), (D / 2, 0.0), (D / 2, 0.044), (D / 2 - 0.007, 0.052), (DECK_BACK_Y, DECK_BACK_Z),
             (DECK_FRONT_Y, DECK_FRONT_Z), (-D / 2, 0.019)]
     bx0 = CRADLE_X1 - 0.004
-    kit.extrude(prof, W / 2 - bx0, ((W / 2 + bx0) / 2, 0, 0), BEIGE, plane="yz", bevel=0.0045, segments=1, name="base shell")
+    lod0.append(kit.extrude(prof, W / 2 - bx0, ((W / 2 + bx0) / 2, 0, 0), BEIGE, plane="yz", bevel=0.0045, segments=1,
+                            name="base shell"))
+    lod1.append(kit.extrude(prof, W / 2 - bx0, ((W / 2 + bx0) / 2, 0, 0), BEIGE, plane="yz", bevel=0.0,
+                            name="LOD1 base shell"))
 
     # Cradle block: body up to the cup floors (4 mm above the deck) ...
     yf, yb = -D / 2 - 0.0003, D / 2 + 0.0003      # 0.3 mm proud of the base faces (no coplanar fight)
     cprof = [(yf, 0.0003), (yb, 0.0003), (yb, _deck_z(yb, CUP_FLOOR)), (yf, _deck_z(yf, CUP_FLOOR))]
-    kit.extrude(cprof, CRADLE_W, (CRADLE_U, 0, 0), BEIGE, plane="yz", bevel=0.003, segments=1, name="cradle body")
+    lod0.append(kit.extrude(cprof, CRADLE_W, (CRADLE_U, 0, 0), BEIGE, plane="yz", bevel=0.003, segments=1, name="cradle body"))
+    lod1.append(kit.extrude(cprof, CRADLE_W, (CRADLE_U, 0, 0), BEIGE, plane="yz", bevel=0.0, name="LOD1 cradle body"))
     # ... then the 6 mm cup deck: two frames, each round one cup, with the
     # hookswitch slot between them (the switch itself is under the handset); dark cup floors.
     hv = HANDSET_V
@@ -235,29 +285,31 @@ def build(kit):
     # Parting line between the top cover and the bottom tray: a thin dark
     # band following the plan outline.
     pl = dg.round_rect(W + 0.0010, D + 0.0010, 0.0045, seg=1)    # chamfered corners, like the base
-    dg.rings_mesh(kit, [[(x, y, 0.0090) for x, y in pl], [(x, y, 0.0102) for x, y in pl]], GREY, name="parting line",
-                  centre=(0, 0, 0.0096))
+    lod0.append(dg.rings_mesh(kit, [[(x, y, 0.0090) for x, y in pl], [(x, y, 0.0102) for x, y in pl]], GREY,
+                              name="parting line", centre=(0, 0, 0.0096)))
 
     # ------------------------------------------------------------ faceplate
-    fp_u0, fp_u1, fp_v0, fp_v1 = -0.036, 0.104, -0.058, 0.081
+    fp_u0, fp_u1, fp_v0, fp_v1 = -0.032, 0.094, -0.062, 0.086
     fp = dg.box_faces(kit, (fp_u1 - fp_u0, fp_v1 - fp_v0, 0.0024), (0, 0, 0.0004), GREY,
                       faces=("-x", "+x", "-y", "+y", "+z"), name="faceplate")
     _on_deck(fp, (fp_u0 + fp_u1) / 2, (fp_v0 + fp_v1) / 2, 0.0004)
-    top = 0.0016   # faceplate surface (deck w)
 
-    # LCD: smoked display on a raised dark bezel block.
-    lu, lv = 0.033, 0.064
-    lb = dg.face_box(kit, (0.098, 0.0016, 0.026), (0, 0, 0), GREY, facing="+z", name="LCD bezel")
-    _on_deck(lb, lu, lv, top + 0.0008)
+    # Display: smoked glass window on a raised grey bezel block.
+    lu, lv = 0.031, 0.068
+    lb = dg.face_box(kit, (0.098, 0.0016, 0.026), (0, 0, 0), GREY, facing="+z", name="display bezel")
+    _on_deck(lb, lu, lv, TOP + 0.0008)
     lb.rotation_euler = (TILT - math.pi / 2, 0, 0)
-    disp = kit.quad(0.086, 0.016, (0, 0, 0), LCD, facing="+z", name="LCD", uv="decal")
-    _on_deck(disp, lu, lv, top + 0.0018)
+    disp = kit.quad(0.086, 0.016, (0, 0, 0), GLASS, facing="+z", name="display", uv="decal")
+    _on_deck(disp, lu, lv, TOP + 0.0018)
     # Soft keys under the display.
     for k in range(3):
-        _on_deck(_cap(kit, 0, 0, 0.018, 0.0072, BEIGE, name="soft key"), 0.005 + k * 0.028, 0.043, top)
+        u, v = 0.003 + k * 0.028, 0.045
+        lod0.append(_deck_cap(kit, u, v, 0.018, 0.0072, name="soft key"))
+        lod1.append(_flat_key(kit, u, v, 0.018, 0.0072))
 
     # Keypad: plate + caps in one decal part, so the planar Prop_PhoneKeys
-    # mapping over the field puts each legend cell on its own cap.
+    # mapping over the field puts each legend cell on its own cap. The plate
+    # rides 0.3 mm above the faceplate (coplanar faces would z-fight).
     def tex(px, py):           # texture px (from the top-left) -> metres from the field centre
         return (px / 512.0 - 0.5) * FIELD_W, FIELD_D * (0.5 - py / 512.0)
     plate = kit.quad(FIELD_W, FIELD_D, (0.0, 0.0, 0.0), KEYS, facing="+z", name="keypad", uv="decal")
@@ -274,49 +326,68 @@ def build(kit):
     keypad = _join(kit, parts)
     keypad["fr_uv"] = "decal"
     keypad["fr_decal_axes"] = "xy"
-    _on_deck(keypad, FIELD_U0 + FIELD_W / 2, FIELD_V0 + FIELD_D / 2, top)
+    kc_u, kc_v = FIELD_U0 + FIELD_W / 2, FIELD_V0 + FIELD_D / 2
+    lod0.append(_on_deck(keypad, kc_u, kc_v, TOP + 0.0003))
+    # LOD1: the decal alone, flat (the caps' legends are in the texture).
+    lod1.append(_on_deck(kit.quad(FIELD_W, FIELD_D, (0, 0, 0), KEYS, facing="+z", name="LOD1 keypad", uv="decal"),
+                         kc_u, kc_v, TOP + 0.0003))
 
-    # Line / memory keys with the designation strip beside them.
+    # Line / memory keys with the designation strip beside them. Every key
+    # keeps its back: the next key sits 5.5 mm behind, so the walls show.
     for r in range(5):
-        _on_deck(_cap(kit, 0, 0, 0.0140, 0.0085, BEIGE, back=(r == 0), name="line key"), 0.068, 0.0215 - r * 0.0140, top)
+        u, v = 0.0635, 0.0215 - r * 0.0140
+        lod0.append(_deck_cap(kit, u, v, 0.0140, 0.0085, name="line key"))
+        lod1.append(_flat_key(kit, u, v, 0.0140, 0.0085))
     strip = kit.quad(0.0160, 0.0700, (0, 0, 0), BEIGE, facing="+z", name="designation strip", uv="metres")
-    _on_deck(strip, 0.0925, -0.0075, top + 0.0003)
+    _on_deck(strip, 0.0835, -0.0075, TOP + 0.0003)
     # Volume rocker under the keypad.
-    _on_deck(_cap(kit, 0, 0, 0.038, 0.0078, BEIGE, name="volume rocker"), 0.011, -0.050, top)
+    lod0.append(_deck_cap(kit, 0.011, -0.050, 0.038, 0.0078, name="volume rocker"))
+    lod1.append(_flat_key(kit, 0.011, -0.050, 0.038, 0.0078))
 
     # Front strip on the bare shell: speaker grille slots.
     for k in range(4):
         s = kit.quad(0.036, 0.0020, (0, 0, 0), GREY, facing="+z", name="speaker slot", uv="metres")
-        _on_deck(s, 0.075, -0.0665 - k * 0.0048, 0.0003)
+        _on_deck(s, 0.072, -0.0710 - k * 0.0048, 0.0003)
 
     # ------------------------------------------------------------ handset
     hu = HANDSET_U
     wb = CUP_FLOOR + 0.0014          # lobe bottoms just clear the cup floors
-    _handset(kit, hu, hv, wb)
+    lod0.append(_handset(kit, hu, hv, wb))
+    lod1.append(_handset(kit, hu, hv, wb, coarse=True))
 
     # ------------------------------------------------------------ coiled cord
-    # Mouthpiece end -> drops in front of the cradle -> one loop on the desk
-    # -> jack in the cradle's front face.
+    # Mouthpiece end (overhanging the base front) -> drops in front of the
+    # cradle -> one loop on the desk -> jack in the cradle's front face.
     start = _deck(hu, hv - 0.1005, wb + 0.006)
-    jack = (-0.099, -D / 2 - 0.0006, 0.013)
-    lead_a = (start[0], start[1] - 0.006, start[2] - 0.006)
-    dg.tube(kit, [start, lead_a], 0.0018, GREY, verts=4, name="cord lead", caps=True)
-    centre = dg.smooth([lead_a, (hu - 0.002, -0.1135, 0.0140), (hu - 0.008, -0.1180, 0.0062),
-                        (-0.092, -0.1160, 0.0060), (jack[0], jack[1] - 0.009, jack[2] - 0.001)], 3)
+    jack = (CRADLE_X0 + 0.011, -D / 2 - 0.0006, 0.013)
+    lead_a = (start[0], start[1] - 0.005, start[2] - 0.006)
+    lod0.append(dg.tube(kit, [start, lead_a], 0.0018, GREY, verts=4, name="cord lead", caps=True))
+    jack_in = (jack[0], jack[1] - 0.009, jack[2] - 0.001)
+    ctrl = [lead_a, (hu - 0.002, -D / 2 - 0.0135, 0.0140), (hu - 0.008, -D / 2 - 0.0180, 0.0062),
+            (jack[0] + 0.007, -D / 2 - 0.0160, 0.0060), jack_in]
+    centre = dg.smooth(ctrl, 3)
     centre = [(x, y, max(z, 0.0058)) for x, y, z in centre]          # coil rests on the desk
-    _coil(kit, centre, 0.0040, 0.0062, 8, 0.0030, GREY)
-    dg.tube(kit, [(jack[0], jack[1] - 0.009, jack[2] - 0.001), (jack[0], jack[1] + 0.002, jack[2])], 0.0018, GREY,
-            verts=4, name="cord plug lead", caps=True)
-    dg.face_box(kit, (0.012, 0.004, 0.009), (jack[0], jack[1] - 0.0016, jack[2]), GREY, name="handset jack plug")
+    lod0.append(_coil(kit, centre, 0.0042, 0.0029, 0.0055, GREY, slant=0.3))
+    lod0.append(dg.tube(kit, [jack_in, (jack[0], jack[1] + 0.002, jack[2])], 0.0018, GREY, verts=4, name="cord plug lead",
+                        caps=True))
+    lod0.append(dg.face_box(kit, (0.008, 0.002, 0.006), (jack[0], jack[1] - 0.0008, jack[2]), GREY, name="handset jack plug"))
+    # LOD1: the coil as a straight 4-sided tube of its outer size.
+    lod1.append(dg.tube(kit, [start] + ctrl[1:-1] + [(jack[0], jack[1] + 0.002, jack[2])], 0.0040, GREY, verts=4,
+                        name="LOD1 coil"))
 
     # ------------------------------------------------------------ line cord
     # Flat 6 x 3 mm line cord out of the back to its (unplugged) RJ-11 plug.
     lx = 0.045
-    dg.face_box(kit, (0.012, 0.004, 0.009), (lx, D / 2 + 0.0015, 0.012), GREY, facing="+y", name="line plug")
+    lod0.append(dg.face_box(kit, (0.012, 0.004, 0.009), (lx, D / 2 + 0.0015, 0.012), GREY, facing="+y", name="line plug"))
     ctrl = [(lx, D / 2 + 0.003, 0.012), (lx + 0.0015, D / 2 + 0.012, 0.0080), (lx + 0.005, D / 2 + 0.021, 0.0016),
             (lx + 0.017, D / 2 + 0.040, 0.0015), (lx + 0.026, D / 2 + 0.062, 0.0030)]
-    dg.tube(kit, ctrl, 0.0030, GREY, verts=4, name="line cord", flat=0.5)
-    _rj11(kit, ctrl[-1], ctrl[-2])
+    lod0.append(dg.tube(kit, ctrl, 0.0030, GREY, verts=4, name="line cord", flat=0.5))
+    lod0.append(_rj11(kit, ctrl[-1], ctrl[-2]))
+    lod1.append(dg.tube(kit, [(lx, D / 2, 0.012)] + ctrl[2::2], 0.0030, GREY, verts=4, name="LOD1 line cord", flat=0.5,
+                        caps=True))                                   # no plug at LOD1: close the end
+
+    dg.lod0_only(*lod0)
+    dg.lod1_only(*lod1)
 
     # ------------------------------------------------------------ metadata
     kit.anchor("handset", _deck(hu, hv, 0.04))

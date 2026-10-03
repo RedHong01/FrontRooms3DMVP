@@ -1,14 +1,14 @@
 """Cherry office credenza, c. 1988-97 (the cherry sideboard standing behind
-the pedestal desk in the low pile of A24 "Backrooms" Still A; also the
-executive-office wall unit of the Office level).
+the pedestal desk in the low pile of A24 "Backrooms" Still A). A pile /
+sprawl piece only: it is not an Office perimeter (wall_unit) prop.
 
 Real-world reference: "transitional" executive credenza in lacquered cherry
 veneer: a 30 mm top with an ogee edge overhanging 20 mm, a pedestal at each
 end (a locking box drawer over a lateral-file drawer), a pair of hinged doors
 on concealed hinges between them, fronts set between the case sides, an eased edge
 and a routed V-groove border, brass bail pulls, a brass lock core in each box
-drawer, a recessed toe-kick plinth, tempered hardboard back with the maker's
-label.
+drawer, a recessed plinth (toe kick, returns and a rear board), tempered
+hardboard back with the maker's label.
 
 Size: 1.52 m wide, 0.46 m deep, 0.76 m tall. Front looks -Y.
 """
@@ -49,18 +49,25 @@ def build(kit):
                  facing="+x" if sx > 0 else "-x", name="side", grain="z")
     kit.quad(2 * (CX - T), side_h, (0, YF, case_z0 + side_h / 2), WOOD, facing="-y", uv="metres", name="case face")
     nc.plate(kit, W, D, nc.ogee(TOP_T, 0.012), (0, 0, case_z1), WOOD, facing="+z", name="top", grain="x")
-    kit.box((2 * (CX - T), 0.005, H - TOP_T - 0.004), (0, YB - 0.0025, (H - TOP_T + 0.004) / 2), BACK, bevel=0.0,
+    # Hardboard back between the sides, from the case bottom to the top.
+    kit.box((2 * (CX - T), 0.005, side_h), (0, YB - 0.0025, case_z0 + side_h / 2), BACK, bevel=0.0,
             name="back panel")
     nc.label(kit, *nc.MAKER_LABEL, 0.105, 0.084, (-0.45, YB + 0.0003, 0.52), facing="+y", name="maker label")
-    # Recessed toe kick: front board and two returns, 35 mm in.
+    # Recessed plinth: a front toe kick 35 mm in, a rear board flush with the
+    # back, and two returns 20 mm in from the sides that butt BETWEEN them (no
+    # shared faces, so no z-fighting at the corners).
     ky = YF - FRONT_T + KICK_IN
     kx = CX - 0.020
-    kit.box((2 * kx, 0.018, KICK_H), (0, ky + 0.009, KICK_H / 2), WOOD, bevel=0.0, name="toe kick")
+    KB = 0.018
+    kit.box((2 * kx, KB, KICK_H), (0, ky + KB / 2, KICK_H / 2), WOOD, bevel=0.0, name="toe kick")
+    kit.box((2 * kx, KB, KICK_H), (0, YB - KB / 2, KICK_H / 2), WOOD, bevel=0.0, name="rear plinth")
+    r0, r1 = ky + KB, YB - KB
     for sx in (-1, 1):
-        kit.box((0.018, YB - ky - 0.006, KICK_H), (sx * (kx - 0.009), (ky + YB - 0.006) / 2, KICK_H / 2), WOOD,
-                bevel=0.0, name="kick return")
-    kit.box((2 * CX - 0.002, YB - YF + FRONT_T - 0.004, 0.012), (0, (YB + YF - FRONT_T) / 2, KICK_H + 0.006), WOOD,
-            bevel=0.0, name="bottom")
+        kit.box((KB, r1 - r0, KICK_H), (sx * (kx - KB / 2), (r0 + r1) / 2, KICK_H / 2), WOOD, bevel=0.0,
+                name="kick return")
+    # Case bottom between the sides, stopping on the back's inner face.
+    by0, by1 = YF - FRONT_T + 0.002, YB - 0.005
+    kit.box((2 * (CX - T), by1 - by0, 0.012), (0, (by0 + by1) / 2, KICK_H + 0.006), WOOD, bevel=0.0, name="bottom")
 
     # --- Fronts ------------------------------------------------------------------
     prof = nc.routed(FRONT_T, border=0.042, edge=0.004, groove=0.006, depth=0.003)
@@ -91,8 +98,11 @@ def build(kit):
     kit.support("top", (0, 0, H), (W - 0.04, D - 0.04))
     kit.anchor("top", (0, 0, H))
     kit.collider((0, 0, H / 2), (W, D, H))
-    kit.tag("office", "domestic", "case_goods", "pile", "pile_piece", "wall_unit")
+    # No "wall_unit": the credenza is not on the §4.4 Office perimeter list, so
+    # the generator must not line beige-office walls with cherry credenzas.
+    kit.tag("office", "domestic", "case_goods", "pile", "pile_piece")
     kit.pile("Case", mass=3, states=["Upright", "Back"], palette="office90s")
 
     nc.scatter(kit, 1529, (WOOD, BACK))
+    nc.grain_on_u(kit)
     nc.lod1_sharp(kit, SMOOTH_ANGLE)

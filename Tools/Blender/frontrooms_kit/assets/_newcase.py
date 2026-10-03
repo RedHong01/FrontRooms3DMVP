@@ -23,6 +23,8 @@ where the light catches:
               lines under flat top light (2 tris for the whole front).
 * label()     one cropped Prop_Label atlas cell (maker's label, asset tag).
 * scatter()   per-part uv offsets so neighbouring boards don't share grain.
+* grain_on_u() put the wood grain on texture U, where the scans run it
+              (self-disabling once kitlib does the same).
 * lod1_sharp() re-split LOD1 normals after kitlib's collapse decimation.
 * tri()       triangulate concave extrude caps up front.
 
@@ -367,6 +369,71 @@ def scatter(kit, seed, slots):
             continue
         if mats[0].name.split(".")[0] in slots:
             obj["fr_uv_offset"] = (round(rng.uniform(0, 1), 4), round(rng.uniform(0, 1), 4))
+
+
+# Albedos whose grain runs along texture U (checked on the CC0 maps
+# 2026-10-02: Ebony, Cherry, Oak and Plywood streak horizontally).
+U_GRAIN_SLOTS = ("Prop_WoodTeak", "Prop_WoodCherry", "Prop_WoodOak", "Prop_WoodDark", "Prop_WoodEbony",
+                 "Prop_WoodLaminate", "Prop_Plywood", "Prop_PinePallet")
+
+_GRAIN_ON_V = None
+
+
+def _kitlib_grain_on_v():
+    """True while kitlib._uv_metres puts a board's length (fr_grain) on V.
+    Probed once per Blender session on a 1.0 x 0.1 x 0.1 m test board, so
+    grain_on_u() switches itself off as soon as kitlib learns the swap."""
+    global _GRAIN_ON_V
+    if _GRAIN_ON_V is None:
+        import bpy
+        import kitlib
+        bm = bmesh.new()
+        bmesh.ops.create_cube(bm, size=1.0)
+        bmesh.ops.scale(bm, vec=Vector((1.0, 0.1, 0.1)), verts=bm.verts)
+        me = bpy.data.meshes.new("fr_newcase_grain_probe")
+        bm.to_mesh(me)
+        bm.free()
+        mat = bpy.data.materials.new("Prop_WoodOak.fr_newcase_probe")   # kitlib reads the name before the dot
+        me.materials.append(mat)
+        ob = bpy.data.objects.new("fr_newcase_grain_probe", me)
+        ob["fr_grain"] = "x"
+        try:
+            kitlib.Kit._uv_metres(ob)
+            uvs = me.uv_layers.active.data
+            top = [p for p in me.polygons if p.normal.z > 0.9][0]
+            us = [uvs[i].uv[0] for i in top.loop_indices]
+            vs = [uvs[i].uv[1] for i in top.loop_indices]
+            _GRAIN_ON_V = (max(vs) - min(vs)) > (max(us) - min(us))
+        finally:
+            bpy.data.objects.remove(ob, do_unlink=True)
+            bpy.data.meshes.remove(me)
+            bpy.data.materials.remove(mat)
+    return _GRAIN_ON_V
+
+
+def grain_on_u(kit):
+    """On THIS Kit instance only (kitlib.py is not edited): the wood scans
+    streak along texture U, but kitlib._uv_metres lays each board's grain
+    axis (fr_grain, else its long side) on V, so every stile, door and top
+    would show cross grain in Unity. After kitlib's projection, parts on
+    U_GRAIN_SLOTS get (u, v) -> (v, u), offsets included. Unity rebuilds the
+    tangents from the new UVs, so the normal maps need no swizzle. Decal and
+    uv="keep" parts (ply_edge, labels) are untouched. A no-op once kitlib
+    itself puts the grain on U (probed, see _kitlib_grain_on_v)."""
+    if not _kitlib_grain_on_v():
+        return
+    base = kit._uv_metres
+
+    def uv_metres(obj):
+        base(obj)
+        mats = obj.data.materials
+        slot = mats[0].name.split(".")[0] if len(mats) and mats[0] is not None else ""
+        if slot in U_GRAIN_SLOTS:
+            for d in obj.data.uv_layers.active.data:
+                u, v = d.uv
+                d.uv = (v, u)
+
+    kit._uv_metres = uv_metres
 
 
 def lod1_sharp(kit, smooth_angle):

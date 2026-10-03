@@ -7,7 +7,7 @@ Construction, bottom to top:
 * 5 twin-wheel nylon casters: a teardrop hood between two 50 mm wheels,
   each caster parked at a different swivel angle.
 * Gas lift: 3-stage black telescopic shroud over a chrome cylinder.
-* Seat mechanism: black pressed-steel housing on a mounting plate, a big
+* Seat mechanism: black pressed-steel housing under the seat shell, a big
   lobed tension knob under the front, a height paddle on the user's right
   and a tilt-lock lever on the left.
 * Seat: soft crowned foam cushion (0.48 W x 0.46 D, top at 0.45 m) with a
@@ -22,19 +22,21 @@ Construction, bottom to top:
 Real-world reference size: 0.66 W x 0.66 D (base) x 0.95 H; seat 0.45 high.
 Front (seat edge) faces -Y. The user's right hand is on -X.
 
-Slots (4, §5.3 + the round-2 Prop_FoamPU): Prop_FabricChair (cushions),
-Prop_PlasticBlack (nylon base, casters, shells, and the black-painted
-pressed-steel mechanism / spine / straps: painted steel is non-metallic, so
-it shares the plastic's dielectric slot), Prop_Chrome (gas cylinder),
-Prop_FoamPU (arm pads). The caster wheels are nylon, not rubber, so the old
-Prop_Rubber slot is gone.
+Slots (3, as §5.3): Prop_FabricChair (cushions), Prop_PlasticBlack (nylon
+base, casters, shells, the black-painted pressed-steel mechanism / spine /
+straps: painted steel is non-metallic, so it shares the plastic's
+dielectric slot, and the black PU arm pads: Prop_FoamPU is indistinguishable
+from it under flat top light and would cost every chair a submesh),
+Prop_Chrome (gas cylinder). The caster wheels are nylon, not rubber, so the
+old Prop_Rubber slot is gone.
 
-Budget (§5.3 4,500 / 1,800): ~4.5k tris LOD0 (was 8.9k), LOD1 0.40.
+Budget (§5.3 4,500 / 1,800): 4,484 tris LOD0 (was 8.9k), LOD1 0.40 (1,792).
 * Upholstery keeps its tessellation where it is seen (crowned cushion,
   dish, waterfall, lumbar, plan curve, 5-step corners); the separate welt
   cords are replaced by a bead-and-crevice ring in each cushion's own
-  profile, which draws the same dark seam line. Faces and rings buried in a
-  shell are left out.
+  profile, sitting on the crown roll (the bead's top is the cushion's
+  highest perimeter ring), which draws the same light-and-dark piped edge.
+  Faces and rings buried in a shell are left out.
 * Casters: twin 8-sided wheels with a rounded outer tyre edge, a 1-segment
   bevelled hood and one stem (was socket + collar + hub caps).
 * 1-segment bevels on the base legs, housing, bracket and spine
@@ -64,7 +66,7 @@ FABRIC = "Prop_FabricChair"
 BLACK = "Prop_PlasticBlack"
 STEEL = BLACK          # black-painted pressed steel (dielectric, shares the plastic slot)
 CHROME = "Prop_Chrome"
-PAD = "Prop_FoamPU"    # soft matte PU arm pads
+PAD = BLACK            # black PU arm pads (no FoamPU submesh: §5.3 lists 3 slots)
 
 
 # --------------------------------------------------------------------- helpers
@@ -284,8 +286,9 @@ def build(kit):
 
     # ------------------------------------------------------- seat mechanism
     seat_y = -0.03
+    # (No separate mounting plate: it sat inside the seat shell with its
+    # bottom coplanar with the shell's, so it only added z-fighting.)
     kit.box((0.15, 0.22, 0.040), (0, 0.0, 0.342), STEEL, bevel=0.008, segments=1, name="mechanism housing")
-    kit.box((0.20, 0.27, 0.007), (0, -0.01, 0.3655), STEEL, bevel=0.0, name="mounting plate")
     kit.cylinder(0.030, 0.012, (0, 0.0, 0.318), STEEL, verts=10, bevel=0.0, name="column socket")
     # Tension knob: a boss and one lobed knob under the front of the housing.
     kit.cylinder(0.012, 0.04, (0, -0.105, 0.31), STEEL, verts=6, bevel=0.0, name="knob boss")
@@ -324,11 +327,12 @@ def build(kit):
         roll = 0.020 * max(0.0, (-y - 0.13) / 0.10) ** 2
         return (x, y, z - (dish + roll) * f)
 
-    # Boxing (its foot starts inside the shell rim), then the welt: a cord
-    # bead proud of the face panel with a 90-degree crevice on its inner side
-    # (the dark seam line the separate cord used to make), crowned top.
-    seat_prof = [(0.006, 0.003), (0.0, 0.032), (0.0045, 0.0540), (-0.0035, 0.0590), (0.0005, 0.0670), (0.0065, 0.0600),
-                 (0.017, 0.0695), (0.045, 0.0745), (0.095, cush_h)]
+    # Boxing (its foot starts inside the shell rim), then the welt on the
+    # crown roll: a cord bead proud of the face panel with a crevice on its
+    # inner side (the dark seam line the separate cord used to make), then
+    # the crowned top.
+    seat_prof = [(0.006, 0.003), (0.0, 0.032), (0.0045, 0.0540), (-0.0035, 0.0630), (0.0005, 0.0700), (0.0065, 0.0640),
+                 (0.017, 0.0705), (0.045, 0.0750), (0.095, cush_h)]
     _soft_block(kit, "seat cushion", FABRIC, seat_hw, seat_hd, 0.085, seat_prof, (0, seat_y, cush_z),
                 warp=seat_warp, nc=5, nx=3, ny=3, cap_bottom=False)
 
@@ -355,8 +359,8 @@ def build(kit):
     rot_back = (90.0 - alpha, 0, 0)
     # (two inner crown rings sample the plan bend and the lumbar swell, so the
     # centre fan stays small and doesn't facet into an X under top light)
-    back_prof = [(0.004, 0.002), (0.0, 0.023), (0.004, 0.0345), (-0.0030, 0.0395), (0.0005, 0.0470), (0.0055, 0.0425),
-                 (0.016, 0.0500), (0.045, 0.0560), (0.090, 0.0577), (0.140, back_t)]
+    back_prof = [(0.004, 0.002), (0.0, 0.023), (0.004, 0.0345), (-0.0030, 0.0420), (0.0005, 0.0495), (0.0055, 0.0450),
+                 (0.016, 0.0510), (0.045, 0.0562), (0.090, 0.0577), (0.140, back_t)]
     _soft_block(kit, "back cushion", FABRIC, back_hw, back_hd, 0.085, back_prof, (0, by, bz), rot=rot_back,
                 warp=cushion_warp, nc=5, nx=3, ny=3, cap_bottom=False)
     shell_prof = [(0.000, 0.004), (0.000, -0.009), (0.008, -0.024), (0.030, -0.033), (0.110, -0.037)]
@@ -407,7 +411,10 @@ def build(kit):
     kit.support("seat", (0, seat_y, seat_top), (0.40, 0.38))
     kit.anchor("sit", (0, seat_y, seat_top))
     kit.anchor("back_top", (0, by + back_hd * sa, 0.95))
-    # §5.3: one box, 0.6 x 0.6 x 0.95 (chairs are static, not pushable).
-    kit.collider((0, 0.0, 0.475), (0.60, 0.60, 0.95))
+    # §5.3: one box (chairs are static, not pushable), sized to the real
+    # bounds (x -0.306..0.311, y -0.298..0.356 with the backrest, top 0.953;
+    # §5.3 critic: dia. 0.66) so the sidecar footprint keeps the backrest out
+    # of cubicle panels and desks.
+    kit.collider((0, 0.029, 0.477), (0.624, 0.656, 0.954))
     kit.tag("office", "seat")
     kit.pile("Seat", mass=1, palette="office90s", states=["Upright", "Inverted", "Side", "Back"])

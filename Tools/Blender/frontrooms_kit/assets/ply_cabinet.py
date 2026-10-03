@@ -113,3 +113,4 @@ def build(kit):
     kit.pile("Case", mass=2, states=["Upright", "Side", "Back"], palette="storage")
 
     nc.scatter(kit, 9917, (PLY, BACK))
+    nc.grain_on_u(kit)

@@ -7,7 +7,8 @@ on small brass butt hinges, brass mushroom knobs, base moulding, hardboard
 back, four plate casters (brass swivel plate and fork, 50 mm black wheel) set
 right at the corners so the wheels show past the moulding.
 
-Budget pass (2026-10-02, §5.3: 900 LOD0 / 400 LOD1):
+Budget pass (2026-10-02, §5.3: 900 LOD0 / 400 LOD1; fix pass: resized to the
+§5.3 0.50 x 0.45 x 0.62):
 * slots: Prop_WoodCherry, Prop_Brass, Prop_Rubber (wheels), Prop_Hardboard
   (back panel, the dark carcass face seen through the shut lines, the raw
   underside). The paper maker's label is gone (it was a 5th slot).
@@ -16,10 +17,12 @@ Budget pass (2026-10-02, §5.3: 900 LOD0 / 400 LOD1):
   keeps its separate stiles, rails and raised panel (the joint lines).
 * casters: plate, one tapered fork yoke and a 10-sided wheel (~68 tris).
 
-Size: 0.45 m wide, 0.40 m deep (body; the trailing wheels reach 7 mm past
-front and back), 0.62 m tall including 65 mm casters.
-Front (drawer + door) looks -Y. Wood grain follows each board's length
-(kitlib), each board on its own patch of veneer (_pilecases_grain).
+Size (§5.3): 0.50 m wide, 0.45 m deep (body; the knobs stand 26 mm proud and
+the trailing wheels reach 7 mm past front and back), 0.62 m tall including
+65 mm casters. Front (drawer + door) looks -Y. Wood grain follows each
+board's length (kitlib; _pilecases_grain.install transposes it for the
+cherry albedo, grain on U, and fixes the LOD1 sharp edges), each board on its
+own patch of veneer.
 """
 
 import math
@@ -35,16 +38,18 @@ BRASS = "Prop_Brass"
 RUBBER = "Prop_Rubber"
 BACK = "Prop_Hardboard"    # tempered hardboard back, dark interior, raw underside
 
-W, D, H = 0.45, 0.40, 0.62
+W, D, H = 0.50, 0.45, 0.62
 CASTER_H = 0.065
 SIDE_T = 0.018
-CX = 0.219                 # outer half-width of the carcass
-Y_CAR = -0.180             # carcass front edge (fronts lie on it)
-Y_BACK = 0.198
+CX = 0.244                 # outer half-width of the carcass
+Y_CAR = -0.205             # carcass front edge (fronts lie on it)
+Y_BACK = 0.223
 FRONT_T = 0.020
-Y_FACE = Y_CAR - FRONT_T   # -0.200
+Y_FACE = Y_CAR - FRONT_T   # -0.225
 TOP_T = 0.022
 BASE_H = 0.025
+Y_LO = Y_FACE - 0.0315     # knob tips
+Y_DEPTH = 0.2300 - Y_LO    # to the back wheels' trailing edge (sidecar bounds)
 
 
 def _knob(kit, x, y, z, scale=1.0):
@@ -137,16 +142,16 @@ def build(kit):
     # Plates flush with the carcass sides; wheels trail outward so the front
     # pair shows ~7 mm past the base moulding.
     for sx in (-1, 1):
-        _caster(kit, sx * (CX - 0.023), -0.178, trail=-0.008)
-        _caster(kit, sx * (CX - 0.023), 0.172, trail=0.008)
+        _caster(kit, sx * (CX - 0.023), Y_CAR + 0.002, trail=-0.008)
+        _caster(kit, sx * (CX - 0.023), Y_BACK - 0.026, trail=0.008)
 
     # --- Metadata --------------------------------------------------------
-    kit.support("top", (0, 0, H), (0.43, 0.38))
+    kit.support("top", (0, 0, H), (W - 0.02, D - 0.02))
     kit.anchor("top", (0, 0, H))
-    kit.collider((0, 0, H / 2), (W, 0.41, H))          # body + casters, one box (§5.3)
+    kit.collider((0, Y_LO + Y_DEPTH / 2, H / 2), (W, Y_DEPTH, H))   # body, knobs, wheels: one box (§5.3)
     kit.tag("domestic", "case_goods", "pile", "pile_piece")
     kit.pile("Case", mass=1, palette="domestic70s", states=["Upright", "Side"])
 
     # Each board on its own patch of veneer (grain direction: kitlib).
     grain.scatter_offsets(kit, seed=5112, slots=(CHERRY,), tile=(1.0, 1.0))  # Cherry TileSize 1.0 m
-    grain.install(kit)
+    grain.install(kit, SMOOTH_ANGLE)
