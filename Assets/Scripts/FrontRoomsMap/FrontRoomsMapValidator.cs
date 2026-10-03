@@ -21,6 +21,7 @@ namespace FrontRooms.Map
         public int door;
         public int window;
         public int pillars;
+        public int modulesPlaced;
         public List<string> errors = new List<string>();
     }
 
@@ -48,30 +49,33 @@ namespace FrontRooms.Map
     /// </summary>
     public static class FrontRoomsMapValidator
     {
-        public static MapVerificationReport Run(MapSettings settings, int firstSeed, int seedCount, int radius)
+        public static MapVerificationReport Run(MapSettings settings, int firstSeed, int seedCount, int radius, IReadOnlyList<RoomModuleData> modules = null)
         {
             var report = new MapVerificationReport { radiusChunks = radius, seedCount = seedCount, timestampUtc = DateTime.UtcNow.ToString("o") };
             for (var i = 0; i < seedCount; i++)
             {
                 var s = (settings ?? new MapSettings()).Clone();
                 s.seed = unchecked(firstSeed + i * 7919);
-                var result = ValidateSeed(s, radius);
+                var result = ValidateSeed(s, radius, modules);
                 report.seeds.Add(result);
                 if (result.passed) report.passed++; else report.failed++;
             }
             return report;
         }
 
-        public static MapSeedReport ValidateSeed(MapSettings settings, int radius)
+        public static MapSeedReport ValidateSeed(MapSettings settings, int radius, IReadOnlyList<RoomModuleData> modules = null)
         {
             var report = new MapSeedReport { seed = settings.seed };
-            var cache = new FrontRoomsMapCache(settings);
+            var cache = new FrontRoomsMapCache(settings, modules);
             var gen = cache.Generator;
             const int n = MapGrid.ChunkCells;
             int min = -radius, max = radius;
             for (var cy = min; cy < max; cy++)
             for (var cx = min; cx < max; cx++)
-                cache.Get(new GridCoord(cx, cy));
+            {
+                var built = cache.Get(new GridCoord(cx, cy));
+                for (var r = 0; r < built.rooms.Length; r++) if (built.ModuleOf(r) != null) report.modulesPlaced++;
+            }
 
             void Fail(string message) { if (report.errors.Count < 12) report.errors.Add(message); }
 
@@ -199,7 +203,7 @@ namespace FrontRooms.Map
 
             // 5. Determinism: a fresh generator building in a different order
             // produces identical chunks. 6. A shifted chunk keeps its borders.
-            var fresh = new FrontRoomsMapGenerator(settings);
+            var fresh = new FrontRoomsMapGenerator(settings, modules);
             for (var cy = max - 1; cy >= min; cy -= 3)
             for (var cx = max - 1; cx >= min; cx -= 3)
             {

@@ -18,6 +18,7 @@ public sealed class FrontRoomsMapDebugWindow : EditorWindow
     static readonly Color DoorColor = new Color(.957f, .875f, .231f);
     static readonly Color WindowColor = new Color(.60f, .78f, .85f);
     static readonly Color ChunkLine = new Color(0f, 0f, 0f, .6f);
+    static readonly Color ModuleColor = new Color(1f, .55f, .15f, .9f);
     static readonly Color HoverColor = new Color(.957f, .875f, .231f, .35f);
 
     [SerializeField] FrontRoomsLevelProfile profile;
@@ -67,7 +68,7 @@ public sealed class FrontRoomsMapDebugWindow : EditorWindow
     }
 
     // The preview seed is this window's own; it is never written to the profile.
-    void Rebuild() => cache = new FrontRoomsMapCache(Profile.Generation(previewSeed));
+    void Rebuild() => cache = new FrontRoomsMapCache(Profile.Generation(previewSeed), Profile.ModuleData());
 
     void OnGUI()
     {
@@ -112,7 +113,7 @@ public sealed class FrontRoomsMapDebugWindow : EditorWindow
         if (Event.current.type == EventType.Repaint) DrawMap(rect);
 
         EditorGUILayout.LabelField(HoverText(), EditorStyles.miniLabel);
-        EditorGUILayout.LabelField("Low · standard · tall zones get lighter.   White wall, gap = arch, yellow = door, blue = window, dot = pillar, K = zone key.", EditorStyles.miniLabel);
+        EditorGUILayout.LabelField("Low · standard · tall zones get lighter.   White wall, gap = arch, yellow = door, blue = window, dot = column, yellow square = zone key, orange outline = room module.", EditorStyles.miniLabel);
         if (!string.IsNullOrEmpty(status)) EditorGUILayout.LabelField(status, EditorStyles.miniBoldLabel);
     }
 
@@ -188,6 +189,19 @@ public sealed class FrontRoomsMapDebugWindow : EditorWindow
                 var x = center.x + (origin.x + i) * s;
                 var y = center.y - (origin.y + j) * s;
                 EditorGUI.DrawRect(new Rect(x - p * .5f, y - p * .5f, p, p), WallColor);
+            }
+            // Room modules: an orange outline round each one placed.
+            for (var r = 0; r < chunk.rooms.Length; r++)
+            {
+                if (chunk.ModuleOf(r) == null) continue;
+                var room = chunk.rooms[r];
+                var a = CellRect(chunk.Cell(room.x, room.y + room.h - 1));
+                var outline = new Rect(a.xMin, a.yMin, room.w * s, room.h * s);
+                var w = Mathf.Max(2f, s * .1f);
+                EditorGUI.DrawRect(new Rect(outline.xMin, outline.yMin, outline.width, w), ModuleColor);
+                EditorGUI.DrawRect(new Rect(outline.xMin, outline.yMax - w, outline.width, w), ModuleColor);
+                EditorGUI.DrawRect(new Rect(outline.xMin, outline.yMin, w, outline.height), ModuleColor);
+                EditorGUI.DrawRect(new Rect(outline.xMax - w, outline.yMin, w, outline.height), ModuleColor);
             }
             if (chunk.hasKey)
             {

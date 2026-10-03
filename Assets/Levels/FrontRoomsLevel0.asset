@@ -47,5 +47,10 @@ MonoBehaviour:
   doorsNeedKeys: 0
   lightRadius: 16
   shadowRadius: 9
+  modules:
+  - {fileID: 11400000, guid: 4632b3f0205194fed9874dac6dbe573a, type: 2}
+  - {fileID: 11400000, guid: 7970eac7f87914162937d8767042418e, type: 2}
+  - {fileID: 11400000, guid: 9d904919031224c88a8ee73f76e98147, type: 2}
+  - {fileID: 11400000, guid: ebabc4fdf51ef462aa8d50937adf6519, type: 2}
   dressOffices: 1
   pileChance: 0.35

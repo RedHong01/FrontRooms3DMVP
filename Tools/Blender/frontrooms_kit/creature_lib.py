@@ -169,6 +169,9 @@ def part(kit, frame, radii, bones, slot, subdiv=2, name="part", max_tris=None):
 
 def floor_parts(kit):
     """Drop every part so the lowest vertex of the whole figure sits on z = 0."""
+    # Rigid parts placed through Kit._place keep a stale matrix_world until the
+    # depsgraph updates; without this they read as sitting at the origin.
+    bpy.context.view_layer.update()
     lo = min((obj.matrix_world @ v.co).z for obj in kit.parts for v in obj.data.vertices)
     for obj in kit.parts:
         obj.location.z -= lo

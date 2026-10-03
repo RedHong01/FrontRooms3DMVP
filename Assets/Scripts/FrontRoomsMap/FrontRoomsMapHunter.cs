@@ -240,7 +240,8 @@ public sealed class FrontRoomsMapHunter
         {
             if (pair.Value < SpawnMinCells || pair.Value > SpawnMaxCells || !world.IsBuilt(pair.Key)) continue;
             var center = world.CellCenter(pair.Key);
-            if (!BodyFits(center) || Visible(playerEye, center + Vector3.up * EyeHeight)) continue;
+            // Unseen means the head too: a head above a cubicle panel gives it away (the rig stands up to 1.95 m).
+            if (!BodyFits(center) || Visible(playerEye, center + Vector3.up * EyeHeight) || Visible(playerEye, center + Vector3.up * ProbeTop)) continue;
             if (!haveFallback) { fallback = pair.Key; haveFallback = true; }
             if (Vector3.Dot(Flat(center - playerFeet), Flat(playerForward)) < 0f) candidates.Add(pair.Key);
         }

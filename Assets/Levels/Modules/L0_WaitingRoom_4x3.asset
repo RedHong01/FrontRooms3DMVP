@@ -31,19 +31,19 @@ MonoBehaviour:
     props:
     - kit: Kit_LadderChair
       x: 1.2
-      z: 8.638598
+      z: 8.603696
       yaw: 180
       y: 0
       noCollider: 0
     - kit: Kit_LadderChair
       x: 1.8
-      z: 8.638598
+      z: 8.603696
       yaw: 180
       y: 0
       noCollider: 0
     - kit: Kit_LadderChair
       x: 2.4
-      z: 8.638598
+      z: 8.603696
       yaw: 180
       y: 0
       noCollider: 0
@@ -55,12 +55,12 @@ MonoBehaviour:
       noCollider: 0
     - kit: Kit_WallClock
       x: 4.5
-      z: 8.86525
+      z: 8.89
       yaw: 180
       y: 2.1
       noCollider: 0
     - kit: Kit_Torchiere
-      x: 0.29099998
+      x: 0.291
       z: 6.6
       yaw: 90
       y: 0

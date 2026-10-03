@@ -119,9 +119,20 @@ public static class FrontRoomsKitLibrary
         if (allNames != null) return allNames;
         allNames = new List<string>();
         foreach (var model in Resources.LoadAll<GameObject>(ModelFolder.TrimEnd('/')))
-            if (model != null && !model.name.StartsWith("Kit_AxisProbe") && !allNames.Contains(model.name)) allNames.Add(model.name);
+            if (model != null && !model.name.StartsWith("Kit_AxisProbe") && !IsSyncCopy(model.name) && !allNames.Contains(model.name)) allNames.Add(model.name);
         allNames.Sort(StringComparer.Ordinal);
         return allNames;
+    }
+
+    /// <summary>"Kit_CRTMonitor 2": a file-sync conflict copy (the project sits on an
+    /// iCloud Desktop), never a kit. Keeps it out of piles and seeded orders.</summary>
+    static bool IsSyncCopy(string name)
+    {
+        var i = name.LastIndexOf(' ');
+        if (i < 0 || i == name.Length - 1) return false;
+        for (var k = i + 1; k < name.Length; k++)
+            if (!char.IsDigit(name[k])) return false;
+        return true;
     }
 
     public static GameObject Model(string assetName)

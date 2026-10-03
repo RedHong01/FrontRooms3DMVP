@@ -33,6 +33,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     // Working copies of the profile, taken when the map starts, so the asset
     // is never changed by a run.
     MapSettings settings;
+    List<RoomModuleData> moduleLibrary;
     int buildRadius, chunksPerFrame;
     float shiftAfterSeconds, lightRadius, shadowRadius, pileChance;
     bool doorsNeedKeys, dressOffices;
@@ -258,6 +259,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     void TakeProfile(FrontRoomsLevelProfile source, int seed)
     {
         settings = source.Generation(seed);
+        moduleLibrary = source.ModuleData();
         buildRadius = Mathf.Max(1, source.buildRadius);
         chunksPerFrame = Mathf.Max(1, source.chunksPerFrame);
         shiftAfterSeconds = source.shiftAfterSeconds;
@@ -328,7 +330,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
     void CreateCache()
     {
-        Cache = new FrontRoomsMapCache(settings);
+        Cache = new FrontRoomsMapCache(settings, moduleLibrary);
         foreach (var p in placedModules) Cache.Place(p.chunk, p.module, p.x, p.y);
     }
 
@@ -342,6 +344,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         placedModules.Add((module, chunk, x, y));
         Cache?.Place(chunk, module, x, y);
     }
+
+    /// <summary>The Level Designer sets this: module props get a FrontRoomsModulePropTag (module, prop index, room origin).</summary>
+    public bool TagModuleProps { get; set; }
 
     /// <summary>Start the walker or capture eye here (map space) instead of the middle of chunk (0, 0).</summary>
     public void OverrideSpawn(Vector3 mapPosition, float yaw = 0f)
@@ -1059,8 +1064,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         var root = new GameObject("module props").transform;
         root.SetParent(chunk.root.transform, false);
         float ox = room.x * cs, oz = room.y * cs;
-        foreach (var p in module.props)
+        for (var index = 0; index < module.props.Length; index++)
         {
+            var p = module.props[index];
             if (string.IsNullOrEmpty(p.kit)) continue;
             var f = KitFootprint(p.kit);
             var onFloor = p.y <= ModuleUnits.RelayHeight;
@@ -1076,7 +1082,15 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
                     continue;
                 }
             }
-            if (FrontRoomsKitLibrary.Spawn(p.kit, root, new Vector3(ox + p.x, p.y, oz + p.z), p.yaw, null, !p.noCollider, p.kit) == null) continue;
+            var spawned = FrontRoomsKitLibrary.Spawn(p.kit, root, new Vector3(ox + p.x, p.y, oz + p.z), p.yaw, null, !p.noCollider, p.kit);
+            if (spawned == null) continue;
+            if (TagModuleProps)
+            {
+                var tag = spawned.AddComponent<FrontRoomsModulePropTag>();
+                tag.module = module;
+                tag.index = index;
+                tag.roomOrigin = new Vector3(ox, 0f, oz);
+            }
             // Wall pieces above head height leave the floor free.
             if (f == null || !onFloor) continue;
             footprints.Add(rect);

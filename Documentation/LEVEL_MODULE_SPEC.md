@@ -146,7 +146,7 @@ The map builds one chunk per frame, nearest first, and furnishes one room per fr
 
 Props ≤ 0.3 m cast no shadows. Acceptance is the autopilot (`FrontRoomsMainScenePlaytest`, with `-autopilotSeed N` for a fixed maze; seeds 2554 and 20388 spawn in an Office zone): average ≥ 55 fps and `p99FrameMs` ≤ 33 after the first 2 s. `frameSpikes` lists every frame over 50 ms with its time and zone; one-off editor shader compiles (e.g. when the Relay first renders at 3 s) are not counted against the budget. Baseline with only `Kit_CRTMonitor`: 59 fps, p99 ≈ 18 ms.
 
-## 9. For the Level Designer (P1 onward)
+## 9. Room modules (Level Designer, P1–P3)
 
 A `RoomModule` will be authored in these units, so kit assets need to be placeable by id:
 

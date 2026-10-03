@@ -9,7 +9,7 @@ Author a room as data, see it in the game's own build next to the editor, then (
 3. **Right: the Inspector** of the room module is the design panel. Every edit rebuilds the preview.
 4. **Play** in the designer scene to walk the room (WASD, mouse, Shift, E).
 
-New rooms: **FrontRooms → Level Designer → New room module** (saved in `Assets/Levels/Modules`). Samples: **Create sample modules** (a Level 0 waiting room, an Office bullpen, a tall pillar hall, a low store room).
+New rooms: **FrontRooms → Level Designer → New room module** (saved in `Assets/Levels/Modules`). Samples: **Create sample modules** (a Level 0 waiting room, an Office bullpen, a tall pillar hall, a low store room) makes the missing ones and never overwrites; **Reset sample modules** puts them back as shipped (asks first).
 
 ## The panel
 
@@ -21,11 +21,11 @@ New rooms: **FrontRooms → Level Designer → New room module** (saved in `Asse
 | Fill | **Auto** as a generated room (Office kit in Offices, sometimes a pile in Level 0 halls ≥ 4 × 4), **None** only your props, **Office** the Office kit fills round your props, **Pile** a furniture pile |
 | Columns | **Auto** the map's 6 m grid rule (pale squares in the plan: where it can put them), **None**, **Custom** click inner corners (Shift: 0.9 m) |
 | Plan | north up. Click an edge: wall → arch (doorway) → open. Right-click a cell: its lamp (Auto, Steady, Stutter, Failing, Dead, Dim, Off). Green strips: floor kept clear inside openings |
-| Props | pick a kit asset and *Add*; drag it in the plan (0.05 m snap, Ctrl 0.5 m), R turns 90°, Delete removes; X/Z/height/yaw fields; *No collider* for clutter. The dark edge of a prop is its front |
+| Props | pick a kit asset and *Add*. In the plan: click to select (click again for the prop underneath), drag to move (0.05 m snap, Ctrl 0.5 m; the preview rebuilds when you let go), R turns 90°, Delete removes, Esc deselects. Fields: kit, X/Z, height above the floor (wall pieces: clock, interior window), yaw, *No collider* for clutter. The dark band on a prop is its front |
 | Where the generator may use it | weight, may rotate, tier range (used from P3) |
-| Checks | errors (no way in, cells cut off, prop in a wall or above the ceiling) and warnings (prop in an opening's clear strip, …) |
+| Checks | **errors**: no way in, inner walls cutting cells off, a prop in a wall or above the ceiling, props blocking an opening or cutting part of the room off (a 0.25 m walk test with the player's 0.3 m body); **warnings**: a prop in an opening's or an inner doorway's clear strip, a side of 7–8 cells (it meets the chunk border, where the map decides the edges) |
 
-Doors and windows are not in the panel on purpose: the map puts them where a room meets a zone of another height (decision 1). Edges on the outside of a room that meet another height, or the chunk border, stay as the map makes them.
+Doors and windows are not in the panel on purpose: the map puts them where a room meets a zone of another height (decision 1). Edges on the outside of a room that meet another height, or the chunk border, stay as the map makes them, and the map may open one of the room's walls to keep the maze connected. A module prop that would stand across such a real opening is left out (with a console warning).
 
 ## How it works
 

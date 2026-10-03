@@ -30,8 +30,8 @@ MonoBehaviour:
     fill: 2
     props:
     - kit: Kit_Copier
-      x: 0.408
-      z: 2
+      x: 0.39600003
+      z: 2.1416035
       yaw: 90
       y: 0
       noCollider: 0

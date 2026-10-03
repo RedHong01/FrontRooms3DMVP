@@ -36,6 +36,10 @@ public sealed class FrontRoomsLevelProfile : ScriptableObject
     [Min(0f), Tooltip("Only lamps this close cast shadows (one lamp in three).")]
     public float shadowRadius = 9f;
 
+    [Header("Room modules")]
+    [Tooltip("Designer rooms (Assets/Levels/Modules) the generator may place into carved rooms they fit. The chance and tier are in Generation (Module Chance, Module Tier).")]
+    public FrontRoomsRoomModule[] modules = new FrontRoomsRoomModule[0];
+
     [Header("Dressing")]
     [Tooltip("Furnish Office-zone rooms with FrontRoomsOfficeKit when it exists.")]
     public bool dressOffices = true;
@@ -65,6 +69,19 @@ public sealed class FrontRoomsLevelProfile : ScriptableObject
         var copy = (generation ?? new MapSettings()).Clone();
         copy.seed = seed;
         return copy;
+    }
+
+    /// <summary>The modules' data, in a stable order (by asset name), for the generator. Never the assets' own data objects.</summary>
+    public System.Collections.Generic.List<RoomModuleData> ModuleData()
+    {
+        var list = new System.Collections.Generic.List<(string, RoomModuleData)>();
+        if (modules != null)
+            foreach (var m in modules)
+                if (m != null && m.data != null) list.Add((m.name, m.data.Clone()));
+        list.Sort((a, b) => string.CompareOrdinal(a.Item1, b.Item1));
+        var result = new System.Collections.Generic.List<RoomModuleData>();
+        foreach (var (_, d) in list) result.Add(d);
+        return result;
     }
 
     void OnValidate()

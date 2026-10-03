@@ -116,6 +116,13 @@ namespace FrontRooms.Map
         // Share of standard-height zones dressed as a Level 4 office.
         public float officeShare = .3f;
 
+        // Room modules (Level Designer): the chance that a carved room which a
+        // module fits (same height and theme, small enough, tier in range) is
+        // replaced by one, chosen by weight. The modules come from the level
+        // profile; see FrontRoomsMapGenerator.Modules.
+        public float moduleChance = .3f;
+        public int moduleTier = 0;
+
         public MapSettings Clone() => (MapSettings)MemberwiseClone();
     }
 
@@ -194,7 +201,8 @@ namespace FrontRooms.Map
     static class MapHash
     {
         public const int SiteX = 11, SiteZ = 13, Height = 17, EdgeEast = 23, EdgeNorth = 29,
-            GateEast = 31, GateNorth = 37, Tree = 41, Pillar = 43, ZoneTint = 47, Rooms = 53, Theme = 59, Columns = 61;
+            GateEast = 31, GateNorth = 37, Tree = 41, Pillar = 43, ZoneTint = 47, Rooms = 53, Theme = 59, Columns = 61,
+            Modules = 67, ModulePick = 71, ModuleSpot = 73;
 
         static uint Mix(uint h)
         {
@@ -240,10 +248,30 @@ namespace FrontRooms.Map
         readonly int[] choices = new int[4];
         readonly byte[] room = new byte[MapGrid.CellsPerChunk];
 
-        public FrontRoomsMapGenerator(MapSettings settings)
+        // Every module the generator may place, normalised, in each allowed turn: [module][quarter turns], null where not allowed.
+        readonly List<RoomModuleData[]> modules = new List<RoomModuleData[]>();
+
+        /// <param name="moduleLibrary">Room modules it may place into carved rooms (in a stable order: the choice depends on it). Copied.</param>
+        public FrontRoomsMapGenerator(MapSettings settings, IReadOnlyList<RoomModuleData> moduleLibrary = null)
         {
             this.settings = (settings ?? new MapSettings()).Clone();
+            if (moduleLibrary == null) return;
+            foreach (var source in moduleLibrary)
+            {
+                if (source == null) continue;
+                var m = source.Clone();
+                m.Normalize();
+                if (m.weight <= 0f) continue;
+                var turns = new RoomModuleData[4];
+                turns[0] = m;
+                if (m.allowRotate)
+                    for (var t = 1; t < 4; t++) turns[t] = m.Rotated(t);
+                modules.Add(turns);
+            }
         }
+
+        /// <summary>How many modules the generator may place.</summary>
+        public int ModuleCount => modules.Count;
 
         public int Seed => settings.seed;
         public MapSettings Settings => settings.Clone();
@@ -369,6 +397,71 @@ namespace FrontRooms.Map
                 if (zone.height != first.height || zone.theme != first.theme) return false;
             }
             return true;
+        }
+
+        /// <summary>
+        /// Room modules into carved rooms. Each generated room that is one open
+        /// space rolls moduleChance; if it hits, one module that fits it (same
+        /// height and theme, tier in range, small enough in some allowed turn)
+        /// is chosen by weight, turned, placed at a hashed spot inside the room
+        /// and stamped (RoomModuleStamp). Everything is a function of the seed,
+        /// the chunk and its revision, so a rebuilt chunk gets the same rooms.
+        /// </summary>
+        void PlaceModules(MapChunk chunk, int revision)
+        {
+            if (modules.Count == 0 || settings.moduleChance <= 0f) return;
+            var seed = settings.seed;
+            var generated = chunk.rooms.Length;
+            var fits = new List<(RoomModuleData m, float w)>();
+            for (var r = 0; r < generated; r++)
+            {
+                // A module stamped into an earlier room may have cut into this one.
+                if (!chunk.RoomIntact(r) || chunk.ModuleOf(r) != null) continue;
+                var rect = chunk.rooms[r];
+                if (!Uniform(chunk, rect)) continue;
+                if (MapHash.Unit(MapHash.Hash(seed, chunk.coord.x * 16 + r, chunk.coord.y, MapHash.Modules, revision)) >= settings.moduleChance) continue;
+                var zone = ZoneOf(chunk.Cell(rect.x, rect.y));
+                fits.Clear();
+                var total = 0f;
+                foreach (var turns in modules)
+                {
+                    var m = turns[0];
+                    if (m.height != zone.height || m.theme != zone.theme || settings.moduleTier < m.minTier || settings.moduleTier > m.maxTier) continue;
+                    // Every allowed turn that fits counts once; the module's weight is shared between them.
+                    var count = 0;
+                    foreach (var turned in turns) if (turned != null && turned.width <= rect.w && turned.depth <= rect.h) count++;
+                    if (count == 0) continue;
+                    foreach (var turned in turns)
+                    {
+                        if (turned == null || turned.width > rect.w || turned.depth > rect.h) continue;
+                        fits.Add((turned, m.weight / count));
+                        total += m.weight / count;
+                    }
+                }
+                if (fits.Count == 0) continue;
+                var pick = MapHash.Unit(MapHash.Hash(seed, chunk.coord.x * 16 + r, chunk.coord.y, MapHash.ModulePick, revision)) * total;
+                var chosen = fits[fits.Count - 1].m;
+                foreach (var (m, w) in fits)
+                {
+                    if (pick < w) { chosen = m; break; }
+                    pick -= w;
+                }
+                // Where in the room: off the chunk border when the room leaves a choice,
+                // since the map decides edges there and could open a wall the designer drew.
+                var spot = MapHash.Hash(seed, chunk.coord.x * 16 + r, chunk.coord.y, MapHash.ModuleSpot, revision);
+                var x = Spot(rect.x, rect.w, chosen.width, spot);
+                var y = Spot(rect.y, rect.h, chosen.depth, spot / 97u);
+                RoomModuleStamp.Apply(this, chunk, chosen, x, y);
+            }
+        }
+
+        /// <summary>A hashed start for a span of <paramref name="size"/> inside [from, from + room), preferring starts that keep it off the chunk border.</summary>
+        static int Spot(int from, int room, int size, uint hash)
+        {
+            int lo = from, hi = from + room - size;
+            int innerLo = Math.Max(lo, 1), innerHi = Math.Min(hi, MapGrid.ChunkCells - 1 - size);
+            if (innerLo <= innerHi) { lo = innerLo; hi = innerHi; }
+            return lo + (int)(hash % (uint)(hi - lo + 1));
         }
 
         /// <summary>True for a cell corner on the 6 m structural grid (both world indices even).</summary>
@@ -502,6 +595,7 @@ namespace FrontRooms.Map
                 chunk.south[k] = BorderEdge(chunk.Cell(k, -1), false);
             }
             PlaceColumns(chunk, revision);
+            PlaceModules(chunk, revision);
 
             PlaceKey(chunk);
             return chunk;
@@ -551,7 +645,7 @@ namespace FrontRooms.Map
         readonly Dictionary<GridCoord, MapChunk> chunks = new Dictionary<GridCoord, MapChunk>();
         readonly Dictionary<GridCoord, int> revisions = new Dictionary<GridCoord, int>();
 
-        public FrontRoomsMapCache(MapSettings settings) { Generator = new FrontRoomsMapGenerator(settings); }
+        public FrontRoomsMapCache(MapSettings settings, IReadOnlyList<RoomModuleData> modules = null) { Generator = new FrontRoomsMapGenerator(settings, modules); }
 
         public FrontRoomsMapGenerator Generator { get; }
         public int Count => chunks.Count;

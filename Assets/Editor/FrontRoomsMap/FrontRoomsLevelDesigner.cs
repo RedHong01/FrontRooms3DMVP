@@ -25,7 +25,11 @@ public static class FrontRoomsLevelDesigner
     /// <summary>Open the preview scene on a module and select it, so its Inspector is the right-hand panel.</summary>
     public static void Open(FrontRoomsRoomModule module)
     {
+        if (EditorApplication.isPlayingOrWillChangePlaymode) return;
         if (!Application.isBatchMode && SceneManager.GetActiveScene().path != ScenePath && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+        // The user has saved or discarded: start from an empty scene so the designer scene can be created beside nothing.
+        if (AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath) == null && SceneManager.GetActiveScene().path != ScenePath)
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         EnsureScene();
         if (SceneManager.GetActiveScene().path != ScenePath) EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
         var preview = Object.FindFirstObjectByType<FrontRoomsModulePreview>();
@@ -70,9 +74,31 @@ public static class FrontRoomsLevelDesigner
         EditorGUIUtility.PingObject(module);
     }
 
+    /// <summary>Create the sample modules that are missing. Existing ones (and edits to them) are left alone.</summary>
     [MenuItem("FrontRooms/Level Designer/Create sample modules", priority = 20)]
     public static void CreateSamples()
     {
+        EnsureFolder();
+        var made = 0;
+        foreach (var (name, notes, data) in Samples())
+        {
+            var path = FrontRoomsRoomModule.Folder + "/" + name + ".asset";
+            if (AssetDatabase.LoadAssetAtPath<FrontRoomsRoomModule>(path) != null) continue;
+            var module = ScriptableObject.CreateInstance<FrontRoomsRoomModule>();
+            module.notes = notes;
+            module.data = data;
+            AssetDatabase.CreateAsset(module, path);
+            made++;
+        }
+        AssetDatabase.SaveAssets();
+        Debug.Log("[FrontRoomsLevelDesigner] " + made + " sample module(s) created in " + FrontRoomsRoomModule.Folder + "; existing ones left as they are.");
+    }
+
+    /// <summary>Put the sample modules back as shipped (asks first in the editor; keeps their assets, so links survive).</summary>
+    [MenuItem("FrontRooms/Level Designer/Reset sample modules", priority = 21)]
+    public static void ResetSamples()
+    {
+        if (!Application.isBatchMode && !EditorUtility.DisplayDialog("Reset sample modules", "Put the four sample modules back as shipped? Edits to them are lost.", "Reset", "Cancel")) return;
         EnsureFolder();
         foreach (var (name, notes, data) in Samples())
         {
@@ -83,12 +109,13 @@ public static class FrontRoomsLevelDesigner
                 module = ScriptableObject.CreateInstance<FrontRoomsRoomModule>();
                 AssetDatabase.CreateAsset(module, path);
             }
+            Undo.RecordObject(module, "Reset sample module");
             module.notes = notes;
             module.data = data;
             EditorUtility.SetDirty(module);
+            FrontRoomsRoomModule.NotifyChanged(module);
         }
         AssetDatabase.SaveAssets();
-        Debug.Log("[FrontRoomsLevelDesigner] Sample modules in " + FrontRoomsRoomModule.Folder);
     }
 
     /// <summary>Batch: the preview scene and the sample modules.</summary>
@@ -207,18 +234,26 @@ public static class FrontRoomsLevelDesigner
 
     // ---------- Samples ----------
 
+    /// <summary>
+    /// A prop with its back to a wall, 3 cm off the wall face, its front into
+    /// the room, centred on <paramref name="along"/>. Uses the real footprint,
+    /// which need not be centred on the pivot.
+    /// </summary>
     static ModuleProp Wall(string kit, float along, string side, RoomModuleData m, float y = 0f)
     {
-        // Back to a wall: the front faces into the room.
         var f = FrontRoomsMapWorld.KitFootprint(kit) ?? new[] { -.3f, -.3f, .3f, .3f, 1f };
-        var depth = f[3] - f[1];
-        var inset = ModuleUnits.WallHalf + depth * .5f + .03f;
+        var gap = ModuleUnits.WallHalf + .03f;
+        var cx = (f[0] + f[2]) * .5f; // the footprint's centre across the front, in local X
         switch (side)
         {
-            case "south": return new ModuleProp { kit = kit, x = along, z = inset, y = y, yaw = 0f };
-            case "north": return new ModuleProp { kit = kit, x = along, z = m.DepthMetres - inset, y = y, yaw = 180f };
-            case "west": return new ModuleProp { kit = kit, x = inset, z = along, y = y, yaw = 90f };
-            default: return new ModuleProp { kit = kit, x = m.WidthMetres - inset, z = along, y = y, yaw = 270f };
+            // yaw 0: local -Z (the back) faces south.
+            case "south": return new ModuleProp { kit = kit, x = along - cx, z = gap - f[1], y = y, yaw = 0f };
+            // yaw 180: local x and z turn round.
+            case "north": return new ModuleProp { kit = kit, x = along + cx, z = m.DepthMetres - gap + f[1], y = y, yaw = 180f };
+            // yaw 90: local (x, z) -> world (z, -x).
+            case "west": return new ModuleProp { kit = kit, x = gap - f[1], z = along + cx, y = y, yaw = 90f };
+            // yaw 270: local (x, z) -> world (-z, x).
+            default: return new ModuleProp { kit = kit, x = m.WidthMetres - gap + f[1], z = along - cx, y = y, yaw = 270f };
         }
     }
 

@@ -107,6 +107,14 @@ SLOTS = {
     "Creature_Nail": ((0.58, 0.52, 0.40), 0.4, 0.0),
     "Troffer_Lens": ((0.92, 0.90, 0.84), 0.3, 0.0),        # the ceiling's own opal lens (emissive in Unity)
     "Creature_LensDim": ((0.80, 0.78, 0.70), 0.3, 0.0),    # the same lens glowing faintly (Listen state)
+    "Creature_ShellSatin": ((0.855, 0.835, 0.788), 0.50, 0.0),  # #DAD5C9 A Floor Sample: display-figure shell (head, neck, hands)
+    "Creature_TwillSpruce": ((0.180, 0.231, 0.200), 0.85, 0.0),  # #2E3B33 B Night Shift: rental coverall twill
+    "Creature_LensOpal": ((0.910, 0.894, 0.847), 0.70, 0.0),  # #E8E4D8 B Night Shift: opal lens face, ~0.6x the troffer lens
+    "Creature_TapeSilver": ((0.722, 0.722, 0.706), 0.50, 0.0),  # #B8B8B4 B/D: duct-tape cuffs and bands (dielectric)
+    "Creature_Toner": ((0.114, 0.114, 0.110), 0.70, 0.0),  # #1D1D1C C Duplicate: toner black (head, print ink)
+    "Creature_TieOxblood": ((0.357, 0.165, 0.165), 0.75, 0.0),  # #5B2A2A C Duplicate: tie
+    "Creature_PadNavy": ((0.149, 0.173, 0.227), 0.88, 0.0),  # #262C3A D Delivery: quilted moving pad
+    "Creature_CanvasBrown": ((0.227, 0.180, 0.141), 0.85, 0.0),  # #3A2E24 D Delivery: canvas work jacket
     "Prop_LEDGreen": ((0.1, 0.9, 0.2), 0.3, 0.0),         # emissive indicator lenses
     "Prop_LEDAmber": ((1.0, 0.55, 0.05), 0.3, 0.0),
     "Prop_LEDRed": ((0.9, 0.05, 0.03), 0.3, 0.0),

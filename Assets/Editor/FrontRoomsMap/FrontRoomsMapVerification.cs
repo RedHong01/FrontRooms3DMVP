@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using FrontRooms.Map;
 using UnityEditor;
 using UnityEngine;
@@ -27,12 +28,13 @@ public static class FrontRoomsMapVerification
     public static string Run(bool throwOnFailure)
     {
         var profile = FrontRoomsLevelProfiles.Resolve();
-        var report = FrontRoomsMapValidator.Run(profile.generation, FirstSeed, SeedCount, RadiusChunks);
+        var modules = profile.ModuleData();
+        var report = FrontRoomsMapValidator.Run(profile.generation, FirstSeed, SeedCount, RadiusChunks, modules);
         var path = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", "map-verification-latest.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, JsonUtility.ToJson(report, true));
         var summary = "[FrontRoomsMap] " + (report.failed == 0 ? "PASS" : "FAIL") + " · " + report.passed + "/" + report.seedCount
-            + " seeds · " + (RadiusChunks * 2) + "×" + (RadiusChunks * 2) + " chunks each · profile " + (AssetDatabase.GetAssetPath(profile) is string p && p.Length > 0 ? p : "code defaults") + " · " + path;
+            + " seeds · " + (RadiusChunks * 2) + "×" + (RadiusChunks * 2) + " chunks each · " + modules.Count + " room modules, " + report.seeds.Sum(x => x.modulesPlaced) + " placed · profile " + (AssetDatabase.GetAssetPath(profile) is string p && p.Length > 0 ? p : "code defaults") + " · " + path;
         if (report.failed == 0) Debug.Log(summary);
         else
         {

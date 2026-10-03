@@ -132,6 +132,65 @@ public static class FrontRoomsOfficeKit
         public bool Connected(Rect[] strips, float clearance)
         {
             if (strips == null || strips.Length < 2) return true;
+            var walk = Walkable(clearance);
+            var seen = Flood(strips[0], walk);
+            for (var s = 1; s < strips.Length; s++)
+                if (!Reached(strips[s], seen)) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// The largest set of strips that are connected to each other. Used once per
+        /// room when the obstacles handed in (module props, a pile) already cut the
+        /// floor apart: dressing then keeps those strips joined instead of failing
+        /// every placement. Returns the input unchanged in a normal room.
+        /// </summary>
+        public Rect[] Joined(Rect[] strips, float clearance)
+        {
+            if (strips == null || strips.Length < 2 || Connected(strips, clearance)) return strips;
+            var walk = Walkable(clearance);
+            var done = new bool[strips.Length];
+            var best = new List<Rect>();
+            for (var s = 0; s < strips.Length; s++)
+            {
+                if (done[s]) continue;
+                var seen = Flood(strips[s], walk);
+                var group = new List<Rect>();
+                for (var t = 0; t < strips.Length; t++)
+                    if (t == s || (!done[t] && Reached(strips[t], seen))) { group.Add(strips[t]); done[t] = true; }
+                if (group.Count > best.Count) best = group;
+            }
+            return best.ToArray();
+        }
+
+        bool Reached(Rect strip, bool[] seen)
+        {
+            Range(strip, out var x0, out var y0, out var x1, out var y1);
+            if (x1 <= x0 || y1 <= y0) return true;   // sub-cell strip: nothing to reach
+            for (var y = y0; y < y1; y++)
+                for (var x = x0; x < x1; x++)
+                    if (seen[y * w + x]) return true;
+            return false;
+        }
+
+        bool[] Flood(Rect from, bool[] walk)
+        {
+            var seen = new bool[w * h];
+            var queue = new Queue<int>();
+            Seed(from, walk, seen, queue);
+            while (queue.Count > 0)
+            {
+                var i = queue.Dequeue();
+                int x = i % w, y = i / w;
+                Visit(x + 1, y, walk, seen, queue); Visit(x - 1, y, walk, seen, queue);
+                Visit(x, y + 1, walk, seen, queue); Visit(x, y - 1, walk, seen, queue);
+            }
+            return seen;
+        }
+
+        /// <summary>Cells at least clearance/2 from any prop (a capsule walking down the aisle).</summary>
+        bool[] Walkable(float clearance)
+        {
             var r = Mathf.CeilToInt(clearance * .5f / Cell);
             var walk = new bool[w * h];
             for (var y = 0; y < h; y++)
@@ -147,26 +206,7 @@ public static class FrontRoomsOfficeKit
                         }
                     walk[y * w + x] = ok;
                 }
-            var seen = new bool[w * h];
-            var queue = new Queue<int>();
-            Seed(strips[0], walk, seen, queue);
-            while (queue.Count > 0)
-            {
-                var i = queue.Dequeue();
-                int x = i % w, y = i / w;
-                Visit(x + 1, y, walk, seen, queue); Visit(x - 1, y, walk, seen, queue);
-                Visit(x, y + 1, walk, seen, queue); Visit(x, y - 1, walk, seen, queue);
-            }
-            for (var s = 1; s < strips.Length; s++)
-            {
-                Range(strips[s], out var x0, out var y0, out var x1, out var y1);
-                var reached = false;
-                for (var y = y0; y < y1 && !reached; y++)
-                    for (var x = x0; x < x1 && !reached; x++)
-                        reached = seen[y * w + x];
-                if (!reached && x1 > x0 && y1 > y0) return false;
-            }
-            return true;
+            return walk;
         }
 
         void Seed(Rect r, bool[] walk, bool[] seen, Queue<int> queue)
@@ -254,6 +294,14 @@ public static class FrontRoomsOfficeKit
         var clear = ClipStrips(keepClear, floorXZ);
         foreach (var r in clear) occ.Reserve(Expand(r, .25f));
         foreach (var o in obstacles) { occ.TakeProp(o); occ.Reserve(Expand(o, .45f)); }
+        // Obstacles from the map (module props, a pile) can already cut the strips
+        // apart. Every strip stays reserved, but placements only have to keep the
+        // largest still-joined set connected; otherwise every TryCommit fails and
+        // the room is left empty.
+        var joined = occ.Joined(clear, MinAisle);
+        if (joined.Length < clear.Length)
+            Debug.LogWarning("[FrontRoomsOfficeKit] Obstacles cut " + (clear.Length - joined.Length) + " strip(s) off; dressing round the rest.");
+        clear = joined;
         var lattice = Lattice.Of(floorXZ);
         var sides = Sides(floorXZ);
         rng.Shuffle(sides);

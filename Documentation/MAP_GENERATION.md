@@ -53,6 +53,16 @@ Every other edge inside a zone is a wall, a doorway or open: standard 82 / 10 / 
 
 Columns stand on the world 6 m grid (cell corners with both indices even), only inside rooms that are one open space, at least 3 × 3 cells, never in Low zones. A qualifying room rolls once (Level 0 25 %, Office 75 %, Tall hall 70 %) and then fills every grid corner inside it: 0.6 m columns in Level 0, 0.9 m in Offices (with bulkheads between them) and tall halls. See `LEVEL_MODULE_SPEC.md` §3.
 
+## Room modules (Level Designer)
+
+Rooms authored in the Level Designer (`LEVEL_DESIGNER.md`) can replace carved rooms. The level profile's `modules` list is the library; `generation.moduleChance` (0.3) and `moduleTier` set how often and which.
+
+1. After the maze, the rooms and the columns, each generated room that is one open space (no later room cuts into it, every cell the same height and theme) rolls `moduleChance`.
+2. If it hits, the candidates are the modules with the room's height and theme whose tier range includes `moduleTier`, in every quarter turn they allow (`allowRotate`) that fits the room. One is chosen by weight (a module's weight is shared between its fitting turns).
+3. It is stamped (`RoomModuleStamp`) at a hashed spot inside the room: inner and perimeter edges inside the chunk as authored, the map's rule at zone borders and on the chunk border, columns per the module, walls reopened if the chunk was cut apart.
+
+All of it is a function of the seed, the chunk and its revision, with the library in a stable order (by asset name), so neighbours agree, rebuilds are identical and a revisit shift may bring a different module. The 100-seed check runs with the profile's library and reports how many modules it placed; outside Unity it was also run with 14 random modules at chance 0.7 (3,806 placed, 100/100). The debug map outlines placed modules in orange.
+
 ## Zones and heights
 
 Each chunk owns one random site. A cell belongs to the zone of the nearest site,
