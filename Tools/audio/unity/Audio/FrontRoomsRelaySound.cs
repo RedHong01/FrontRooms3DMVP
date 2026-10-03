@@ -17,6 +17,7 @@ namespace FrontRooms.Audio
 
         public FrontRoomsMapHunter hunter;
         public Transform listener;
+        public System.Func<Vector3, float> dampnessAt;
 
         FrontRoomsRelayRig rig;
         Transform legL, legR;
@@ -82,8 +83,9 @@ namespace FrontRooms.Audio
             if (hunter != null && hunter.State == HunterState.Chase) gait = SoundIds.RelayGait.Run;
             else if (speed < 1.2f) gait = SoundIds.RelayGait.Drag;
             var foot = leg.TransformPoint(new Vector3(0f, -LegReach, 0f));
+            var damp = dampnessAt != null ? dampnessAt(foot) : .4f;
             FrontRoomsFmod.OneShot(SoundIds.RelayFootstep, foot,
-                SoundIds.Param.RelayGait, (float)gait, SoundIds.Param.Occlusion, occlusion);
+                SoundIds.Param.RelayGait, (float)gait, SoundIds.Param.Occlusion, occlusion, SoundIds.Param.Dampness, damp);
         }
 
         void UpdateOcclusion()

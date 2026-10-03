@@ -7,6 +7,10 @@
 Then:
     fmodstudiocl -script build/fmod_build_frontrooms.js FMOD/FrontRooms/FrontRooms.fspro
 
+Recorded sounds come from recorded_library.py (AudioSource/FMOD_Library). SPEC
+refers to them as "Recorded/<path>" so they sit in their own FMOD asset folder;
+every other file is a synthesized placeholder still waiting for a recording.
+
 The placeholders are deliberately modular: every physical moment of an object
 is its own small asset (handle, unlatch, swing loop, stop, latch strike ...),
 so recorded takes can replace them one file at a time without touching the
@@ -25,6 +29,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))            # Frontrooms3D
 STAGE = os.path.join(ROOT, "AudioSource", "FMOD_Placeholders")    # rendered WAVs
 BUILD = os.path.join(HERE, "build")
+LIB = os.path.join(ROOT, "AudioSource", "FMOD_Library")         # recorded, processed (recorded_library.py)
+REC = "Recorded/"
 SR = 48000
 TAU = 2 * math.pi
 MANIFEST = {}
@@ -564,6 +570,31 @@ def files(prefix, count, start=1):
     return ["%s_%02d.wav" % (prefix, i) for i in range(start, start + count)]
 
 
+def _library():
+    path = os.path.join(BUILD, "library_manifest.json")
+    return json.load(open(path)) if os.path.exists(path) else {}
+
+
+LIBRARY = _library()
+
+
+def lib(prefix):
+    """Every recorded variation of a set, e.g. lib("Foley/plr_step_carpet_walk_body")."""
+    names = sorted(k for k in LIBRARY if k.startswith(prefix + "_") and k[len(prefix) + 1:-4].isdigit())
+    return [REC + k for k in names] or [REC + prefix + "_MISSING.wav"]
+
+
+def rec(rel):
+    return REC + rel
+
+
+DAMP = {  # Dampness 0-1 on the player's step layers; 0.4 = ordinary Level 0 carpet
+    "moist": [[0, -80], [.15, -40], [.4, -14], [.7, -6], [1, -3]],
+    "peel": [[0, -80], [.3, -40], [.5, -16], [.8, -8], [1, -6]],
+    "squish": [[0, -80], [.7, -80], [.8, -20], [.9, -8], [1, -3]],
+}
+
+
 DOOR3D = dict(spatial=True, min=1.0, max=26.0, bus="Mechanism", bank="SFX")
 
 SPEC = {
@@ -583,6 +614,7 @@ SPEC = {
         "Stamina": dict(min=0, max=1, initial=1),
         "Proximity": dict(min=0, max=1),
         "Occlusion": dict(min=0, max=1),
+        "Dampness": dict(min=0, max=1, initial=.4),
         "Surface": dict(labels=["Carpet", "CarpetTile", "Metal"]),
         "Gait": dict(labels=["Walk", "Run", "Stop"]),
         "RelayGait": dict(labels=["Walk", "Run", "Drag"]),
@@ -605,35 +637,40 @@ SPEC = {
         # ---------------------------------------------------------- ambience
         dict(path="Ambience/HumBed", bus="Hum", bank="Ambience", params=["Tension"], ahdsr=[1500, 2000],
              note="Room-tone hum. Global Tension fades in a detuned layer (120 vs 118.5 Hz) whose beating is the danger cue.",
-             tracks=[dict(name="Hum", sounds=[dict(files=["Ambience/amb_hum_bed_loop.wav"], loop=True, volume=-10)]),
-                     dict(name="Beat", sounds=[dict(files=["Ambience/amb_hum_beat_loop.wav"], loop=True, volume=-10)],
+             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_hum_bed_loop.wav")], loop=True, volume=-10)]),
+                     dict(name="Beat", sounds=[dict(files=[rec("Ambience/amb_hum_beat_loop.wav")], loop=True, volume=-10)],
                           auto=[dict(prop="volume", param="Tension", points=[[0, -60], [.35, -20], [1, -1]])])]),
-        dict(path="Ambience/AirBed", bus="Air", bank="Ambience", ahdsr=[2000, 2000],
-             tracks=[dict(name="Air", sounds=[dict(files=["Ambience/amb_air_loop.wav"], loop=True, volume=-12)])]),
+        dict(path="Ambience/AirBed", bus="Air", bank="Ambience", params=["Zone"], ahdsr=[2000, 2000],
+             note="Recorded room tone (50 Hz mains notched out so it never beats against the 120 Hz hum). "
+                  "Hallway air everywhere; the big empty-interior air takes over in Tall zones.",
+             tracks=[dict(name="Hall", sounds=[dict(files=[rec("Ambience/amb_air_hall_loop.wav")], loop=True, volume=-6)],
+                          auto=[dict(prop="volume", param="Zone", points=[[0, 0], [1, 0], [2, -14], [3, -2]])]),
+                     dict(name="Mall", sounds=[dict(files=[rec("Ambience/amb_air_mall_loop.wav")], loop=True, volume=-6)],
+                          auto=[dict(prop="volume", param="Zone", points=[[0, -40], [1, -24], [2, 0], [3, -40]])])]),
         dict(path="Ambience/Fixture", spatial=True, min=.5, max=9.0, bus="Hum", bank="Ambience", params=["Level"],
              ahdsr=[40, 120], note="One per lit fixture near the listener. Level = the lamp's brightness this frame.",
-             tracks=[dict(name="Hum", sounds=[dict(files=["Ambience/amb_fixture_loop.wav"], loop=True, volume=-8)],
+             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_fixture_close_loop.wav")], loop=True, volume=-8)],
                           auto=[dict(prop="volume", param="Level", points=[[0, -60], [.05, -30], [1, 0]])])]),
         dict(path="Ambience/FixtureEvent", spatial=True, min=.5, max=14.0, bus="Hum", bank="Ambience",
              params=["FixtureEvent"],
-             tracks=[dict(name="Strike", sounds=[dict(files=files("Ambience/amb_fixture_strike", 3),
+             tracks=[dict(name="Strike", sounds=[dict(files=lib("Ambience/amb_fixture_strike"), randPitch=.6,
                                                       cond=[["FixtureEvent", "Strike"]])]),
-                     dict(name="Tick", sounds=[dict(files=files("Ambience/amb_fixture_tick", 3),
+                     dict(name="Tick", sounds=[dict(files=lib("Ambience/amb_fixture_tick"), randPitch=1,
                                                     cond=[["FixtureEvent", "Tick"]], volume=-4)]),
                      dict(name="Pop", sounds=[dict(files=files("Ambience/amb_fixture_pop", 2),
                                                    cond=[["FixtureEvent", "Pop"]])])]),
         # ---------------------------------------------------------- door modules
         dict(path="Mechanism/Door/Handle", **DOOR3D, max_=20.0,
-             tracks=[dict(name="Handle", sounds=[dict(files=files("Door/door_handle", 3), randPitch=1)])]),
+             tracks=[dict(name="Handle", sounds=[dict(files=lib("Door/door_handle_press"), randPitch=1, randVol=1.5)])]),
         dict(path="Mechanism/Door/Unlatch", **DOOR3D,
-             tracks=[dict(name="Latch", sounds=[dict(files=files("Door/door_unlatch", 4), randPitch=1)])]),
+             tracks=[dict(name="Latch", sounds=[dict(files=lib("Door/door_unlatch_bolt"), randPitch=1, volume=-4)])]),
         dict(path="Mechanism/Door/Swing", **DOOR3D, params=["AngularVelocity", "Openness"], ahdsr=[15, 120],
              note="Loop while |angular velocity| > 0. Closer hiss follows speed; the stick-slip creak only "
                   "speaks at low-to-mid speed and rises in pitch with it.",
              tracks=[dict(name="Closer", sounds=[dict(files=["Door/door_closer_loop.wav"], loop=True, volume=-4)],
                           auto=[dict(prop="volume", param="AngularVelocity",
                                      points=[[0, -80], [.04, -36], [.35, -10], [1, 0]])]),
-                     dict(name="Creak", sounds=[dict(files=["Door/door_creak_loop.wav"], loop=True, volume=-6,
+                     dict(name="Creak", sounds=[dict(files=[rec("Door/door_swing_creak_loop.wav")], loop=True, volume=-6,
                                                      auto=[dict(prop="pitch", param="AngularVelocity",
                                                                 points=[[0, -3], [1, 2]])])],
                           auto=[dict(prop="volume", param="AngularVelocity",
@@ -642,31 +679,35 @@ SPEC = {
              note="Door reaches its open limit. Impact 0-1 picks soft/medium/hard and adds +4 dB, +3 st across "
                   "the range (BeamNG-style).",
              masterAuto=[dict(prop="volume", param="Impact", points=[[0, -4], [1, 0]])],
-             tracks=[dict(name="Soft", sounds=[dict(files=files("Door/door_stop_soft", 2), cond=[["Impact", 0, .33]],
+             tracks=[dict(name="Soft", sounds=[dict(files=lib("Door/door_stop_soft"), cond=[["Impact", 0, .33]], volume=-10,
                                                     auto=[dict(prop="pitch", param="Impact", points=[[0, -1.5], [1, 1.5]])])]),
-                     dict(name="Medium", sounds=[dict(files=files("Door/door_stop_med", 2), cond=[["Impact", .33, .66]],
+                     dict(name="Medium", sounds=[dict(files=lib("Door/door_stop_med"), cond=[["Impact", .33, .66]], volume=-5,
                                                       auto=[dict(prop="pitch", param="Impact", points=[[0, -1.5], [1, 1.5]])])]),
-                     dict(name="Hard", sounds=[dict(files=files("Door/door_stop_hard", 3), cond=[["Impact", .66, 1]],
+                     dict(name="Hard", sounds=[dict(files=lib("Door/door_stop_hard"), cond=[["Impact", .66, 1]],
                                                     auto=[dict(prop="pitch", param="Impact", points=[[0, -1.5], [1, 1.5]])])])]),
         dict(path="Mechanism/Door/StopMid", **DOOR3D,
-             tracks=[dict(name="Settle", sounds=[dict(files=files("Door/door_stopmid", 2), volume=-4)])]),
+             tracks=[dict(name="Settle", sounds=[dict(files=lib("Door/door_stopmid_settle"), volume=-8, randPitch=1)])]),
         dict(path="Mechanism/Door/LatchStrike", **DOOR3D, params=["Impact"],
              masterAuto=[dict(prop="volume", param="Impact", points=[[0, -4], [1, 0]])],
-             tracks=[dict(name="Soft", sounds=[dict(files=files("Door/door_latch_soft", 3), cond=[["Impact", 0, .33]])]),
-                     dict(name="Normal", sounds=[dict(files=files("Door/door_latch_norm", 3), cond=[["Impact", .33, .66]])]),
-                     dict(name="Slam", sounds=[dict(files=files("Door/door_latch_slam", 3), cond=[["Impact", .66, 1]])]),
+             tracks=[dict(name="Soft", sounds=[dict(files=lib("Door/door_latch_soft"), cond=[["Impact", 0, .33]],
+                                                    volume=-8, randPitch=1)]),
+                     dict(name="Normal", sounds=[dict(files=lib("Door/door_latch_norm"), cond=[["Impact", .33, .66]],
+                                                      volume=-4, randPitch=1)]),
+                     dict(name="Slam", sounds=[dict(files=lib("Door/door_latch_slam"), cond=[["Impact", .66, 1]],
+                                                    randPitch=1)]),
                      dict(name="Air", sounds=[dict(files=files("Door/door_air_whump", 2), cond=[["Impact", .6, 1]],
                                                    volume=-3)])]),
         dict(path="Mechanism/Door/Locked", **DOOR3D,
-             tracks=[dict(name="Rattle", sounds=[dict(files=files("Door/door_locked", 3), randPitch=1)])]),
+             tracks=[dict(name="Rattle", sounds=[dict(files=lib("Door/door_locked_rattle"), randPitch=1, randVol=1.5)])]),
         dict(path="Mechanism/Door/Blow", spatial=True, min=1.0, max=36.0, bus="Mechanism", bank="SFX",
              params=["Damage"], note="One Relay blow. Damage = blow index / blows needed.",
-             tracks=[dict(name="Impact", sounds=[dict(files=files("Door/door_blow", 3), randPitch=1)]),
-                     dict(name="Rattle", sounds=[dict(files=files("Door/door_rattle", 2), cond=[["Damage", .3, 1]])]),
-                     dict(name="Split", sounds=[dict(files=files("Door/door_split", 2), cond=[["Damage", .6, 1]])])]),
+             tracks=[dict(name="Impact", sounds=[dict(files=lib("Door/door_blow_hit"), randPitch=1.5)]),
+                     dict(name="Rattle", sounds=[dict(files=lib("Door/door_blow_rattle"), cond=[["Damage", .3, 1]],
+                                                      volume=-4, randPitch=1)]),
+                     dict(name="Split", sounds=[dict(files=lib("Door/door_blow_split"), cond=[["Damage", .6, 1]])])]),
         dict(path="Mechanism/Door/Break", spatial=True, min=1.0, max=40.0, bus="Mechanism", bank="SFX",
              note="Latch rips out. The game also fires StopLimit at Impact 1 when the leaf hits the wall.",
-             tracks=[dict(name="Break", sounds=[dict(files=files("Door/door_break", 2))])]),
+             tracks=[dict(name="Break", sounds=[dict(files=lib("Door/door_break_rip"), randPitch=1)])]),
         dict(path="Mechanism/Door/AutoOperator", **DOOR3D,
              note="Title corridor doors open themselves: operator relay + motor.",
              tracks=[dict(name="Operator", sounds=[dict(files=files("Door/door_auto_operator", 2))])]),
@@ -677,35 +718,54 @@ SPEC = {
                                                       auto=[dict(prop="pitch", param="Progress", points=[[0, -2], [1, 3]])])],
                           auto=[dict(prop="volume", param="Progress", points=[[0, -40], [.2, -18], [1, 0]])])]),
         dict(path="Mechanism/Window/Crack", spatial=True, min=1.0, max=28.0, bus="Mechanism", bank="SFX",
-             tracks=[dict(name="Crack", sounds=[dict(files=files("Window/window_crack", 3), randPitch=1)])]),
+             tracks=[dict(name="Crack", sounds=[dict(files=lib("Window/win_crack_hit"), randPitch=1)])]),
         dict(path="Mechanism/Window/Shatter", spatial=True, min=2.0, max=50.0, bus="Mechanism", bank="SFX",
              note="The loudest noise in the game (Relay hearing radius 40 m).",
-             tracks=[dict(name="Shatter", sounds=[dict(files=files("Window/window_shatter", 2))])]),
+             tracks=[dict(name="Shatter", sounds=[dict(files=lib("Window/win_shatter"), randPitch=.6)])]),
         # ---------------------------------------------------------- player foley
         dict(path="Foley/Player/Footstep", spatial=True, min=.5, max=16.0, bus="Foley", bank="SFX",
-             params=["Surface", "Gait"],
-             note="Fire on each foot contact (stride distance), not on a timer.",
+             params=["Surface", "Gait", "Dampness"],
+             note="Fire on each foot contact (stride distance), not on a timer. Body = recorded step for the "
+                  "surface and gait; Moist / Peel / Squish are the damp-carpet layers, scaled by Dampness "
+                  "(0.4 = ordinary Level 0 carpet, >0.75 = waterlogged). Metal is still a placeholder.",
              tracks=[dict(name="%s %s" % (s, g), sounds=[dict(
-                 files=files("Foley/step_%s_%s" % ({"Carpet": "carpet", "CarpetTile": "tile", "Metal": "metal"}[s],
-                                                    g.lower()), 3 if g == "Stop" else 6),
+                 files=(lib("Foley/plr_step_%s_%s_body" % ({"Carpet": "carpet", "CarpetTile": "tile"}[s], g.lower()))
+                        if s != "Metal" else files("Foley/step_metal_%s" % g.lower(), 3 if g == "Stop" else 6)),
                  cond=[["Surface", s], ["Gait", g]], randPitch=1, randVol=1.5,
                  volume={"Walk": -6, "Run": -2, "Stop": -8}[g])])
-                 for s in ("Carpet", "CarpetTile", "Metal") for g in ("Walk", "Run", "Stop")]),
+                 for s in ("Carpet", "CarpetTile", "Metal") for g in ("Walk", "Run", "Stop")] + [
+                 dict(name="Moist", sounds=[dict(files=lib("Foley/plr_step_damp_any_moist"), volume=-12, randPitch=1.5,
+                                                 randVol=2, auto=[dict(prop="volume", param="Dampness", points=DAMP["moist"])])],
+                      auto=[dict(prop="volume", param="Surface", points=[[0, 0], [1, -4], [2, -80]])]),
+                 dict(name="Peel", sounds=[dict(files=lib("Foley/plr_step_damp_any_peel"), volume=-16, randPitch=2,
+                                                randVol=2, auto=[dict(prop="volume", param="Dampness", points=DAMP["peel"])])],
+                      auto=[dict(prop="volume", param="Surface", points=[[0, 0], [1, -6], [2, -80]])]),
+                 dict(name="Squish", sounds=[dict(files=lib("Foley/plr_step_soaked_any_squish"), volume=-8, randPitch=1,
+                                                  auto=[dict(prop="volume", param="Dampness", points=DAMP["squish"])])],
+                      auto=[dict(prop="volume", param="Surface", points=[[0, 0], [1, -3], [2, -80]])]),
+                 dict(name="Cloth", sounds=[dict(files=lib("Foley/plr_step_any_run_cloth"), volume=-16, randVol=2)],
+                      auto=[dict(prop="volume", param="Gait", points=[[0, -10], [1, 0], [2, -14]])])]),
         dict(path="Foley/Player/Cloth", spatial=True, min=.5, max=8.0, bus="Foley", bank="SFX",
-             tracks=[dict(name="Cloth", sounds=[dict(files=files("Foley/cloth", 4), volume=-6, randPitch=1)])]),
+             tracks=[dict(name="Cloth", sounds=[dict(files=lib("Foley/plr_cloth_move"), volume=-6, randPitch=1)])]),
         dict(path="Foley/Player/KeyPickup", bus="Foley", bank="SFX",
              note="Diegetic key ring. The motif hook (first two notes) gets layered here once the motif is chosen.",
-             tracks=[dict(name="Keys", sounds=[dict(files=files("Foley/key_jingle", 4), volume=-3)])]),
+             tracks=[dict(name="Keys", sounds=[dict(files=lib("Foley/plr_key_pickup"), volume=-3, randPitch=.6)])]),
         # ---------------------------------------------------------- the Relay
         dict(path="Relay/Footstep", spatial=True, min=1.5, max=42.0, rolloff=3, bus="Relay", bank="SFX",
-             params=["RelayGait", "Occlusion"], occlusion=True,
-             note="Driven by the rig's foot contacts. Occlusion 0-1 comes from the map path (walls/turns between).",
-             tracks=[dict(name="Walk", sounds=[dict(files=files("Relay/relay_step_walk", 6), cond=[["RelayGait", "Walk"]],
-                                                    randPitch=1, volume=-2)]),
-                     dict(name="Run", sounds=[dict(files=files("Relay/relay_step_run", 6), cond=[["RelayGait", "Run"]],
-                                                   randPitch=1)]),
-                     dict(name="Drag", sounds=[dict(files=files("Relay/relay_drag", 4), cond=[["RelayGait", "Drag"]],
-                                                    volume=-2)])]),
+             params=["RelayGait", "Occlusion", "Dampness"], occlusion=True,
+             note="Driven by the rig's foot contacts. Occlusion 0-1 comes from the walls between. Hard soles on "
+                  "damp carpet, slowed 2-4 st; the player's damp layers pitched down follow Dampness.",
+             tracks=[dict(name="Walk", sounds=[dict(files=lib("Relay/rly_step_carpet_walk_body"), cond=[["RelayGait", "Walk"]],
+                                                    randPitch=1, randVol=1.5, volume=-2)]),
+                     dict(name="Run", sounds=[dict(files=lib("Relay/rly_step_carpet_run_body"), cond=[["RelayGait", "Run"]],
+                                                   randPitch=1, randVol=1.5)]),
+                     dict(name="Drag", sounds=[dict(files=lib("Relay/rly_step_carpet_drag_body"), cond=[["RelayGait", "Drag"]],
+                                                    volume=-2, randPitch=1)]),
+                     dict(name="Moist", sounds=[dict(files=lib("Foley/plr_step_damp_any_moist"), pitch=-5, volume=-10,
+                                                     randPitch=1.5, auto=[dict(prop="volume", param="Dampness",
+                                                                               points=DAMP["moist"])])]),
+                     dict(name="Squish", sounds=[dict(files=lib("Foley/plr_step_soaked_any_squish"), pitch=-4, volume=-8,
+                                                      auto=[dict(prop="volume", param="Dampness", points=DAMP["squish"])])])]),
         dict(path="Relay/Presence", spatial=True, min=2.0, max=30.0, bus="Relay", bank="SFX",
              params=["Proximity", "Occlusion"], occlusion=True, ahdsr=[800, 1500],
              tracks=[dict(name="Drone", sounds=[dict(files=["Relay/relay_presence_loop.wav"], loop=True, volume=-6)],
@@ -747,11 +807,23 @@ def write_script():
     for e in SPEC["events"]:                                    # normalise the DOOR3D override helper
         if "max_" in e:
             e["max"] = e.pop("max_")
-    spec = dict(SPEC, stage=STAGE.replace("\\", "/") + "/", durations=manifest)
-    missing = [fn for e in SPEC["events"] for t in e.get("tracks", []) for s in t["sounds"] for fn in s["files"]
-               if fn not in manifest]
-    if missing:
-        raise SystemExit("spec references files that were not rendered: %s" % missing[:5])
+    durations, sources = {}, {}
+    for e in SPEC["events"]:
+        for t in e.get("tracks", []):
+            for s in t["sounds"]:
+                for fn in s["files"]:
+                    if fn.startswith(REC):
+                        rel = fn[len(REC):]
+                        if rel not in LIBRARY:
+                            raise SystemExit("recorded file missing (run recorded_library.py build): " + rel)
+                        durations[fn], sources[fn] = LIBRARY[rel]["seconds"], os.path.join(LIB, rel)
+                    else:
+                        if fn not in manifest:
+                            raise SystemExit("spec references a placeholder that was not rendered: " + fn)
+                        durations[fn], sources[fn] = manifest[fn], os.path.join(STAGE, fn)
+    spec = dict(SPEC, durations=durations, sources={k: v.replace("\\", "/") for k, v in sources.items()})
+    placeholders = sorted(k for k in sources if not k.startswith(REC))
+    print("recorded files: %d, placeholders still in use: %d" % (len(sources) - len(placeholders), len(placeholders)))
     with open(os.path.join(HERE, "fmod_builder.js")) as f:
         builder = f.read()
     out = os.path.join(BUILD, "fmod_build_frontrooms.js")

@@ -6,11 +6,13 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using WallSide = FrontRoomsModuleEditing.WallSide;
 
 /// <summary>
-/// The Level Designer (P1): the preview scene on the left (Scene or Game
-/// view), the selected room module's Inspector on the right
-/// (FrontRoomsRoomModuleEditor). Menu: FrontRooms → Level Designer.
+/// The Level Designer: the preview scene on the left (Scene or Game view),
+/// the Level Designer window docked beside the Inspector on the right
+/// (FrontRoomsLevelDesignerWindow; a module's own Inspector edits it too).
+/// Menu: FrontRooms → Level Designer.
 /// Headless: -executeMethod FrontRoomsLevelDesigner.SetupBatch -quit creates the
 /// scene and the sample modules; CaptureBatch renders every module to
 /// Verification/designer-*.png.
@@ -22,7 +24,7 @@ public static class FrontRoomsLevelDesigner
     [MenuItem("FrontRooms/Level Designer/Open", priority = 0)]
     public static void OpenMenu() => Open(Selection.activeObject as FrontRoomsRoomModule ?? Modules().FirstOrDefault());
 
-    /// <summary>Open the preview scene on a module and select it, so its Inspector is the right-hand panel.</summary>
+    /// <summary>Open the preview scene on a module, with the Level Designer window on it as the right-hand panel.</summary>
     public static void Open(FrontRoomsRoomModule module)
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
@@ -35,13 +37,22 @@ public static class FrontRoomsLevelDesigner
         var preview = Object.FindFirstObjectByType<FrontRoomsModulePreview>();
         if (preview != null && module != null && preview.module != module)
         {
+            FrontRoomsDesignerSceneTools.Deselect(preview);
             Undo.RecordObject(preview, "Preview module");
             preview.module = module;
             EditorUtility.SetDirty(preview);
         }
         preview?.Rebuild();
-        if (module != null) Selection.activeObject = module;
+        if (!Application.isBatchMode) FrontRoomsLevelDesignerWindow.ShowFor(module != null ? module : preview != null ? preview.module : null);
         FramePreview();
+    }
+
+    /// <summary>Open the designer scene on a module if needed, then enter Play mode to walk the room.</summary>
+    public static void PlayHere(FrontRoomsRoomModule module)
+    {
+        Open(module);
+        // The designer may have cancelled the save prompt.
+        if (SceneManager.GetActiveScene().path == ScenePath) EditorApplication.isPlaying = true;
     }
 
     /// <summary>Point the Scene view down into the previewed room.</summary>
@@ -59,8 +70,16 @@ public static class FrontRoomsLevelDesigner
         view.Repaint();
     }
 
-    [MenuItem("FrontRooms/Level Designer/New room module", priority = 1)]
+    [MenuItem("FrontRooms/Level Designer/New room module", priority = 2)]
     public static void NewModule()
+    {
+        var module = CreateModule();
+        Open(module);
+        EditorGUIUtility.PingObject(module);
+    }
+
+    /// <summary>A new 3 x 3 room with a doorway in the middle of its south side, saved in the modules folder.</summary>
+    public static FrontRoomsRoomModule CreateModule()
     {
         EnsureFolder();
         var path = AssetDatabase.GenerateUniqueAssetPath(FrontRoomsRoomModule.Folder + "/RoomModule.asset");
@@ -70,8 +89,37 @@ public static class FrontRoomsLevelDesigner
         module.data.south[1] = ModuleEdge.Arch;
         AssetDatabase.CreateAsset(module, path);
         AssetDatabase.SaveAssets();
-        Open(module);
-        EditorGUIUtility.PingObject(module);
+        return module;
+    }
+
+    /// <summary>A copy of a module's asset beside it ("Name 1"), to start a variant from.</summary>
+    public static FrontRoomsRoomModule DuplicateModule(FrontRoomsRoomModule module)
+    {
+        var path = AssetDatabase.GetAssetPath(module);
+        var copy = AssetDatabase.GenerateUniqueAssetPath(path);
+        if (!AssetDatabase.CopyAsset(path, copy)) return module;
+        return AssetDatabase.LoadAssetAtPath<FrontRoomsRoomModule>(copy);
+    }
+
+    // ---------- The generator's module library (the level profile) ----------
+
+    /// <summary>Add a module to the level profile's modules, or take it out (undoable).</summary>
+    public static void SetUsedByGenerator(FrontRoomsLevelProfile profile, FrontRoomsRoomModule module, bool used)
+    {
+        var list = (profile.modules ?? new FrontRoomsRoomModule[0]).Where(m => m != module).ToList();
+        if (used) list.Add(module);
+        Undo.RecordObject(profile, used ? "Use module in generator" : "Remove module from generator");
+        profile.modules = list.ToArray();
+        EditorUtility.SetDirty(profile);
+    }
+
+    /// <summary>The level's module chance and tier (the profile's generation numbers; undoable).</summary>
+    public static void SetModuleGeneration(FrontRoomsLevelProfile profile, float chance, int tier)
+    {
+        Undo.RecordObject(profile, "Module chance and tier");
+        profile.generation.moduleChance = Mathf.Clamp01(chance);
+        profile.generation.moduleTier = Mathf.Max(0, tier);
+        EditorUtility.SetDirty(profile);
     }
 
     /// <summary>Create the sample modules that are missing. Existing ones (and edits to them) are left alone.</summary>
@@ -234,28 +282,8 @@ public static class FrontRoomsLevelDesigner
 
     // ---------- Samples ----------
 
-    /// <summary>
-    /// A prop with its back to a wall, 3 cm off the wall face, its front into
-    /// the room, centred on <paramref name="along"/>. Uses the real footprint,
-    /// which need not be centred on the pivot.
-    /// </summary>
-    static ModuleProp Wall(string kit, float along, string side, RoomModuleData m, float y = 0f)
-    {
-        var f = FrontRoomsMapWorld.KitFootprint(kit) ?? new[] { -.3f, -.3f, .3f, .3f, 1f };
-        var gap = ModuleUnits.WallHalf + .03f;
-        var cx = (f[0] + f[2]) * .5f; // the footprint's centre across the front, in local X
-        switch (side)
-        {
-            // yaw 0: local -Z (the back) faces south.
-            case "south": return new ModuleProp { kit = kit, x = along - cx, z = gap - f[1], y = y, yaw = 0f };
-            // yaw 180: local x and z turn round.
-            case "north": return new ModuleProp { kit = kit, x = along + cx, z = m.DepthMetres - gap + f[1], y = y, yaw = 180f };
-            // yaw 90: local (x, z) -> world (z, -x).
-            case "west": return new ModuleProp { kit = kit, x = gap - f[1], z = along + cx, y = y, yaw = 90f };
-            // yaw 270: local (x, z) -> world (-z, x).
-            default: return new ModuleProp { kit = kit, x = m.WidthMetres - gap + f[1], z = along - cx, y = y, yaw = 270f };
-        }
-    }
+    /// <summary>A prop with its back to one of the room's walls (FrontRoomsModuleEditing.AgainstRoomWall, as the palette places wall units).</summary>
+    static ModuleProp Wall(string kit, float along, WallSide side, RoomModuleData m, float y = 0f) => FrontRoomsModuleEditing.AgainstRoomWall(kit, along, side, m, y);
 
     static IEnumerable<(string, string, RoomModuleData)> Samples()
     {
@@ -270,9 +298,9 @@ public static class FrontRoomsLevelDesigner
         a.innerEast[2 + 2 * 3] = ModuleEdge.Wall;
         a.props = new[]
         {
-            Wall("Kit_LadderChair", 1.2f, "north", a), Wall("Kit_LadderChair", 1.8f, "north", a), Wall("Kit_LadderChair", 2.4f, "north", a),
-            Wall("Kit_SideTableTurned", 3.2f, "north", a), Wall("Kit_WallClock", 4.5f, "north", a, 2.1f),
-            Wall("Kit_Torchiere", 6.6f, "west", a),
+            Wall("Kit_LadderChair", 1.2f, WallSide.North, a), Wall("Kit_LadderChair", 1.8f, WallSide.North, a), Wall("Kit_LadderChair", 2.4f, WallSide.North, a),
+            Wall("Kit_SideTableTurned", 3.2f, WallSide.North, a), Wall("Kit_WallClock", 4.5f, WallSide.North, a, 2.1f),
+            Wall("Kit_Torchiere", 6.6f, WallSide.West, a),
         };
         a.lamps[1 + 1 * 4] = ModuleLamp.Dead;
         a.lamps[3 + 2 * 4] = ModuleLamp.Failing;
@@ -284,7 +312,7 @@ public static class FrontRoomsLevelDesigner
         b.south[1] = ModuleEdge.Open; b.south[2] = ModuleEdge.Open;
         b.east[1] = ModuleEdge.Arch;
         b.north[3] = ModuleEdge.Arch;
-        b.props = new[] { Wall("Kit_Copier", 2.0f, "west", b), Wall("Kit_WaterCooler", 9.2f, "west", b), Wall("Kit_FilingCabinet", 1.0f, "north", b), Wall("Kit_FilingCabinet", 1.4f, "north", b) };
+        b.props = new[] { Wall("Kit_Copier", 2.0f, WallSide.West, b), Wall("Kit_WaterCooler", 9.2f, WallSide.West, b), Wall("Kit_FilingCabinet", 1.0f, WallSide.North, b), Wall("Kit_FilingCabinet", 1.4f, WallSide.North, b) };
         b.lamps[0 + 3 * 4] = ModuleLamp.Dim;
         yield return ("Office_Bullpen_4x4", "Level 4: an open-plan office. The Office kit lays out the pods; the copier, cooler and files are fixed.", b);
 
@@ -304,7 +332,7 @@ public static class FrontRoomsLevelDesigner
         d.south[0] = ModuleEdge.Arch;
         d.props = new[]
         {
-            Wall("Kit_Bookcase", 7.4f, "east", d), Wall("Kit_PlyCabinet", 5.2f, "east", d),
+            Wall("Kit_Bookcase", 7.4f, WallSide.East, d), Wall("Kit_PlyCabinet", 5.2f, WallSide.East, d),
             new ModuleProp { kit = "Kit_Crate", x = 1.4f, z = 7.6f, yaw = 12f }, new ModuleProp { kit = "Kit_Pallet", x = 1.4f, z = 5.4f, yaw = 0f },
         };
         d.lamps[0 + 0 * 2] = ModuleLamp.Dim;

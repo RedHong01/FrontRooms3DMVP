@@ -8,18 +8,22 @@ namespace FrontRooms.Audio
     /// follows the real speed (wall slides, stamina drop, stopping). Also
     /// mirrors the game's stamina rule (5 s sprint, recover after 1 s) to
     /// drive the breath layer without reaching into the game's private state.
+    /// Shoes carry wetness: after a soaked patch the damp layers fade over
+    /// ~30 s instead of switching off at the zone border.
     /// </summary>
     public sealed class FrontRoomsPlayerFootsteps : MonoBehaviour
     {
         const float WalkSpeed = 3.2f, RunSpeed = 5.5f;
         const float WalkStride = 1.45f, RunStride = 1.72f;
         const float StaminaSeconds = 5f, RecoverDelay = 1f, RecoverRate = 1f;
+        const float DefaultDampness = .4f, ShoeDryTime = 30f;
 
         public Func<Vector3, SoundIds.Surface> surfaceAt;
+        public Func<Vector3, float> dampnessAt;
 
         CharacterController body;
         Vector3 last;
-        float distance, speed, stamina = StaminaSeconds, sinceSprint;
+        float distance, speed, stamina = StaminaSeconds, sinceSprint, shoe;
         bool wasMoving;
 
         public float Speed => speed;
@@ -44,6 +48,7 @@ namespace FrontRooms.Audio
             if (step > 2f) { distance = 0f; return; }                // respawn / teleport
 
             speed = Mathf.Lerp(speed, step / dt, 1f - Mathf.Exp(-dt * 12f));
+            shoe *= Mathf.Exp(-dt / ShoeDryTime);
             Sprinting = speed > 4.4f;
             if (Sprinting) { stamina = Mathf.Max(0f, stamina - dt); sinceSprint = 0f; }
             else
@@ -85,8 +90,9 @@ namespace FrontRooms.Audio
             if (!FrontRoomsFmod.Ready) return;
             var feet = Feet();
             var surface = surfaceAt != null ? surfaceAt(feet) : SoundIds.Surface.Carpet;
+            shoe = Mathf.Max(shoe, dampnessAt != null ? dampnessAt(feet) : DefaultDampness);
             FrontRoomsFmod.OneShot(SoundIds.Footstep, feet,
-                SoundIds.Param.Surface, (float)surface, SoundIds.Param.Gait, (float)gait);
+                SoundIds.Param.Surface, (float)surface, SoundIds.Param.Gait, (float)gait, SoundIds.Param.Dampness, shoe);
         }
     }
 }

@@ -1,0 +1,862 @@
+{
+ "Ambience/amb_air_hall_loop.wav": {
+  "note": "carpeted hallway air, 50 Hz mains notched (window spike 1.9 dB)",
+  "seconds": 20.0,
+  "source": "406508@36.50s"
+ },
+ "Ambience/amb_air_mall_loop.wav": {
+  "note": "large empty interior, 50 Hz mains notched; CC-BY klankbeeld (window spike 1.5 dB)",
+  "seconds": 20.0,
+  "source": "341512@96.50s"
+ },
+ "Ambience/amb_fixture_close_loop.wav": {
+  "note": "one fixture up close",
+  "seconds": 3.9968,
+  "source": "454098@62.00s"
+ },
+ "Ambience/amb_fixture_strike_01.wav": {
+  "note": "starter flicker into hum",
+  "seconds": 1.304,
+  "source": "125064@0.27s x1.2 speed"
+ },
+ "Ambience/amb_fixture_strike_02.wav": {
+  "note": "starter flicker into hum",
+  "seconds": 1.904,
+  "source": "232447@0.85s"
+ },
+ "Ambience/amb_fixture_tick_01.wav": {
+  "note": "starter / ballast tick",
+  "seconds": 0.084,
+  "source": "232447@0.91s"
+ },
+ "Ambience/amb_fixture_tick_02.wav": {
+  "note": "starter / ballast tick",
+  "seconds": 0.084,
+  "source": "232447@1.60s"
+ },
+ "Ambience/amb_fixture_tick_03.wav": {
+  "note": "starter / ballast tick",
+  "seconds": 0.084,
+  "source": "232447@10.09s"
+ },
+ "Ambience/amb_hum_beat_loop.wav": {
+  "note": "same hum detuned to 118.5 Hz: beats against the bed (Tension)",
+  "seconds": 9.5992,
+  "source": "454098@38.00s"
+ },
+ "Ambience/amb_hum_bed_loop.wav": {
+  "note": "60 Hz-mains tube hum, 120/240/360 Hz family (f0 120.02, seam corr 0.979)",
+  "seconds": 9.5958,
+  "source": "454098@38.00s"
+ },
+ "Door/door_blow_hit_01.wav": {
+  "note": "the Relay strikes the door, -4/-5 st",
+  "seconds": 0.9566,
+  "source": "843829@13.44s"
+ },
+ "Door/door_blow_hit_02.wav": {
+  "note": "the Relay strikes the door, -4/-5 st",
+  "seconds": 0.9407,
+  "source": "843829@28.93s"
+ },
+ "Door/door_blow_hit_03.wav": {
+  "note": "the Relay strikes the door, -4/-5 st",
+  "seconds": 0.8584,
+  "source": "341176@0.11s"
+ },
+ "Door/door_blow_rattle_01.wav": {
+  "note": "hardware rattle after a blow",
+  "seconds": 0.2634,
+  "source": "768656@1.88s"
+ },
+ "Door/door_blow_rattle_02.wav": {
+  "note": "hardware rattle after a blow",
+  "seconds": 0.2638,
+  "source": "768656@3.48s"
+ },
+ "Door/door_blow_split_01.wav": {
+  "note": "wood splitting",
+  "seconds": 0.404,
+  "source": "160213@0.15s"
+ },
+ "Door/door_blow_split_02.wav": {
+  "note": "wood splitting",
+  "seconds": 0.504,
+  "source": "160213@0.45s"
+ },
+ "Door/door_break_rip_01.wav": {
+  "note": "door forced through",
+  "seconds": 0.9343,
+  "source": "160213@0.03s + 843829@13.44s"
+ },
+ "Door/door_break_rip_02.wav": {
+  "note": "door forced through",
+  "seconds": 0.9619,
+  "source": "160213@0.03s + 843829@28.93s"
+ },
+ "Door/door_handle_press_01.wav": {
+  "note": "lever handle pressed",
+  "seconds": 0.3026,
+  "source": "768656@0.00s"
+ },
+ "Door/door_handle_press_02.wav": {
+  "note": "lever handle pressed",
+  "seconds": 0.2576,
+  "source": "768656@1.36s"
+ },
+ "Door/door_handle_press_03.wav": {
+  "note": "lever handle pressed",
+  "seconds": 0.3023,
+  "source": "768656@2.96s"
+ },
+ "Door/door_handle_press_04.wav": {
+  "note": "lever handle pressed",
+  "seconds": 0.3028,
+  "source": "768656@4.37s"
+ },
+ "Door/door_handle_press_05.wav": {
+  "note": "lever handle pressed",
+  "seconds": 0.3016,
+  "source": "768656@5.66s"
+ },
+ "Door/door_handle_press_06.wav": {
+  "note": "lever handle pressed",
+  "seconds": 0.3016,
+  "source": "768656@6.99s"
+ },
+ "Door/door_handle_press_07.wav": {
+  "note": "lever handle pressed",
+  "seconds": 0.3038,
+  "source": "768656@8.30s"
+ },
+ "Door/door_handle_press_08.wav": {
+  "note": "lever handle pressed",
+  "seconds": 0.2981,
+  "source": "768656@9.85s"
+ },
+ "Door/door_latch_norm_01.wav": {
+  "note": "latch click over a softened body",
+  "seconds": 0.5109,
+  "source": "843829@19.50s + 843829@13.44s"
+ },
+ "Door/door_latch_norm_02.wav": {
+  "note": "latch click over a softened body",
+  "seconds": 0.5177,
+  "source": "843829@23.80s + 843829@28.93s"
+ },
+ "Door/door_latch_norm_03.wav": {
+  "note": "latch click over a softened body",
+  "seconds": 0.5062,
+  "source": "843829@19.50s + 843829@28.93s"
+ },
+ "Door/door_latch_slam_01.wav": {
+  "note": "slammed shut (stairwell tail trimmed)",
+  "seconds": 0.8917,
+  "source": "843829@13.44s"
+ },
+ "Door/door_latch_slam_02.wav": {
+  "note": "slammed shut (stairwell tail trimmed)",
+  "seconds": 0.9007,
+  "source": "843829@28.93s"
+ },
+ "Door/door_latch_slam_03.wav": {
+  "note": "slammed shut (stairwell tail trimmed)",
+  "seconds": 0.7655,
+  "source": "341176@0.11s"
+ },
+ "Door/door_latch_soft_01.wav": {
+  "note": "door eased shut",
+  "seconds": 0.4241,
+  "source": "843829@19.50s"
+ },
+ "Door/door_latch_soft_02.wav": {
+  "note": "door eased shut",
+  "seconds": 0.4467,
+  "source": "843829@23.80s"
+ },
+ "Door/door_locked_rattle_01.wav": {
+  "note": "handle against a locked bolt, press + release",
+  "seconds": 0.8618,
+  "source": "768656@0.00s"
+ },
+ "Door/door_locked_rattle_02.wav": {
+  "note": "handle against a locked bolt, press + release",
+  "seconds": 0.9676,
+  "source": "768656@1.36s"
+ },
+ "Door/door_locked_rattle_03.wav": {
+  "note": "handle against a locked bolt, press + release",
+  "seconds": 0.9523,
+  "source": "768656@2.96s"
+ },
+ "Door/door_locked_rattle_04.wav": {
+  "note": "handle against a locked bolt, press + release",
+  "seconds": 0.8628,
+  "source": "768656@4.37s"
+ },
+ "Door/door_locked_rattle_05.wav": {
+  "note": "handle against a locked bolt, press + release",
+  "seconds": 0.8741,
+  "source": "768656@5.66s"
+ },
+ "Door/door_locked_rattle_06.wav": {
+  "note": "handle against a locked bolt, press + release",
+  "seconds": 0.8616,
+  "source": "768656@6.99s"
+ },
+ "Door/door_locked_rattle_07.wav": {
+  "note": "handle against a locked bolt, press + release",
+  "seconds": 1.0138,
+  "source": "768656@8.30s"
+ },
+ "Door/door_locked_rattle_08.wav": {
+  "note": "handle against a locked bolt, press + release",
+  "seconds": 0.9656,
+  "source": "768656@9.85s"
+ },
+ "Door/door_stop_hard_01.wav": {
+  "note": "leaf slams into the wall",
+  "seconds": 0.6655,
+  "source": "341176@0.11s"
+ },
+ "Door/door_stop_hard_02.wav": {
+  "note": "leaf slams into the wall",
+  "seconds": 0.6494,
+  "source": "341176@6.21s"
+ },
+ "Door/door_stop_hard_03.wav": {
+  "note": "leaf slams into the wall",
+  "seconds": 0.6395,
+  "source": "843829@13.44s"
+ },
+ "Door/door_stop_med_01.wav": {
+  "note": "leaf hits the stop, -2 st",
+  "seconds": 0.4103,
+  "source": "843829@13.44s"
+ },
+ "Door/door_stop_med_02.wav": {
+  "note": "leaf hits the stop, -2 st",
+  "seconds": 0.397,
+  "source": "843829@28.93s"
+ },
+ "Door/door_stop_soft_01.wav": {
+  "note": "leaf bumps the stop",
+  "seconds": 0.3357,
+  "source": "843829@12.82s"
+ },
+ "Door/door_stop_soft_02.wav": {
+  "note": "leaf bumps the stop",
+  "seconds": 0.354,
+  "source": "843829@28.30s"
+ },
+ "Door/door_stop_soft_03.wav": {
+  "note": "leaf bumps the stop",
+  "seconds": 0.454,
+  "source": "door-creak.wav@1.80s"
+ },
+ "Door/door_stopmid_settle_01.wav": {
+  "note": "comes to rest mid-swing",
+  "seconds": 0.154,
+  "source": "843829@18.68s"
+ },
+ "Door/door_stopmid_settle_02.wav": {
+  "note": "comes to rest mid-swing",
+  "seconds": 0.154,
+  "source": "843829@0.96s"
+ },
+ "Door/door_stopmid_settle_03.wav": {
+  "note": "comes to rest mid-swing",
+  "seconds": 0.154,
+  "source": "843829@1.19s"
+ },
+ "Door/door_swing_creak_loop.wav": {
+  "note": "hinge stick-slip, looped",
+  "seconds": 0.95,
+  "source": "door-creak.wav@0.30s"
+ },
+ "Door/door_unlatch_bolt_01.wav": {
+  "note": "latch bolt and spring",
+  "seconds": 0.204,
+  "source": "843829@0.74s"
+ },
+ "Door/door_unlatch_bolt_02.wav": {
+  "note": "latch bolt and spring",
+  "seconds": 0.204,
+  "source": "843829@0.96s"
+ },
+ "Door/door_unlatch_bolt_03.wav": {
+  "note": "latch bolt and spring",
+  "seconds": 0.204,
+  "source": "843829@1.19s"
+ },
+ "Door/door_unlatch_bolt_04.wav": {
+  "note": "latch bolt and spring",
+  "seconds": 0.2036,
+  "source": "843829@1.55s"
+ },
+ "Door/door_unlatch_bolt_05.wav": {
+  "note": "latch bolt and spring",
+  "seconds": 0.204,
+  "source": "843829@1.68s"
+ },
+ "Foley/plr_cloth_move_01.wav": {
+  "note": "body movement",
+  "seconds": 0.354,
+  "source": "611276@0.23s"
+ },
+ "Foley/plr_cloth_move_02.wav": {
+  "note": "body movement",
+  "seconds": 0.379,
+  "source": "611276@6.12s"
+ },
+ "Foley/plr_cloth_move_03.wav": {
+  "note": "body movement",
+  "seconds": 0.354,
+  "source": "611276@11.11s"
+ },
+ "Foley/plr_cloth_move_04.wav": {
+  "note": "body movement",
+  "seconds": 0.354,
+  "source": "611276@11.50s"
+ },
+ "Foley/plr_cloth_move_05.wav": {
+  "note": "body movement",
+  "seconds": 0.354,
+  "source": "611276@14.57s"
+ },
+ "Foley/plr_cloth_move_06.wav": {
+  "note": "body movement",
+  "seconds": 0.354,
+  "source": "611276@14.94s"
+ },
+ "Foley/plr_key_pickup_01.wav": {
+  "note": "key ring lifted",
+  "seconds": 0.804,
+  "source": "616835@0.54s"
+ },
+ "Foley/plr_key_pickup_02.wav": {
+  "note": "key ring lifted",
+  "seconds": 0.8039,
+  "source": "616835@1.94s"
+ },
+ "Foley/plr_key_pickup_03.wav": {
+  "note": "key ring lifted",
+  "seconds": 0.7117,
+  "source": "616835@9.76s"
+ },
+ "Foley/plr_key_pickup_04.wav": {
+  "note": "key ring lifted",
+  "seconds": 0.8017,
+  "source": "616835@25.49s"
+ },
+ "Foley/plr_key_pickup_05.wav": {
+  "note": "key ring lifted",
+  "seconds": 0.804,
+  "source": "616835@27.20s"
+ },
+ "Foley/plr_step_any_run_cloth_01.wav": {
+  "note": "jacket swish per stride",
+  "seconds": 0.164,
+  "source": "611276@25.31s"
+ },
+ "Foley/plr_step_any_run_cloth_02.wav": {
+  "note": "jacket swish per stride",
+  "seconds": 0.194,
+  "source": "611276@32.03s"
+ },
+ "Foley/plr_step_any_run_cloth_03.wav": {
+  "note": "jacket swish per stride",
+  "seconds": 0.2815,
+  "source": "611276@32.59s"
+ },
+ "Foley/plr_step_any_run_cloth_04.wav": {
+  "note": "jacket swish per stride",
+  "seconds": 0.209,
+  "source": "611276@33.42s"
+ },
+ "Foley/plr_step_any_run_cloth_05.wav": {
+  "note": "jacket swish per stride",
+  "seconds": 0.164,
+  "source": "611276@33.99s"
+ },
+ "Foley/plr_step_any_run_cloth_06.wav": {
+  "note": "jacket swish per stride",
+  "seconds": 0.174,
+  "source": "611276@34.84s"
+ },
+ "Foley/plr_step_any_run_cloth_07.wav": {
+  "note": "jacket swish per stride",
+  "seconds": 0.2465,
+  "source": "611276@35.72s"
+ },
+ "Foley/plr_step_any_run_cloth_08.wav": {
+  "note": "jacket swish per stride",
+  "seconds": 0.209,
+  "source": "611276@38.02s"
+ },
+ "Foley/plr_step_carpet_run_body_01.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.3426,
+  "source": "575318@0.59s"
+ },
+ "Foley/plr_step_carpet_run_body_02.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.2397,
+  "source": "575318@3.18s"
+ },
+ "Foley/plr_step_carpet_run_body_03.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.2261,
+  "source": "575318@12.62s"
+ },
+ "Foley/plr_step_carpet_run_body_04.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.2926,
+  "source": "575318@14.07s"
+ },
+ "Foley/plr_step_carpet_run_body_05.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.344,
+  "source": "575318@15.39s"
+ },
+ "Foley/plr_step_carpet_run_body_06.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.203,
+  "source": "575318@17.82s"
+ },
+ "Foley/plr_step_carpet_run_body_07.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.2215,
+  "source": "575318@22.66s"
+ },
+ "Foley/plr_step_carpet_run_body_08.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.3214,
+  "source": "575318@23.02s"
+ },
+ "Foley/plr_step_carpet_run_body_09.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.2213,
+  "source": "575318@25.12s"
+ },
+ "Foley/plr_step_carpet_run_body_10.wav": {
+  "note": "padded damp carpet, run",
+  "seconds": 0.2737,
+  "source": "575318@26.06s"
+ },
+ "Foley/plr_step_carpet_stop_body_01.wav": {
+  "note": "last step before standing still",
+  "seconds": 0.5029,
+  "source": "575321@28.70s"
+ },
+ "Foley/plr_step_carpet_stop_body_02.wav": {
+  "note": "last step before standing still",
+  "seconds": 0.5,
+  "source": "575321@32.46s"
+ },
+ "Foley/plr_step_carpet_stop_body_03.wav": {
+  "note": "last step before standing still",
+  "seconds": 0.494,
+  "source": "575321@41.48s"
+ },
+ "Foley/plr_step_carpet_walk_body_01.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.3887,
+  "source": "575321@3.29s"
+ },
+ "Foley/plr_step_carpet_walk_body_02.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.4158,
+  "source": "575321@6.16s"
+ },
+ "Foley/plr_step_carpet_walk_body_03.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.3987,
+  "source": "575321@7.51s"
+ },
+ "Foley/plr_step_carpet_walk_body_04.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.3385,
+  "source": "575321@8.86s"
+ },
+ "Foley/plr_step_carpet_walk_body_05.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.2785,
+  "source": "575321@30.57s"
+ },
+ "Foley/plr_step_carpet_walk_body_06.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.2695,
+  "source": "575321@37.08s"
+ },
+ "Foley/plr_step_carpet_walk_body_07.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.4218,
+  "source": "575321@40.62s"
+ },
+ "Foley/plr_step_carpet_walk_body_08.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.424,
+  "source": "256209@3.74s"
+ },
+ "Foley/plr_step_carpet_walk_body_09.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.404,
+  "source": "256209@6.30s"
+ },
+ "Foley/plr_step_carpet_walk_body_10.wav": {
+  "note": "padded damp carpet, walk (sneakers)",
+  "seconds": 0.424,
+  "source": "256209@9.44s"
+ },
+ "Foley/plr_step_damp_any_moist_01.wav": {
+  "note": "wet pile compressing, 300 Hz-2 kHz (Dampness)",
+  "seconds": 0.244,
+  "source": "583287@2.48s"
+ },
+ "Foley/plr_step_damp_any_moist_02.wav": {
+  "note": "wet pile compressing, 300 Hz-2 kHz (Dampness)",
+  "seconds": 0.244,
+  "source": "583287@13.14s"
+ },
+ "Foley/plr_step_damp_any_moist_03.wav": {
+  "note": "wet pile compressing, 300 Hz-2 kHz (Dampness)",
+  "seconds": 0.1165,
+  "source": "583287@22.24s"
+ },
+ "Foley/plr_step_damp_any_moist_04.wav": {
+  "note": "wet pile compressing, 300 Hz-2 kHz (Dampness)",
+  "seconds": 0.1415,
+  "source": "583287@25.86s"
+ },
+ "Foley/plr_step_damp_any_moist_05.wav": {
+  "note": "wet pile compressing, 300 Hz-2 kHz (Dampness)",
+  "seconds": 0.1793,
+  "source": "583287@27.09s"
+ },
+ "Foley/plr_step_damp_any_moist_06.wav": {
+  "note": "wet pile compressing, 300 Hz-2 kHz (Dampness)",
+  "seconds": 0.129,
+  "source": "583287@28.11s"
+ },
+ "Foley/plr_step_damp_any_moist_07.wav": {
+  "note": "wet pile compressing, 300 Hz-2 kHz (Dampness)",
+  "seconds": 0.244,
+  "source": "583287@47.65s"
+ },
+ "Foley/plr_step_damp_any_moist_08.wav": {
+  "note": "wet pile compressing, 300 Hz-2 kHz (Dampness)",
+  "seconds": 0.189,
+  "source": "583287@48.30s"
+ },
+ "Foley/plr_step_damp_any_peel_01.wav": {
+  "note": "sticky release 2-5 kHz, delayed 50-150 ms (Dampness)",
+  "seconds": 0.1281,
+  "source": "583287@3.17s"
+ },
+ "Foley/plr_step_damp_any_peel_02.wav": {
+  "note": "sticky release 2-5 kHz, delayed 50-150 ms (Dampness)",
+  "seconds": 0.2415,
+  "source": "583287@15.92s"
+ },
+ "Foley/plr_step_damp_any_peel_03.wav": {
+  "note": "sticky release 2-5 kHz, delayed 50-150 ms (Dampness)",
+  "seconds": 0.224,
+  "source": "583287@17.16s"
+ },
+ "Foley/plr_step_damp_any_peel_04.wav": {
+  "note": "sticky release 2-5 kHz, delayed 50-150 ms (Dampness)",
+  "seconds": 0.2828,
+  "source": "583287@27.09s"
+ },
+ "Foley/plr_step_damp_any_peel_05.wav": {
+  "note": "sticky release 2-5 kHz, delayed 50-150 ms (Dampness)",
+  "seconds": 0.214,
+  "source": "583287@34.77s"
+ },
+ "Foley/plr_step_damp_any_peel_06.wav": {
+  "note": "sticky release 2-5 kHz, delayed 50-150 ms (Dampness)",
+  "seconds": 0.264,
+  "source": "583287@35.90s"
+ },
+ "Foley/plr_step_damp_any_peel_07.wav": {
+  "note": "sticky release 2-5 kHz, delayed 50-150 ms (Dampness)",
+  "seconds": 0.199,
+  "source": "583287@48.30s"
+ },
+ "Foley/plr_step_damp_any_peel_08.wav": {
+  "note": "sticky release 2-5 kHz, delayed 50-150 ms (Dampness)",
+  "seconds": 0.2115,
+  "source": "583287@48.50s"
+ },
+ "Foley/plr_step_soaked_any_squish_01.wav": {
+  "note": "waterlogged shoe (Dampness > .75 only); CC-BY bewagne",
+  "seconds": 0.2481,
+  "source": "187617@5.64s"
+ },
+ "Foley/plr_step_soaked_any_squish_02.wav": {
+  "note": "waterlogged shoe (Dampness > .75 only); CC-BY bewagne",
+  "seconds": 0.1928,
+  "source": "187617@8.41s"
+ },
+ "Foley/plr_step_soaked_any_squish_03.wav": {
+  "note": "waterlogged shoe (Dampness > .75 only); CC-BY bewagne",
+  "seconds": 0.3237,
+  "source": "187617@10.46s"
+ },
+ "Foley/plr_step_soaked_any_squish_04.wav": {
+  "note": "waterlogged shoe (Dampness > .75 only); CC-BY bewagne",
+  "seconds": 0.224,
+  "source": "187617@11.18s"
+ },
+ "Foley/plr_step_soaked_any_squish_05.wav": {
+  "note": "waterlogged shoe (Dampness > .75 only); CC-BY bewagne",
+  "seconds": 0.3115,
+  "source": "187617@17.63s"
+ },
+ "Foley/plr_step_soaked_any_squish_06.wav": {
+  "note": "waterlogged shoe (Dampness > .75 only); CC-BY bewagne",
+  "seconds": 0.323,
+  "source": "187617@20.48s"
+ },
+ "Foley/plr_step_tile_run_body_01.wav": {
+  "note": "glue-down carpet tile, run (brighter EQ, other takes)",
+  "seconds": 0.276,
+  "source": "575318@4.68s"
+ },
+ "Foley/plr_step_tile_run_body_02.wav": {
+  "note": "glue-down carpet tile, run (brighter EQ, other takes)",
+  "seconds": 0.212,
+  "source": "575318@11.77s"
+ },
+ "Foley/plr_step_tile_run_body_03.wav": {
+  "note": "glue-down carpet tile, run (brighter EQ, other takes)",
+  "seconds": 0.2866,
+  "source": "575318@12.06s"
+ },
+ "Foley/plr_step_tile_run_body_04.wav": {
+  "note": "glue-down carpet tile, run (brighter EQ, other takes)",
+  "seconds": 0.2884,
+  "source": "575318@12.88s"
+ },
+ "Foley/plr_step_tile_run_body_05.wav": {
+  "note": "glue-down carpet tile, run (brighter EQ, other takes)",
+  "seconds": 0.2033,
+  "source": "575318@13.82s"
+ },
+ "Foley/plr_step_tile_run_body_06.wav": {
+  "note": "glue-down carpet tile, run (brighter EQ, other takes)",
+  "seconds": 0.2525,
+  "source": "575318@17.54s"
+ },
+ "Foley/plr_step_tile_run_body_07.wav": {
+  "note": "glue-down carpet tile, run (brighter EQ, other takes)",
+  "seconds": 0.2025,
+  "source": "575318@20.31s"
+ },
+ "Foley/plr_step_tile_run_body_08.wav": {
+  "note": "glue-down carpet tile, run (brighter EQ, other takes)",
+  "seconds": 0.2365,
+  "source": "575318@21.63s"
+ },
+ "Foley/plr_step_tile_stop_body_01.wav": {
+  "note": "last step before standing still",
+  "seconds": 0.4756,
+  "source": "148466@13.53s"
+ },
+ "Foley/plr_step_tile_stop_body_02.wav": {
+  "note": "last step before standing still",
+  "seconds": 0.4991,
+  "source": "575321@24.73s"
+ },
+ "Foley/plr_step_tile_stop_body_03.wav": {
+  "note": "last step before standing still",
+  "seconds": 0.5032,
+  "source": "575321@28.70s"
+ },
+ "Foley/plr_step_tile_walk_body_01.wav": {
+  "note": "glue-down carpet tile, walk",
+  "seconds": 0.2715,
+  "source": "148466@0.65s"
+ },
+ "Foley/plr_step_tile_walk_body_02.wav": {
+  "note": "glue-down carpet tile, walk",
+  "seconds": 0.2635,
+  "source": "148466@1.84s"
+ },
+ "Foley/plr_step_tile_walk_body_03.wav": {
+  "note": "glue-down carpet tile, walk",
+  "seconds": 0.2715,
+  "source": "148466@9.95s"
+ },
+ "Foley/plr_step_tile_walk_body_04.wav": {
+  "note": "glue-down carpet tile, walk",
+  "seconds": 0.334,
+  "source": "148466@11.13s"
+ },
+ "Foley/plr_step_tile_walk_body_05.wav": {
+  "note": "glue-down carpet tile, walk",
+  "seconds": 0.264,
+  "source": "148466@11.74s"
+ },
+ "Foley/plr_step_tile_walk_body_06.wav": {
+  "note": "glue-down carpet tile, walk",
+  "seconds": 0.424,
+  "source": "148466@16.42s"
+ },
+ "Foley/plr_step_tile_walk_body_07.wav": {
+  "note": "glue-down carpet tile, walk",
+  "seconds": 0.264,
+  "source": "148466@22.91s"
+ },
+ "Foley/plr_step_tile_walk_body_08.wav": {
+  "note": "glue-down carpet tile, walk",
+  "seconds": 0.264,
+  "source": "148466@28.72s"
+ },
+ "Foley/plr_step_tile_walk_body_09.wav": {
+  "note": "glue-down carpet tile, walk",
+  "seconds": 0.264,
+  "source": "148466@29.56s"
+ },
+ "Relay/rly_step_carpet_drag_body_01.wav": {
+  "note": "slow step + dragged cloth on carpet",
+  "seconds": 0.784,
+  "source": "560477@57.60s + 611276@0.10s"
+ },
+ "Relay/rly_step_carpet_drag_body_02.wav": {
+  "note": "slow step + dragged cloth on carpet",
+  "seconds": 0.534,
+  "source": "560477@60.92s + 611276@2.63s"
+ },
+ "Relay/rly_step_carpet_drag_body_03.wav": {
+  "note": "slow step + dragged cloth on carpet",
+  "seconds": 0.534,
+  "source": "560477@78.55s + 611276@13.05s"
+ },
+ "Relay/rly_step_carpet_drag_body_04.wav": {
+  "note": "slow step + dragged cloth on carpet",
+  "seconds": 0.5326,
+  "source": "560477@102.00s + 611276@39.20s"
+ },
+ "Relay/rly_step_carpet_run_body_01.wav": {
+  "note": "hard soles, forceful, -2 st",
+  "seconds": 0.384,
+  "source": "560477@44.21s"
+ },
+ "Relay/rly_step_carpet_run_body_02.wav": {
+  "note": "hard soles, forceful, -2 st",
+  "seconds": 0.3422,
+  "source": "560477@96.03s"
+ },
+ "Relay/rly_step_carpet_run_body_03.wav": {
+  "note": "hard soles, forceful, -2 st",
+  "seconds": 0.3327,
+  "source": "560477@100.83s"
+ },
+ "Relay/rly_step_carpet_run_body_04.wav": {
+  "note": "hard soles, forceful, -2 st",
+  "seconds": 0.3271,
+  "source": "560477@102.50s"
+ },
+ "Relay/rly_step_carpet_run_body_05.wav": {
+  "note": "hard soles, forceful, -2 st",
+  "seconds": 0.3371,
+  "source": "560477@108.08s"
+ },
+ "Relay/rly_step_carpet_run_body_06.wav": {
+  "note": "hard soles, forceful, -2 st",
+  "seconds": 0.384,
+  "source": "560477@109.24s"
+ },
+ "Relay/rly_step_carpet_run_body_07.wav": {
+  "note": "hard soles, forceful, -2 st",
+  "seconds": 0.3415,
+  "source": "560477@111.31s"
+ },
+ "Relay/rly_step_carpet_run_body_08.wav": {
+  "note": "hard soles, forceful, -2 st",
+  "seconds": 0.264,
+  "source": "560477@117.60s"
+ },
+ "Relay/rly_step_carpet_walk_body_01.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.434,
+  "source": "560477@13.49s"
+ },
+ "Relay/rly_step_carpet_walk_body_02.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.304,
+  "source": "560477@50.37s"
+ },
+ "Relay/rly_step_carpet_walk_body_03.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.5065,
+  "source": "560477@57.60s"
+ },
+ "Relay/rly_step_carpet_walk_body_04.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.304,
+  "source": "560477@60.93s"
+ },
+ "Relay/rly_step_carpet_walk_body_05.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.304,
+  "source": "560477@67.38s"
+ },
+ "Relay/rly_step_carpet_walk_body_06.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.4415,
+  "source": "560477@76.06s"
+ },
+ "Relay/rly_step_carpet_walk_body_07.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.409,
+  "source": "560477@77.31s"
+ },
+ "Relay/rly_step_carpet_walk_body_08.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.5265,
+  "source": "560477@78.55s"
+ },
+ "Relay/rly_step_carpet_walk_body_09.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.3265,
+  "source": "560477@101.60s"
+ },
+ "Relay/rly_step_carpet_walk_body_10.wav": {
+  "note": "hard soles on damp carpet, -3 st",
+  "seconds": 0.494,
+  "source": "560477@102.00s"
+ },
+ "Window/win_crack_hit_01.wav": {
+  "note": "pane flexes and cracks",
+  "seconds": 0.8724,
+  "source": "376607@0.07s"
+ },
+ "Window/win_crack_hit_02.wav": {
+  "note": "pane flexes and cracks",
+  "seconds": 0.8535,
+  "source": "376607@4.09s"
+ },
+ "Window/win_crack_hit_03.wav": {
+  "note": "pane flexes and cracks",
+  "seconds": 0.1628,
+  "source": "575283@50.38s"
+ },
+ "Window/win_shatter_01.wav": {
+  "note": "pane gives way",
+  "seconds": 1.6011,
+  "source": "575283@40.18s"
+ },
+ "Window/win_shatter_02.wav": {
+  "note": "pane gives way",
+  "seconds": 1.6007,
+  "source": "575283@43.26s"
+ },
+ "Window/win_shatter_03.wav": {
+  "note": "pane gives way",
+  "seconds": 1.5628,
+  "source": "575283@50.38s"
+ }
+}

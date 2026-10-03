@@ -111,7 +111,7 @@ function asset(rel) {
     if (ASSET[rel]) return ASSET[rel];
     var a = ws.masterAssetFolder.getAsset(rel);
     if (!a) {
-        a = studio.project.importAudioFile(SPEC.stage + rel);
+        a = studio.project.importAudioFile(SPEC.sources[rel]);
         if (!a) throw new Error("import failed " + rel);
         if (a.getAssetPath() !== rel) a.setAssetPath(rel);
     }
@@ -164,6 +164,7 @@ function addSound(ev, track, s) {
     snd.isAsync = true;
     if (s.loop) snd.looping = true;
     if (s.volume !== undefined) snd.volume = s.volume;
+    if (s.pitch !== undefined) snd.pitch = s.pitch;
     (s.cond || []).forEach(function (c) {
         var gp = GP[c[0]];
         if (typeof c[1] !== "string") { snd.addParameterCondition(gp, c[1], c[2]); return; }
@@ -230,6 +231,16 @@ function makeEvent(e) {
     return ev;
 }
 
+// Drop assets no event uses any more (replaced placeholders). Only runs after
+// every event rebuilt cleanly, so nothing still referenced can be removed.
+function prune() {
+    var removed = 0;
+    studio.project.model.AudioFile.findInstances().forEach(function (a) {
+        if (!SPEC.sources[a.getAssetPath()]) { studio.project.deleteObject(a); removed++; }
+    });
+    log("pruned " + removed + " unused asset(s)");
+}
+
 // ------------------------------------------------------------------ run
 log("cleanup");
 attempt("cleanup", cleanup);
@@ -246,6 +257,7 @@ if (errors.length) {
     log("NOT SAVED - " + errors.length + " error(s):");
     errors.forEach(function (x) { log("  " + x); });
 } else {
+    attempt("prune", prune, true);
     studio.project.save();
     log("saved " + studio.project.filePath);
     var ok = studio.project.build();

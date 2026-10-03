@@ -1,3 +1,4 @@
+using System;
 using FrontRooms.Map;
 using UnityEngine;
 
@@ -9,7 +10,10 @@ using UnityEngine;
 ///
 /// The module is stamped into chunk (0, 0), centred, in a maze whose zones
 /// all take the module's height and theme, so the map's own rules (columns,
-/// dressing, lamps) apply exactly as they will in the game.
+/// dressing, lamps) apply exactly as they will in the game. Its props carry
+/// a FrontRoomsModulePropTag, and ModuleToWorld / WorldToModule convert
+/// between module metres and the scene, so the Level Designer's Scene view
+/// tools can write edits back to the module.
 /// </summary>
 [ExecuteAlways]
 public sealed class FrontRoomsModulePreview : MonoBehaviour
@@ -29,14 +33,80 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
     FrontRoomsLevelProfile previewProfile;
     bool dirty = true;
 
+    /// <summary>Raised before a rebuild throws the old map away (the Scene view tools note which props were selected) and after the new one is built.</summary>
+    public static event Action<FrontRoomsModulePreview> Rebuilding, Rebuilt;
+
     /// <summary>The map world currently built, or null.</summary>
     public FrontRoomsMapWorld World => world;
 
+    int Turns => ((rotation % 4) + 4) % 4;
+
     /// <summary>Where the module sits: chunk (0, 0), centred.</summary>
-    public static void Placement(RoomModuleData module, out int x, out int y)
+    public static void Placement(RoomModuleData module, out int x, out int y) => Placement(module.width, module.depth, out x, out y);
+
+    static void Placement(int width, int depth, out int x, out int y)
     {
-        x = (MapGrid.ChunkCells - module.width) / 2;
-        y = (MapGrid.ChunkCells - module.depth) / 2;
+        x = (MapGrid.ChunkCells - width) / 2;
+        y = (MapGrid.ChunkCells - depth) / 2;
+    }
+
+    // ---------- Module space <-> scene (the module must be set) ----------
+
+    /// <summary>
+    /// A point in module metres (x, z from the south-west corner of the
+    /// module as authored, as props store it) to world space, through the
+    /// stamp's turn and placement. A clockwise quarter turn maps (x, z) to
+    /// (z, W - x), W the width before the turn, as RoomModuleData.Rotated does.
+    /// </summary>
+    public Vector3 ModuleToWorld(Vector2 moduleXZ, float height = 0f)
+    {
+        var m = module.data;
+        float x = moduleXZ.x, z = moduleXZ.y, w = m.WidthMetres, d = m.DepthMetres;
+        for (var t = 0; t < Turns; t++)
+        {
+            (x, z) = (z, w - x);
+            (w, d) = (d, w);
+        }
+        return transform.TransformPoint(StampOrigin() + new Vector3(x, height, z));
+    }
+
+    /// <summary>The inverse of ModuleToWorld on the floor: a world point to module metres (height dropped).</summary>
+    public Vector2 WorldToModule(Vector3 world)
+    {
+        var local = transform.InverseTransformPoint(world) - StampOrigin();
+        var m = module.data;
+        float x = local.x, z = local.z;
+        // The turned footprint: odd turns swap width and depth.
+        float w = Turns % 2 == 0 ? m.WidthMetres : m.DepthMetres, d = Turns % 2 == 0 ? m.DepthMetres : m.WidthMetres;
+        for (var t = 0; t < Turns; t++)
+        {
+            // Undo one turn: the frame before it was d wide, so (x, z) came from (d - z, x).
+            (x, z) = (d - z, x);
+            (w, d) = (d, w);
+        }
+        return new Vector2(x, z);
+    }
+
+    /// <summary>A module prop's yaw as a world rotation: the stamp adds 90 degrees per quarter turn, then the preview's own rotation.</summary>
+    public Quaternion ModuleToWorldRotation(float yaw) => transform.rotation * Quaternion.Euler(0f, yaw + 90f * Turns, 0f);
+
+    /// <summary>The module yaw of a world rotation: its heading on the floor (a tilt is ignored), back through the preview and the turns.</summary>
+    public float WorldToModuleYaw(Quaternion rotation)
+    {
+        var forward = Quaternion.Inverse(transform.rotation) * rotation * Vector3.forward;
+        return Mathf.Repeat(Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg - 90f * Turns, 360f);
+    }
+
+    /// <summary>The floor the room stands on (the preview's own y = 0 plane).</summary>
+    public Plane FloorPlane => new Plane(transform.up, transform.position);
+
+    /// <summary>The stamped (turned) module's south-west corner in the preview's local space: chunk (0, 0) starts at its origin.</summary>
+    Vector3 StampOrigin()
+    {
+        var m = module.data;
+        var odd = Turns % 2 == 1;
+        Placement(odd ? m.depth : m.width, odd ? m.width : m.depth, out var x0, out var y0);
+        return new Vector3(x0 * MapGrid.CellSize, 0f, y0 * MapGrid.CellSize);
     }
 
     void OnEnable()
@@ -88,6 +158,7 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
     {
         // Any build consumes a pending one (Open and the captures build at once).
         dirty = false;
+        Rebuilding?.Invoke(this);
         Clear();
         if (module == null || module.data == null) return;
         var data = module.data.Rotated(rotation);
@@ -109,6 +180,8 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
         go.transform.SetParent(transform, false);
         world = go.AddComponent<FrontRoomsMapWorld>();
         world.Profile = previewProfile;
+        // Props carry their module index, so Scene view edits can be written back.
+        world.TagModuleProps = true;
         Placement(data, out var x0, out var y0);
         world.PlaceModule(data, new GridCoord(0, 0), x0, y0);
         Entrance(data, x0, y0, out var spawn, out var look);
@@ -135,6 +208,7 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
             eye.farClipPlane = world.SightDistance;
             FrontRoomsPostStack.ConfigureCamera(eye);
         }
+        Rebuilt?.Invoke(this);
     }
 
     /// <summary>

@@ -42,14 +42,16 @@ namespace FrontRooms.Audio
             return RuntimeManager.CreateInstance(path);
         }
 
-        /// <summary>Fire-and-forget one-shot with up to two parameters.</summary>
-        public static void OneShot(string path, Vector3 position, string p1 = null, float v1 = 0f, string p2 = null, float v2 = 0f)
+        /// <summary>Fire-and-forget one-shot with up to three parameters.</summary>
+        public static void OneShot(string path, Vector3 position, string p1 = null, float v1 = 0f, string p2 = null, float v2 = 0f,
+            string p3 = null, float v3 = 0f)
         {
             if (!Ready) return;
             var instance = RuntimeManager.CreateInstance(path);
             instance.set3DAttributes(RuntimeUtils.To3DAttributes(position));
             if (p1 != null) instance.setParameterByName(p1, v1);
             if (p2 != null) instance.setParameterByName(p2, v2);
+            if (p3 != null) instance.setParameterByName(p3, v3);
             instance.start();
             instance.release();
         }

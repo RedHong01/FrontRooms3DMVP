@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.02.03.00">
+	<object class="ParameterPreset" id="{cb07b543-66b9-478f-ab30-460031ac5204}">
+		<property name="name">
+			<value>Dampness</value>
+		</property>
+		<relationship name="folder">
+			<destination>{ec392971-797d-45c0-a935-5395b25ee4d3}</destination>
+		</relationship>
+		<relationship name="parameter">
+			<destination>{1add031b-12be-4a63-b0ae-e4a0eab8400b}</destination>
+		</relationship>
+	</object>
+	<object class="GameParameter" id="{1add031b-12be-4a63-b0ae-e4a0eab8400b}">
+		<property name="initialValue">
+			<value>0.40000000596046448</value>
+		</property>
+	</object>
+</objects>

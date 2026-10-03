@@ -71,6 +71,7 @@ namespace FrontRooms.Audio
             public const string Stamina = "Stamina";
             public const string Proximity = "Proximity";
             public const string Occlusion = "Occlusion";
+            public const string Dampness = "Dampness";     // 0 dry .. 0.4 Level 0 carpet .. >0.75 waterlogged
             public const string Surface = "Surface";       // Carpet, CarpetTile, Metal
             public const string Gait = "Gait";             // Walk, Run, Stop
             public const string RelayGait = "RelayGait";   // Walk, Run, Drag

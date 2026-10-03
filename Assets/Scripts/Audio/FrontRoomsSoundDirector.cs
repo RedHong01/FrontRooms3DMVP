@@ -161,6 +161,7 @@ namespace FrontRooms.Audio
                     player = body.GetComponent<FrontRoomsPlayerFootsteps>();
                     if (player == null) player = body.gameObject.AddComponent<FrontRoomsPlayerFootsteps>();
                     player.surfaceAt = SurfaceAt;
+                    player.dampnessAt = DampnessAt;
                 }
             }
 
@@ -173,7 +174,7 @@ namespace FrontRooms.Audio
                     if (relayBody == null) relayBody = rig.gameObject.AddComponent<FrontRoomsRelaySound>();
                 }
             }
-            if (relayBody != null) { relayBody.hunter = relay; relayBody.listener = listener; }
+            if (relayBody != null) { relayBody.hunter = relay; relayBody.listener = listener; relayBody.dampnessAt = DampnessAt; }
 
             // Doors and lamps are built at runtime (chunks, pooled rooms): attach once per new transform.
             var scene = SceneManager.GetActiveScene();
@@ -212,6 +213,19 @@ namespace FrontRooms.Audio
             if (map == null) return SoundIds.Surface.Carpet;
             var zone = map.ZoneOf(map.CellOf(feet));
             return zone.theme == ZoneTheme.Office ? SoundIds.Surface.CarpetTile : SoundIds.Surface.Carpet;
+        }
+
+        /// <summary>
+        /// How wet the floor is underfoot. The map has no water data yet, so the
+        /// zone stands in: low ceilings hold the deep, sticky carpet; offices are
+        /// glue-down tile and nearly dry. Puddles would return 0.8-1 here.
+        /// </summary>
+        float DampnessAt(Vector3 feet)
+        {
+            if (map == null) return .4f;
+            var zone = map.ZoneOf(map.CellOf(feet));
+            if (zone.theme == ZoneTheme.Office) return .15f;
+            return zone.height == ZoneHeight.Low ? .55f : zone.height == ZoneHeight.Tall ? .3f : .4f;
         }
 
         // ------------------------------------------------------------ lamps
