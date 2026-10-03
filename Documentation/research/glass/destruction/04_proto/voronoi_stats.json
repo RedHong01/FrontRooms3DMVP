@@ -1,0 +1,62 @@
+[
+ {
+  "cells": 261,
+  "pieces_ge_1cm2": 234,
+  "dust_lt_1cm2": 27,
+  "border": 38,
+  "teeth_reach_lt_22cm": 32,
+  "avg_verts": 5.85,
+  "max_verts": 9,
+  "name": "eye_centre",
+  "seed": 1001,
+  "impact_uv": [
+   0.5,
+   0.7
+  ],
+  "spokes": 11,
+  "voronoi_s_cpython": 0.099,
+  "objects": 234,
+  "triangles": 15516,
+  "build_s": 0.261
+ },
+ {
+  "cells": 245,
+  "pieces_ge_1cm2": 216,
+  "dust_lt_1cm2": 29,
+  "border": 38,
+  "teeth_reach_lt_22cm": 31,
+  "avg_verts": 5.84,
+  "max_verts": 9,
+  "name": "eye_left",
+  "seed": 2002,
+  "impact_uv": [
+   0.28,
+   0.66
+  ],
+  "spokes": 11,
+  "voronoi_s_cpython": 0.086,
+  "objects": 216,
+  "triangles": 14292,
+  "build_s": 0.173
+ },
+ {
+  "cells": 210,
+  "pieces_ge_1cm2": 187,
+  "dust_lt_1cm2": 23,
+  "border": 34,
+  "teeth_reach_lt_22cm": 27,
+  "avg_verts": 5.83,
+  "max_verts": 9,
+  "name": "low_right",
+  "seed": 3003,
+  "impact_uv": [
+   0.7,
+   0.45
+  ],
+  "spokes": 9,
+  "voronoi_s_cpython": 0.05,
+  "objects": 187,
+  "triangles": 12548,
+  "build_s": 0.103
+ }
+]

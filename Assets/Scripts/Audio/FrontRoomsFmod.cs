@@ -36,6 +36,41 @@ namespace FrontRooms.Audio
 
         public static void Note(string what) => Trace("note", what);
 
+        /// <summary>Bumped with every change to the audio scripts, so a console line says which code is running.</summary>
+        public const string CodeVersion = "2026-10-03.2";
+
+        /// <summary>
+        /// Which sound set is loaded: the audio code version plus the bank build time and short checksums of the
+        /// SFX and Ambience banks FMOD reads (the Studio build folder in the editor, StreamingAssets in a desktop
+        /// player). Printed when FMOD becomes ready, in the editor and in test runs alike, so two sessions can be
+        /// compared at a glance: same stamp, same sounds.
+        /// </summary>
+        public static string SoundSetStamp()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return "code " + CodeVersion + ", banks from the web build";
+#else
+            try
+            {
+                var folder = Application.isEditor
+                    ? System.IO.Path.Combine(System.IO.Directory.GetParent(Application.dataPath).FullName, Settings.Instance.SourceBankPath, "Desktop")
+                    : System.IO.Path.Combine(Application.streamingAssetsPath, "FMOD");
+                var sfx = System.IO.Path.Combine(folder, "SFX.bank");
+                var amb = System.IO.Path.Combine(folder, "Ambience.bank");
+                return "code " + CodeVersion + ", banks built " + System.IO.File.GetLastWriteTime(sfx).ToString("yyyy-MM-dd HH:mm:ss") +
+                       " (SFX " + Md5(sfx) + ", Ambience " + Md5(amb) + ")";
+            }
+            catch (System.Exception e) { return "code " + CodeVersion + ", banks unknown (" + e.Message + ")"; }
+#endif
+        }
+
+        static string Md5(string path)
+        {
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            using (var stream = System.IO.File.OpenRead(path))
+                return System.BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", "").Substring(0, 8).ToLowerInvariant();
+        }
+
         static float nextStartAttempt;
 
         /// <summary>

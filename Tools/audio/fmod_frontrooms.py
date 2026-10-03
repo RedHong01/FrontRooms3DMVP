@@ -739,14 +739,16 @@ SPEC = {
                   "late and 2 dB down. Release = the leaf leaving its stop, once per pair (Lead only). No motor, "
                   "no creak loop, nothing at rest. A pair renders about -30 LUFS (momentary max) at 3 m, "
                   "3 dB under the player's carpet steps.",
-             tracks=leaf_tracks("Swing", lib("Door/door_stream_swing"), volume=-9, randPitch=.5, randVol=1.5) + [
+             # Swing muted 2026-10-03 (Red: "sounds like a strong electrical current": the only moving-door takes needed
+             # +37-40 dB of gain, so the hall noise came up with them). Restore once cleaner recordings replace them.
+             tracks=leaf_tracks("Swing", lib("Door/door_stream_swing"), volume=-80, randPitch=.5, randVol=1.5) + [
                      dict(name="Release", sounds=[dict(files=lib("Door/door_stream_release"), cond=[["Leaf", "Lead"]],
                                                        volume=-21, randPitch=.5)])]),
         dict(path="Mechanism/Door/StreamClose", **DOOR3D, params=["Leaf"],
              note="The terminal door: each leaf swings 88 -> 0 deg in 0.9 s and seats with no speed left. Same "
                   "swing pools as StreamOpen half a semitone down, then a dry seat thump at 0.876 s (Lead) / "
                   "0.904 s (Follow), so it lands on the frame the leaves stop. No latch: StreamLock follows.",
-             tracks=leaf_tracks("Swing", lib("Door/door_stream_swing"), volume=-9, pitch=-.5, randPitch=.5,
+             tracks=leaf_tracks("Swing", lib("Door/door_stream_swing"), volume=-80, pitch=-.5, randPitch=.5,
                                 randVol=1.5) +
                     leaf_tracks("Seat", lib("Door/door_stream_seat"), start=.876, volume=-10, randPitch=.5)),
         dict(path="Mechanism/Door/StreamLock", **DOOR3D, max_=30.0,

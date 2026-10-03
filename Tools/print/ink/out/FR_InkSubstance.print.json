@@ -1,0 +1,13 @@
+{
+  "columns": 5,
+  "rows": 1,
+  "slices": 5,
+  "sliceWidth": 768,
+  "sliceHeight": 1152,
+  "singleChannel": true,
+  "tileMetres": [
+    0.75,
+    1.125
+  ],
+  "encoding": "R: field 0.7, marks 0.4; layer = run tier - 1; linear"
+}

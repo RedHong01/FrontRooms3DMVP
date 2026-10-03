@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.02.03.00">
+	<object class="ParameterPreset" id="{54ab1008-9982-4290-be94-7c33d7227fb0}">
+		<property name="name">
+			<value>RelayState</value>
+		</property>
+		<relationship name="folder">
+			<destination>{ec392971-797d-45c0-a935-5395b25ee4d3}</destination>
+		</relationship>
+		<relationship name="parameter">
+			<destination>{e6b6b1a5-63a8-4599-b69e-33ee86667361}</destination>
+		</relationship>
+	</object>
+	<object class="GameParameter" id="{e6b6b1a5-63a8-4599-b69e-33ee86667361}">
+		<property name="parameterType">
+			<value>2</value>
+		</property>
+		<property name="maximum">
+			<value>4</value>
+		</property>
+		<property name="enumerationLabels">
+			<value>Hunt</value>
+			<value>Search</value>
+			<value>Chase</value>
+			<value>Lost</value>
+		</property>
+	</object>
+</objects>

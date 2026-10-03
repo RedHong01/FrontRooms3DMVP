@@ -98,17 +98,28 @@ Do this only after the visual chat promotes P0 and Red agrees, while no other ch
 2. Create `Assets/Resources/Print/`. Copy `out/FR_Print_HardEdge.print.json` first, then the `.png`, so the importer finds the sidecar on the first import.
 3. In Play mode, check that the `FrontRooms Print` object appears and the walls show frame 0, then a blend about every minute.
 
-## Planned: glow-ink textures (spec v1, agreed in principle with the visual chat, 2026-10-03)
+## Planned: glow-ink textures (spec v1.1, 2026-10-03)
 
-The phosphor ink's close-up content does not live in the print's B channel. B is one substance per slice for the whole world, so B stays reserved and 0. The content goes in two global arrays instead. Both are fetched only inside the shader's glow-mask branch, and both are made here once Red picks the narrative direction (`Documentation/research/wallpaper_motion/30_narrative_phosphor.md`).
+v1 was agreed with the visual chat. v1.1 makes two changes, sent to it for confirmation:
+- glyph frames are anchored to each shape, not to the world;
+- the substance layers become RG, so the rare overlay can be gated per cell.
+
+The phosphor ink's close-up content does not live in the print's B channel. B is one substance per slice for the whole world, so B stays reserved and 0. The content goes in two global arrays instead. Both are fetched only inside the shader's glow-mask branch.
+
+Generator: `ink_tool.py build <spec.json> <out_dir>`. The draft EGRESS spec is `ink/egress_spec_DRAFT.json`, and its output is in `ink/out_draft/`. The strings belong to the narrative chat, so replace them with its frozen table before shipping.
 
 | Global | Size, format | UV | Layers | Memory |
 |---|---|---|---|---|
-| `_FR_InkType` | 1024×1024, BC4, linear, mips, Repeat, aniso 16 | Glyph-local: u = metres along the wall / 0.75; v = (height − 0.8 m) / 0.75 | 0 FLOW, 1 FLOW T2+, 2 HERE door, 3 HERE window, 4 STOP, 5 BREACH, 6 pressure chevron, 7 pressure door, 8 forged FLOW, 9–15 reserved | ≈ 10.7 MB |
-| `_FR_InkSubstance` | 1024×1536, BC4, linear, mips, Repeat, aniso 16 | The print UV (warped), one roll tile | 0–4 = run tiers 1–5 | ≈ 5.2 MB |
+| `_FR_InkType` | 1024×1024, BC4, linear, mips, Repeat, aniso 16 | Glyph frame / 0.75 (below) | 0 FLOW, 1 FLOW T2+, 2 HERE door, 3 HERE window, 4 STOP, 5 BREACH, 6 pressure chevron, 7 pressure door, 8 forged FLOW, 9–15 reserved | ≈ 10.7 MB |
+| `_FR_InkSubstance` | 768×1152, BC5 (RG), linear, mips, Repeat, aniso 16 | The print UV (warped), one 0.75 × 1.125 m roll tile | 0–4 = run tiers 1–5. R = ground (an even 0.8 field with the register marks and roll stamp knocked out). G = rare overlay, shown only where `hash(cell) < _FR_InkOverlayRate` | ≈ 5.9 MB |
 
-**Values:** 1.0 is the solid ink field and about 0.55 is knocked-out type. Texture-style content must keep a mean of at least 0.6 in any 100 mm square inside strokes. The stroke outline itself is the shader's procedural `InkShape`.
+**Glyph frames** come from InkShape, in metres. In the textures, v = 0 is the image's bottom row.
+- Chevron arms: u runs along the arm from the apex, never upside down; v is the signed offset from the centreline. Rows of text sit at v = 0 and every 34 mm, so 3 rows fall inside a 100 mm stroke.
+- Vertical bars: u is measured from the bar's left edge (0–0.10 m), with words centred at 50 mm; v is height above the floor.
+- Horizontal bars (STOP): u is measured from the bar's left edge; v from its bottom edge (0–0.12 m). The lockup is centred at v = 60 mm.
 
-**Layer selection:** a global `float4 _FR_InkTypeLayer[4]` lookup table, filled by the CPU, so narrative can remap layers without shader edits.
+**Values:** 1.0 is the solid ink field and about 0.55 is knocked-out type. Strokes must keep a mean of at least 0.6 in any 100 mm square (the draft's worst is 0.89). The shader computes glow × (R + 0.6·G) for the substance.
 
-**WebGL:** substance only, at 512×768 (≈ 1.3 MB), or the B/A two-family fallback. The visual chat chooses.
+**Layer selection:** a global `float4 _FR_InkTypeLayer[4]` lookup table, filled by the CPU.
+
+**WebGL:** substance only, at 384×576 RG (≈ 1.5 MB), or the B/A two-family fallback.

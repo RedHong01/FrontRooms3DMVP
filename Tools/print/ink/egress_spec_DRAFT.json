@@ -1,0 +1,25 @@
+{
+  "_status": "DRAFT built from 30_narrative_phosphor.md rev 2 §A.6/A.7 (EGRESS). Strings are owned by the narrative chat; replace with its frozen table.",
+  "seed": 1990,
+  "type_layers": [
+    {"index": 0, "name": "FLOW", "kind": "rows", "text": "THIS WAY OUT", "cap_mm": 22, "row_pitch_mm": 34.1, "gap_mm": 30},
+    {"index": 1, "name": "FLOW T2+", "kind": "rows", "text": "THIS WAY ON", "cap_mm": 22, "row_pitch_mm": 34.1, "gap_mm": 30},
+    {"index": 2, "name": "HERE door", "kind": "stack", "lines": ["EXIT"], "cap_mm": 22, "bar_mm": 100, "line_pitch_mm": 40},
+    {"index": 3, "name": "HERE window", "kind": "stack", "lines": ["EXIT", "BREAK", "GLASS"], "face": "cn", "cap_mm": 20, "bar_mm": 100, "line_pitch_mm": 36},
+    {"index": 4, "name": "STOP", "kind": "lockup", "lines": ["NO", "EXIT"], "cap_mm": 22, "bar_h_mm": 120, "line_pitch_mm": 32, "every_mm": 150},
+    {"index": 5, "name": "BREACH", "kind": "stack", "lines": ["OUT OF", "SERVICE", "DOES", "NOT", "CLOSE"], "face": "cn", "cap_mm": 18, "bar_mm": 100, "line_pitch_mm": 32},
+    {"index": 6, "name": "pressure chevron", "kind": "rows", "text": "ALARM", "cap_mm": 22, "row_pitch_mm": 34.1, "gap_mm": 40},
+    {"index": 7, "name": "pressure door", "kind": "stack", "lines": ["KEEP", "CLOSED"], "face": "cn", "cap_mm": 18, "bar_mm": 100, "line_pitch_mm": 32},
+    {"index": 8, "name": "forged FLOW", "kind": "rows", "text": "THIS WAY OUT", "cap_mm": 22, "row_pitch_mm": 34.1, "gap_mm": 30,
+     "jitter": {"scale": 0.08, "rot_deg": 6, "baseline_mm": 1.5, "reverse_one_S": true}}
+  ],
+  "substance_layers": [
+    {"tier": 1, "stamp": "LEVEL 0 · SHEET A-3 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1", "stamp_cap_mm": 13, "stamp_height_m": 1.0, "register_inset_mm": 40, "ground_level": 0.8},
+    {"tier": 2, "stamp": "LEVEL 0 · SHEET A-3 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1", "stamp_cap_mm": 13, "stamp_height_m": 1.0, "register_inset_mm": 40, "ground_level": 0.8},
+    {"tier": 3, "stamp": "LEVEL 0 · SHEET A-1114 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1", "stamp_cap_mm": 13, "stamp_height_m": 1.0, "register_inset_mm": 40, "ground_level": 0.8},
+    {"tier": 4, "stamp": "LEVEL 0 · SHEET A-1114 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1", "stamp_cap_mm": 13, "stamp_height_m": 1.0, "register_inset_mm": 40, "ground_level": 0.8,
+     "overlay": {"cap_mm": 30, "items": [{"text": "R.M. 6/90", "x_mm": 150, "height_m": 1.3}, {"tally": 7, "x_mm": 430, "height_m": 1.12}, {"text": "IT ONLY GOES IN", "x_mm": 400, "height_m": 1.6}]}},
+    {"tier": 5, "stamp": "LEVEL 0 · SHEET A-1114 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 2", "stamp_cap_mm": 13, "stamp_height_m": 1.0, "register_inset_mm": 40, "ground_level": 0.8,
+     "overlay": {"cap_mm": 30, "items": [{"text": "R.M. 6/90", "x_mm": 150, "height_m": 1.3}, {"tally": 7, "x_mm": 430, "height_m": 1.12}, {"text": "IT ONLY GOES IN", "x_mm": 400, "height_m": 1.6}]}}
+  ]
+}

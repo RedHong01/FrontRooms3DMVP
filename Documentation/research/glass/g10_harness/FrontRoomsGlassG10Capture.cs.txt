@@ -1,0 +1,1248 @@
+// G10 GLASS SIGN-OFF HARNESS (private clone proj_glass only; never copied into the real project).
+// Built from the interaction audit's harness (Documentation/research/interaction_audit/harness):
+// same scene, same seed (Random.InitState(4242) before Space), same title handoff, same target
+// search, same game camera (1920x1080, 4x MSAA, full post). For every view it renders, in one
+// frozen game moment (Time.timeScale 0, so lamp flicker cannot differ between states):
+//   A  BEFORE      what the game draws today: the map's runtime TransparentGlass (3 cm cube, casts
+//                  shadows), the scene's ambient, Unity's default sky reflection at 0.3, and the
+//                  shipped Prop_Glass / Prop_BottleBlue (copies of the real project's .mat files).
+//   B  AFTER-GLASS Glass_Window on every built pane (6 mm, shadows off, as the map contract in
+//                  10_implementation.md §8 asks), the zone cube via FrontRoomsZoneReflection.SetImmediate,
+//                  the new prop materials; scene ambient untouched (attribution only).
+//   C  AFTER       B + FrontRoomsLook.ApplyAmbient(): what the game will draw once the map chat calls
+//                  ApplyAmbient + SetZoneReflection at run start.
+//   N  no pane     for window views only: the held pane hidden, per lighting state (reference for metrics).
+// FrontRoomsMapWorld.cs is NOT edited: panes are swapped from here, at runtime, and swapped back.
+// Run: Unity -batchmode -projectPath <clone> -executeMethod FrontRoomsGlassG10Capture.RunBatch -logFile <f>
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using FrontRooms.Map;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using Debug = UnityEngine.Debug;
+
+[InitializeOnLoad]
+public static class FrontRoomsGlassG10Capture
+{
+    const string ScenePath = "Assets/Scenes/FrontRooms3D.unity";
+    const string ActiveKey = "FrontRooms.G10.Active";
+    const string DeadlineKey = "FrontRooms.G10.Deadline";
+    const string DoneKey = "FrontRooms.G10.Done";
+    const string BeforeDir = "Assets/Editor/Audit/G10/";
+    const int W = 1920, H = 1080;
+    const float PaneThicknessAfter = .006f;
+    const BindingFlags BF = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+
+    static int waitUntilFrame = -1;
+    static bool finished;
+    static string outDir;
+    static readonly StringBuilder log = new StringBuilder();
+    static readonly StringBuilder frames = new StringBuilder();
+    static readonly StringBuilder metrics = new StringBuilder();
+    static readonly Stack<IEnumerator> stack = new Stack<IEnumerator>();
+
+    static FrontRooms3DGame game;
+    static FrontRoomsMapWorld map;
+    static Camera cam;
+    static RenderTexture rt;
+    static Texture2D readTex;
+
+    static FrontRoomsGlassG10Capture()
+    {
+        if (SessionState.GetBool(ActiveKey, false)) EditorApplication.update += Tick;
+    }
+
+    public static void RunBatch()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        SessionState.SetBool(ActiveKey, true);
+        SessionState.SetFloat(DeadlineKey, (float)EditorApplication.timeSinceStartup + 1500f);
+        EditorApplication.update -= Tick;
+        EditorApplication.update += Tick;
+        EditorApplication.EnterPlaymode();
+    }
+
+    static string OutDir
+    {
+        get
+        {
+            if (outDir == null)
+            {
+                outDir = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", "glass_g10");
+                Directory.CreateDirectory(outDir);
+            }
+            return outDir;
+        }
+    }
+
+    static void Log(string s)
+    {
+        var line = "[" + Time.frameCount + " t=" + Time.time.ToString("0.000", CultureInfo.InvariantCulture) + "] " + s;
+        log.AppendLine(line);
+        Debug.Log("[G10] " + line);
+        try { File.WriteAllText(Path.Combine(OutDir, "g10_log.txt"), log.ToString()); } catch { }
+    }
+
+    static void Finish()
+    {
+        finished = true;
+        Time.captureDeltaTime = 0f;
+        Time.timeScale = 1f;
+        SessionState.SetBool(DoneKey, true);
+        Flush();
+    }
+
+    static void Tick()
+    {
+        var timedOut = EditorApplication.timeSinceStartup > SessionState.GetFloat(DeadlineKey, float.MaxValue);
+        if (finished || timedOut || SessionState.GetBool(DoneKey, false))
+        {
+            if (timedOut && !finished && !SessionState.GetBool(DoneKey, false)) { Log("TIMEOUT"); Finish(); }
+            if (EditorApplication.isPlaying) { EditorApplication.ExitPlaymode(); return; }
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            EditorApplication.update -= Tick;
+            SessionState.EraseBool(ActiveKey);
+            SessionState.EraseBool(DoneKey);
+            if (Application.isBatchMode) EditorApplication.Exit(0);
+            return;
+        }
+        if (!EditorApplication.isPlaying) return;
+        if (stack.Count == 0)
+        {
+            stack.Push(Main());
+            Log("routine created");
+        }
+        if (Time.frameCount < waitUntilFrame) return;
+        try
+        {
+            for (var guard = 0; guard < 1000; guard++)
+            {
+                var top = stack.Peek();
+                if (!top.MoveNext())
+                {
+                    stack.Pop();
+                    if (stack.Count == 0) { Finish(); return; }
+                    continue;
+                }
+                var cur = top.Current;
+                if (cur is IEnumerator sub) { stack.Push(sub); continue; }
+                waitUntilFrame = Time.frameCount + (cur is int n ? Mathf.Max(1, n) : 1);
+                return;
+            }
+        }
+        catch (Exception e)
+        {
+            Log("EXCEPTION " + e);
+            Finish();
+        }
+    }
+
+    static void Flush()
+    {
+        try
+        {
+            File.WriteAllText(Path.Combine(OutDir, "g10_log.txt"), log.ToString());
+            File.WriteAllText(Path.Combine(OutDir, "g10_frames.txt"), frames.ToString());
+            File.WriteAllText(Path.Combine(OutDir, "g10_metrics.txt"), metrics.ToString());
+        }
+        catch (Exception e) { Debug.LogError(e); }
+    }
+
+    // ---------------- reflection helpers (private game/map members; brittle by design) ----------------
+    static FieldInfo FI(Type t, string n)
+    {
+        for (; t != null; t = t.BaseType)
+        {
+            var f = t.GetField(n, BF);
+            if (f != null) return f;
+        }
+        return null;
+    }
+    static object Get(object o, string n) => FI(o.GetType(), n)?.GetValue(o);
+    static T Get<T>(object o, string n) => (T)Get(o, n);
+    static void Set(object o, string n, object v) => FI(o.GetType(), n).SetValue(o, v);
+    static object Call(object o, string n, params object[] a) => o.GetType().GetMethod(n, BF).Invoke(o, a);
+
+    static string Phase => Get(game, "phase").ToString();
+    static Transform PlayerRoot => Get<Transform>(game, "playerRoot");
+
+    static string V(Vector3 v) => "(" + v.x.ToString("0.00", CultureInfo.InvariantCulture) + ", " + v.y.ToString("0.00", CultureInfo.InvariantCulture) + ", " + v.z.ToString("0.00", CultureInfo.InvariantCulture) + ")";
+    static string F2(float f) => f.ToString("0.###", CultureInfo.InvariantCulture);
+    static string F(double f, string fmt = "0.00") => f.ToString(fmt, CultureInfo.InvariantCulture);
+
+    // ---------------- render ----------------
+    static void EnsureRT()
+    {
+        if (rt != null) return;
+        // 4 samples: with a target texture URP takes MSAA from the texture (= the pipeline's 4x).
+        rt = new RenderTexture(W, H, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { antiAliasing = 4, name = "G10 capture" };
+        rt.Create();
+        readTex = new Texture2D(W, H, TextureFormat.RGB24, false);
+    }
+
+    static Color32[] RenderPixels(string saveAs = null)
+    {
+        EnsureRT();
+        var prev = cam.targetTexture;
+        cam.targetTexture = rt;
+        cam.Render();
+        cam.Render();
+        cam.targetTexture = prev;
+        var active = RenderTexture.active;
+        RenderTexture.active = rt;
+        readTex.ReadPixels(new Rect(0, 0, W, H), 0, 0);
+        readTex.Apply(false);
+        RenderTexture.active = active;
+        if (saveAs != null) File.WriteAllBytes(Path.Combine(OutDir, saveAs), readTex.EncodeToJPG(85));
+        return readTex.GetPixels32();
+    }
+
+    static double MedianRenderMs(int n)
+    {
+        EnsureRT();
+        var prev = cam.targetTexture;
+        cam.targetTexture = rt;
+        var px = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+        var list = new List<double>();
+        var sw = new Stopwatch();
+        for (var i = 0; i < n + 3; i++)
+        {
+            sw.Restart();
+            cam.Render();
+            var active = RenderTexture.active;
+            RenderTexture.active = rt;
+            px.ReadPixels(new Rect(0, 0, 1, 1), 0, 0);
+            px.Apply(false);
+            RenderTexture.active = active;
+            sw.Stop();
+            if (i >= 3) list.Add(sw.Elapsed.TotalMilliseconds);
+        }
+        cam.targetTexture = prev;
+        UnityEngine.Object.Destroy(px);
+        list.Sort();
+        return list[list.Count / 2];
+    }
+
+    // ---------------- states ----------------
+    enum State { Before, AfterGlass, AfterFull }
+
+    sealed class Env
+    {
+        public AmbientMode mode; public Color light, sky, eq, ground; public float ambInt; public SphericalHarmonicsL2 probe;
+        public float reflInt; public DefaultReflectionMode reflMode; public Texture custom; public Material skybox;
+        public bool fog; public FogMode fogMode; public Color fogColor; public float fogDensity;
+    }
+    static Env env0;
+
+    static Env Snap() => new Env
+    {
+        mode = RenderSettings.ambientMode, light = RenderSettings.ambientLight, sky = RenderSettings.ambientSkyColor,
+        eq = RenderSettings.ambientEquatorColor, ground = RenderSettings.ambientGroundColor, ambInt = RenderSettings.ambientIntensity,
+        probe = RenderSettings.ambientProbe, reflInt = RenderSettings.reflectionIntensity, reflMode = RenderSettings.defaultReflectionMode,
+        custom = RenderSettings.customReflectionTexture, skybox = RenderSettings.skybox, fog = RenderSettings.fog,
+        fogMode = RenderSettings.fogMode, fogColor = RenderSettings.fogColor, fogDensity = RenderSettings.fogDensity,
+    };
+
+    static void Restore(Env e)
+    {
+        RenderSettings.ambientMode = e.mode;
+        RenderSettings.ambientLight = e.light;
+        RenderSettings.ambientSkyColor = e.sky;
+        RenderSettings.ambientEquatorColor = e.eq;
+        RenderSettings.ambientGroundColor = e.ground;
+        RenderSettings.ambientIntensity = e.ambInt;
+        RenderSettings.ambientProbe = e.probe;
+        RenderSettings.skybox = e.skybox;
+        RenderSettings.defaultReflectionMode = e.reflMode;
+        RenderSettings.customReflectionTexture = e.custom;
+        RenderSettings.reflectionIntensity = e.reflInt;
+        RenderSettings.fog = e.fog;
+        RenderSettings.fogMode = e.fogMode;
+        RenderSettings.fogColor = e.fogColor;
+        RenderSettings.fogDensity = e.fogDensity;
+    }
+
+    static string EnvLine()
+    {
+        var def = ReflectionProbe.defaultTexture;
+        var probe = RenderSettings.ambientProbe;
+        return "ambient " + RenderSettings.ambientMode + " sky " + RenderSettings.ambientSkyColor.ToString("F2") + " eq " + RenderSettings.ambientEquatorColor.ToString("F2") + " gnd " + RenderSettings.ambientGroundColor.ToString("F2")
+            + " SH0(r) " + F(probe[0, 0], "0.000") + " · reflection " + RenderSettings.defaultReflectionMode + " custom " + (RenderSettings.customReflectionTexture != null ? RenderSettings.customReflectionTexture.name : "null")
+            + " defaultTexture " + (def != null ? def.name + " " + def.width + "px" : "null") + " decode " + ReflectionProbe.defaultTextureHDRDecodeValues.ToString("F3")
+            + " intensity " + F(RenderSettings.reflectionIntensity, "0.000") + " zone-system " + FrontRoomsZoneReflection.Zone + "/" + FrontRoomsZoneReflection.Mode;
+    }
+
+    static Material glassWindow, propGlassNew, propBottleNew, propGlassOld, propBottleOld;
+
+    sealed class PaneOrig { public Material mat; public Vector3 scale; public ShadowCastingMode shadows; }
+    static readonly Dictionary<Renderer, PaneOrig> paneOrig = new Dictionary<Renderer, PaneOrig>();
+
+    static List<Renderer> AllPanes()
+    {
+        var list = new List<Renderer>();
+        if (Get(map, "built") is IDictionary built)
+            foreach (DictionaryEntry e in built)
+                if (Get(e.Value, "windows") is IEnumerable windows)
+                    foreach (var w in windows)
+                        if (Get(w, "pane") is GameObject pane && pane != null) list.Add(pane.GetComponent<Renderer>());
+        return list;
+    }
+
+    static int ThinAxis(Vector3 s)
+    {
+        s = new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z));
+        return s.x <= s.y && s.x <= s.z ? 0 : (s.y <= s.z ? 1 : 2);
+    }
+
+    static int ApplyPanes(bool after)
+    {
+        foreach (var k in paneOrig.Keys.Where(k => k == null).ToList()) paneOrig.Remove(k);
+        var n = 0;
+        foreach (var r in AllPanes())
+        {
+            if (!paneOrig.TryGetValue(r, out var o))
+            {
+                o = new PaneOrig { mat = r.sharedMaterial, scale = r.transform.localScale, shadows = r.shadowCastingMode };
+                paneOrig[r] = o;
+            }
+            if (after)
+            {
+                r.sharedMaterial = glassWindow;
+                var s = o.scale;
+                s[ThinAxis(s)] = PaneThicknessAfter;
+                r.transform.localScale = s;
+                r.shadowCastingMode = ShadowCastingMode.Off;
+            }
+            else
+            {
+                r.sharedMaterial = o.mat;
+                r.transform.localScale = o.scale;
+                r.shadowCastingMode = o.shadows;
+            }
+            n++;
+        }
+        return n;
+    }
+
+    static int ApplyProps(bool after)
+    {
+        var n = 0;
+        foreach (var r in UnityEngine.Object.FindObjectsByType<MeshRenderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            var mats = r.sharedMaterials;
+            var changed = false;
+            for (var i = 0; i < mats.Length; i++)
+            {
+                var m = mats[i];
+                if (m == null) continue;
+                if (m == propGlassNew || m == propGlassOld) { mats[i] = after ? propGlassNew : propGlassOld; changed = true; }
+                else if (m == propBottleNew || m == propBottleOld) { mats[i] = after ? propBottleNew : propBottleOld; changed = true; }
+            }
+            if (changed) { r.sharedMaterials = mats; n++; }
+        }
+        return n;
+    }
+
+    static string ApplyState(State s, FrontRoomsLook.ReflectionZone zone)
+    {
+        Restore(env0);
+        var panes = ApplyPanes(s != State.Before);
+        var props = ApplyProps(s != State.Before);
+        if (s != State.Before)
+        {
+            FrontRoomsZoneReflection.SetImmediate(zone);
+            if (s == State.AfterFull) FrontRoomsLook.ApplyAmbient();
+        }
+        return s + ": panes " + panes + ", prop renderers " + props;
+    }
+
+    // ---------------- zone rule (the harness's; the map chat may pick differently) ----------------
+    static object FixtureOf(GridCoord cell)
+    {
+        if (!(Get(map, "built") is IDictionary built)) return null;
+        foreach (DictionaryEntry e in built)
+            foreach (var f in (IEnumerable)Get(e.Value, "fixtures"))
+            {
+                var l = Get<Light>(f, "light");
+                if (l != null && map.CellOf(l.transform.position) == cell) return f;
+            }
+        return null;
+    }
+
+    static FrontRoomsLook.ReflectionZone ZoneFor(Vector3 feet, out string why)
+    {
+        var cell = map.CellOf(feet);
+        var z = map.ZoneOf(cell);
+        var fx = FixtureOf(cell);
+        string lamp;
+        var dead = false;
+        if (fx == null) lamp = "no lamp in the cell";
+        else
+        {
+            var mode = (int)Get(fx, "mode");
+            var level = (float)Get(fx, "level");
+            var l = Get<Light>(fx, "light");
+            lamp = "lamp mode " + mode + " level " + F2(level) + " enabled " + l.enabled;
+            dead = mode == 3 || !l.enabled;
+        }
+        FrontRoomsLook.ReflectionZone r;
+        if (dead) r = FrontRoomsLook.ReflectionZone.DeadLamp;
+        else if (z.theme == ZoneTheme.Office) r = FrontRoomsLook.ReflectionZone.Office;
+        else if (z.height == ZoneHeight.Tall) r = FrontRoomsLook.ReflectionZone.Tall;
+        else r = FrontRoomsLook.ReflectionZone.Level0;
+        why = "cell " + cell + " " + z.theme + "/" + z.height + ", " + lamp;
+        return r;
+    }
+
+    // ---------------- pane mask + metrics ----------------
+    static Vector2? ToPixel(Vector3 world)
+    {
+        var p = Matrix4x4.Perspective(cam.fieldOfView, (float)W / H, cam.nearClipPlane, cam.farClipPlane);
+        var c = p * cam.worldToCameraMatrix * new Vector4(world.x, world.y, world.z, 1f);
+        if (c.w <= 1e-4f) return null;
+        return new Vector2((c.x / c.w * .5f + .5f) * W, (c.y / c.w * .5f + .5f) * H);
+    }
+
+    static List<Vector2> PaneQuad(Renderer pane)
+    {
+        var t = pane.transform;
+        var s = paneOrig.TryGetValue(pane, out var o) ? o.scale : t.localScale;
+        var thin = ThinAxis(s);
+        var v = thin == 1 ? 2 : 1;
+        var u = 3 - thin - v;
+        var quad = new List<Vector2>();
+        foreach (var (su, sv) in new[] { (-.5f, -.5f), (.5f, -.5f), (.5f, .5f), (-.5f, .5f) })
+        {
+            var local = Vector3.zero;
+            local[u] = su; local[v] = sv;
+            var px = ToPixel(t.TransformPoint(local));
+            if (!px.HasValue) return null;
+            quad.Add(px.Value);
+        }
+        return quad;
+    }
+
+    static bool[] Mask(List<Vector2> quad, float inset, out int count, out RectInt box)
+    {
+        var centre = new Vector2(quad.Average(q => q.x), quad.Average(q => q.y));
+        var q2 = quad.Select(q => Vector2.Lerp(q, centre, inset)).ToList();
+        var mask = new bool[W * H];
+        count = 0;
+        var x0 = Mathf.Clamp(Mathf.FloorToInt(q2.Min(q => q.x)), 0, W - 1);
+        var x1 = Mathf.Clamp(Mathf.CeilToInt(q2.Max(q => q.x)), 0, W - 1);
+        var y0 = Mathf.Clamp(Mathf.FloorToInt(q2.Min(q => q.y)), 0, H - 1);
+        var y1 = Mathf.Clamp(Mathf.CeilToInt(q2.Max(q => q.y)), 0, H - 1);
+        box = new RectInt(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+        float Cross(Vector2 a, Vector2 b, Vector2 p) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+        for (var y = y0; y <= y1; y++)
+        for (var x = x0; x <= x1; x++)
+        {
+            var p = new Vector2(x + .5f, y + .5f);
+            int pos = 0, neg = 0;
+            for (var i = 0; i < 4; i++)
+            {
+                var cr = Cross(q2[i], q2[(i + 1) % 4], p);
+                if (cr > 0) pos++; else if (cr < 0) neg++;
+            }
+            if (pos == 0 || neg == 0) { mask[y * W + x] = true; count++; }
+        }
+        return mask;
+    }
+
+    static float Y(Color32 c) => .2126f * c.r + .7152f * c.g + .0722f * c.b;
+
+    static string Stats(string label, Color32[] with, Color32[] without, bool[] mask)
+    {
+        double n = 0, sd = 0, sdd = 0, sy = 0, syy = 0, sn = 0, snn = 0, sabs = 0, dr = 0, dg = 0, db = 0;
+        for (var i = 0; i < mask.Length; i++)
+        {
+            if (!mask[i]) continue;
+            var a = with[i]; var b = without[i];
+            var ya = Y(a); var yb = Y(b);
+            var d = ya - yb;
+            n++; sd += d; sdd += d * d; sy += ya; syy += ya * ya; sn += yb; snn += yb * yb;
+            sabs += (Mathf.Abs(a.r - b.r) + Mathf.Abs(a.g - b.g) + Mathf.Abs(a.b - b.b)) / 3.0;
+            dr += a.r - b.r; dg += a.g - b.g; db += a.b - b.b;
+        }
+        if (n < 1) return label + ": empty mask";
+        var md = sd / n; var vd = Math.Max(0, sdd / n - md * md);
+        var my = sy / n; var vy = Math.Max(0, syy / n - my * my);
+        var mn = sn / n; var vn = Math.Max(0, snn / n - mn * mn);
+        return label + ": pixels " + n + " · meanY with " + F(my, "0.0") + " / without " + F(mn, "0.0")
+            + " · ΔY mean " + F(md, "+0.00;-0.00") + " · ΔY std " + F(Math.Sqrt(vd)) + " · contrast kept σ(with)/σ(without) " + F(vn > 1e-6 ? Math.Sqrt(vy) / Math.Sqrt(vn) : 0, "0.000")
+            + " · mean|ΔRGB| " + F(sabs / n) + " · ΔR/ΔG/ΔB " + F(dr / n, "+0.0;-0.0") + "/" + F(dg / n, "+0.0;-0.0") + "/" + F(db / n, "+0.0;-0.0");
+    }
+
+    static string Diff(Color32[] a, Color32[] b)
+    {
+        double s = 0; var peak = 0;
+        for (var i = 0; i < a.Length; i++)
+        {
+            var e = (Mathf.Abs(a[i].r - b[i].r) + Mathf.Abs(a[i].g - b[i].g) + Mathf.Abs(a[i].b - b[i].b)) / 3;
+            s += e; if (e > peak) peak = e;
+        }
+        return "mean " + F(s / a.Length, "0.000") + " /255, max " + peak + " /255";
+    }
+
+    // ---------------- one view, all states ----------------
+    // Run 2: amplified |AFTER - no pane| image and three single-knob variants of Glass_Window (temporary material
+    // copies, never the asset) so the fix pass can see which term makes the pane visible.
+    static void SaveDiff(string name, Color32[] a, Color32[] b, float gain)
+    {
+        var px = new Color32[a.Length];
+        for (var i = 0; i < a.Length; i++)
+        {
+            byte D(byte x, byte y) => (byte)Mathf.Clamp(Mathf.Abs(x - y) * gain, 0f, 255f);
+            px[i] = new Color32(D(a[i].r, b[i].r), D(a[i].g, b[i].g), D(a[i].b, b[i].b), 255);
+        }
+        var t = new Texture2D(W, H, TextureFormat.RGB24, false);
+        t.SetPixels32(px);
+        t.Apply(false);
+        File.WriteAllBytes(Path.Combine(OutDir, name), t.EncodeToJPG(85));
+        UnityEngine.Object.Destroy(t);
+    }
+
+    static IEnumerator Diagnose(string id, Renderer pane, Color32[] c, Color32[] nC, bool[] mask)
+    {
+        SaveDiff(id + "_D_diff_x6.jpg", c, nC, 6f);
+        var variants = new (string tag, string what, Action<Material> edit)[]
+        {
+            ("R0", "_ReflectionMin 0 (global reflection intensity only)", m => m.SetFloat("_ReflectionMin", 0f)),
+            ("S0", "_Scatter 0 (no grime scatter)", m => m.SetFloat("_Scatter", 0f)),
+            ("G0", "grime keyword off (clear glass, audit values only)", m => { m.SetFloat("_Grime", 0f); m.DisableKeyword("_FR_GLASS_GRIME"); }),
+            ("R2", "_ReflectionMin 1.0 (probe test: reflection at full captured light)", m => m.SetFloat("_ReflectionMin", 1f)),
+        };
+        foreach (var (tag, what, edit) in variants)
+        {
+            var tmp = new Material(glassWindow) { name = "G10 variant " + tag };
+            edit(tmp);
+            pane.sharedMaterial = tmp;
+            yield return 2;
+            var v = RenderPixels(id + "_V" + tag + ".jpg");
+            metrics.AppendLine("  " + Stats("V" + tag + " " + what + " vs no pane", v, nC, mask));
+            pane.sharedMaterial = glassWindow;
+            UnityEngine.Object.Destroy(tmp);
+        }
+        yield return 2;
+    }
+
+    static IEnumerator Cycle(string id, string note, Renderer pane = null, bool timing = false, bool diag = false)
+    {
+        var feet = PlayerRoot.position;
+        var zone = ZoneFor(feet, out var why);
+        Time.timeScale = 0f;   // freeze lamps (TickFixtures uses Time.deltaTime) for the whole A/B/C set
+        yield return 2;
+        Color32[] nA = null, nB = null, nC = null;
+        var stateLines = new StringBuilder();
+        double msA = 0, msC = 0;
+
+        stateLines.AppendLine("  " + ApplyState(State.Before, zone));
+        yield return 3;
+        stateLines.AppendLine("    env " + EnvLine());
+        if (pane != null) { pane.enabled = false; nA = RenderPixels(); pane.enabled = true; }
+        var a = RenderPixels(id + "_A_before.jpg");
+        if (timing) msA = MedianRenderMs(30);
+
+        stateLines.AppendLine("  " + ApplyState(State.AfterGlass, zone));
+        yield return 3;
+        stateLines.AppendLine("    env " + EnvLine());
+        if (pane != null) { pane.enabled = false; nB = RenderPixels(); pane.enabled = true; }
+        var b = RenderPixels(id + "_B_glass_sceneambient.jpg");
+
+        stateLines.AppendLine("  " + ApplyState(State.AfterFull, zone));
+        yield return 3;
+        stateLines.AppendLine("    env " + EnvLine());
+        if (pane != null) { pane.enabled = false; nC = RenderPixels(id + "_N_nopane_after.jpg"); pane.enabled = true; }
+        var c = RenderPixels(id + "_C_after.jpg");
+        if (timing) msC = MedianRenderMs(30);
+        var diagMetricsStart = metrics.Length;
+        if (diag && pane != null)
+        {
+            var dq = PaneQuad(pane);
+            if (dq != null)
+            {
+                var dmask = Mask(dq, .06f, out _, out _);
+                metrics.AppendLine("## " + id + " — diagnostics (state C, one knob changed on a temporary copy of Glass_Window)");
+                yield return Diagnose(id, pane, c, nC, dmask);
+            }
+        }
+        var diagText = metrics.ToString(diagMetricsStart, metrics.Length - diagMetricsStart);
+        metrics.Length = diagMetricsStart;
+
+        ApplyState(State.Before, zone);
+        yield return 3;
+        var a2 = RenderPixels();
+        Time.timeScale = 1f;
+
+        frames.AppendLine(id + " | frame " + Time.frameCount + " | cam " + V(cam.transform.position) + " fwd " + V(cam.transform.forward) + " | zone " + zone + " (" + why + ") | " + note);
+        Log("captured " + id + " · zone " + zone + " (" + why + ") · " + note);
+        Log("  restore check BEFORE vs BEFORE-again: " + Diff(a, a2));
+        Log("  BEFORE vs AFTER (whole frame): " + Diff(a, c) + " · BEFORE vs AFTER-glass: " + Diff(a, b) + " · AFTER-glass vs AFTER: " + Diff(b, c));
+        log.Append(stateLines);
+        metrics.AppendLine("## " + id + " — " + note);
+        metrics.AppendLine("zone " + zone + " (" + why + ")");
+        metrics.AppendLine("whole frame: BEFORE→AFTER " + Diff(a, c) + "; BEFORE→AFTER-glass (scene ambient) " + Diff(a, b) + "; AFTER-glass→AFTER (ApplyAmbient only) " + Diff(b, c) + "; BEFORE restore check (noise floor) " + Diff(a, a2));
+        if (pane != null)
+        {
+            var quad = PaneQuad(pane);
+            if (quad != null)
+            {
+                Mask(quad, 0f, out var full, out var box);
+                var mask = Mask(quad, .06f, out var count, out _);
+                metrics.AppendLine("pane quad px " + string.Join(" ", quad.Select(q => "(" + F(q.x, "0") + "," + F(H - q.y, "0") + ")")) + " (top-left origin) · screen coverage " + F(100.0 * full / (W * H), "0.0") + " % · stats on the quad inset 6 % (" + count + " px)");
+                metrics.AppendLine("  " + Stats("A BEFORE    vs no pane", a, nA, mask));
+                metrics.AppendLine("  " + Stats("B AFTER-gl  vs no pane", b, nB, mask));
+                metrics.AppendLine("  " + Stats("C AFTER     vs no pane", c, nC, mask));
+                frames.AppendLine("  pane box (bottom-left origin) " + box.x + "," + box.y + " " + box.width + "x" + box.height);
+            }
+            else metrics.AppendLine("pane quad behind the camera; no metrics");
+        }
+        if (timing) metrics.AppendLine("render+sync median of 30 (editor, Metal): BEFORE " + F(msA) + " ms · AFTER " + F(msC) + " ms");
+        if (diagText.Length > 0) metrics.Append(diagText);
+        metrics.AppendLine();
+        Flush();
+    }
+
+    // ---------------- player placement (as the audit harness) ----------------
+    static void Place(Vector3 feet, Vector3 lookAt)
+    {
+        var root = PlayerRoot;
+        var body = Get<CharacterController>(game, "playerBody");
+        body.enabled = false;
+        root.position = feet;
+        body.enabled = true;
+        Physics.SyncTransforms();
+        Look(lookAt);
+    }
+
+    static void Look(Vector3 lookAt)
+    {
+        var root = PlayerRoot;
+        var eye = root.position + Vector3.up * ModuleUnits.PlayerEye;
+        var d = lookAt - eye;
+        var yaw = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+        var pitch = -Mathf.Asin(Mathf.Clamp(d.y / Mathf.Max(1e-4f, d.magnitude), -1f, 1f)) * Mathf.Rad2Deg;
+        Set(game, "yaw", yaw);
+        Set(game, "pitch", pitch);
+        root.rotation = Quaternion.Euler(0f, yaw, 0f);
+        cam.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+    }
+
+    static IEnumerator Settle(int extra = 20)
+    {
+        yield return 3;
+        var start = Time.frameCount;
+        while (!map.Settled && Time.frameCount - start < 1500) yield return 1;
+        Log("settled after " + (Time.frameCount - start) + " frames (Settled=" + map.Settled + ", chunks " + map.BuiltChunkCount + ")");
+        yield return extra;
+    }
+
+    static void Resume()
+    {
+        if (Phase != "Paused") return;
+        var phaseType = typeof(FrontRooms3DGame).GetNestedType("Phase", BindingFlags.NonPublic);
+        Call(game, "SetPhase", Enum.Parse(phaseType, "Playing"));
+        Log("phase was Paused (focus) — set back to Playing");
+    }
+
+    // ---------------- map queries (as the audit harness) ----------------
+    static readonly GridCoord[] Steps = { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
+
+    static IEnumerable<GridCoord> CellsAround(GridCoord center, int radiusCells)
+    {
+        for (var r = 0; r <= radiusCells; r++)
+        for (var dy = -r; dy <= r; dy++)
+        for (var dx = -r; dx <= r; dx++)
+        {
+            if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
+            yield return new GridCoord(center.x + dx, center.y + dy);
+        }
+    }
+
+    static Vector3 Dir(GridCoord a, GridCoord b)
+    {
+        var d = map.CellCenter(b) - map.CellCenter(a);
+        d.y = 0f;
+        return d.normalized;
+    }
+
+    static bool FreeStanding(Vector3 feet)
+    {
+        var r = ModuleUnits.PlayerRadius;
+        var root = PlayerRoot;
+        foreach (var c in Physics.OverlapCapsule(feet + Vector3.up * (r + .15f), feet + Vector3.up * (ModuleUnits.PlayerHeight - r), r, ~0, QueryTriggerInteraction.Ignore))
+            if (root == null || !c.transform.IsChildOf(root)) return false;
+        return true;
+    }
+
+    static Collider WindowCollider(GridCoord a, GridCoord b)
+    {
+        var dict = Get(map, "windowByCollider") as IDictionary;
+        var p = map.CrossingPoint(a, b);
+        foreach (DictionaryEntry e in dict)
+        {
+            var pos = (Vector3)Get(e.Value, "position");
+            if ((new Vector2(pos.x - p.x, pos.z - p.z)).sqrMagnitude < .01f) return (Collider)e.Key;
+        }
+        return null;
+    }
+
+    static int StraightRun(GridCoord c, GridCoord step, int max = 12)
+    {
+        var n = 0;
+        var cur = c;
+        while (n < max)
+        {
+            var next = cur + step;
+            if (!map.IsBuilt(next) || map.PassageBetween(cur, next) != FrontRoomsMapWorld.Passage.Open) break;
+            cur = next;
+            n++;
+        }
+        return n;
+    }
+
+    static List<object> AllFixtures()
+    {
+        var list = new List<object>();
+        var built = Get(map, "built") as IDictionary;
+        foreach (DictionaryEntry e in built)
+            foreach (var f in (IEnumerable)Get(e.Value, "fixtures")) list.Add(f);
+        return list;
+    }
+
+    static bool DressingNear(Vector3 point, float radius)
+    {
+        foreach (Transform chunk in map.transform)
+        foreach (Transform t in chunk)
+            if (t.name == "office dressing")
+                foreach (var r in t.GetComponentsInChildren<Renderer>())
+                    if ((r.bounds.center - point).sqrMagnitude < radius * radius) return true;
+        return false;
+    }
+
+    // ---------------- main ----------------
+    static IEnumerator Main()
+    {
+        ShaderUtil.allowAsyncCompilation = false;
+        Log("start · build target " + EditorUserBuildSettings.activeBuildTarget + " · quality " + QualitySettings.names[QualitySettings.GetQualityLevel()]
+            + " · gfx " + SystemInfo.graphicsDeviceType + " " + SystemInfo.graphicsDeviceName + " · Unity " + Application.unityVersion);
+        foreach (var old in Directory.GetFiles(OutDir, "*.jpg")) File.Delete(old);
+
+        glassWindow = Resources.Load<Material>(FrontRoomsGlassPane.WindowMaterial);
+        propGlassNew = Resources.Load<Material>("Surfaces/Prop_Glass");
+        propBottleNew = Resources.Load<Material>("Surfaces/Prop_BottleBlue");
+        propGlassOld = AssetDatabase.LoadAssetAtPath<Material>(BeforeDir + "G10Before_Prop_Glass.mat");
+        propBottleOld = AssetDatabase.LoadAssetAtPath<Material>(BeforeDir + "G10Before_Prop_BottleBlue.mat");
+        foreach (var (n, m) in new[] { ("Glass_Window", glassWindow), ("Prop_Glass (after)", propGlassNew), ("Prop_BottleBlue (after)", propBottleNew), ("Prop_Glass (before)", propGlassOld), ("Prop_BottleBlue (before)", propBottleOld) })
+        {
+            if (m == null) { Log("FAILED: material " + n + " missing"); yield break; }
+            Log("material " + n + ": shader " + m.shader.name + " supported " + m.shader.isSupported + " error " + ShaderUtil.ShaderHasError(m.shader)
+                + " · keywords [" + string.Join(" ", m.shaderKeywords) + "] · queue " + m.renderQueue
+                + (m.HasProperty("_BaseColor") ? " · _BaseColor " + m.GetColor("_BaseColor").ToString("F3") : "")
+                + (m.HasProperty("_ReflectionMin") ? " · _ReflectionMin " + F2(m.GetFloat("_ReflectionMin")) + " _Scatter " + F2(m.GetFloat("_Scatter")) : ""));
+        }
+        foreach (FrontRoomsLook.ReflectionZone z in Enum.GetValues(typeof(FrontRoomsLook.ReflectionZone)))
+        {
+            var cube = FrontRoomsZoneReflection.Cube(z);
+            Log("cube " + z + ": " + (cube != null ? cube.name + " " + cube.width + "px " + cube.format + " mips " + cube.mipmapCount : "MISSING"));
+        }
+
+        while ((game = UnityEngine.Object.FindFirstObjectByType<FrontRooms3DGame>()) == null) yield return 1;
+        cam = Get<Camera>(game, "cam");
+        Log("game found, phase " + Phase + ", camera " + (cam != null ? cam.name : "null"));
+        while (Time.time < 2.0f) yield return 1;
+        UnityEngine.Random.InitState(4242);
+        for (var tries = 0; tries < 60 && !Get<bool>(game, "mapPlay"); tries++)
+        {
+            Call(game, "RequestTitleStart");
+            if (!Get<bool>(game, "mapPlay")) yield return 15;
+        }
+        if (!Get<bool>(game, "mapPlay")) { Log("FAILED: could not start a run"); yield break; }
+        map = Get<FrontRoomsMapWorld>(game, "map");
+        Log("run started · seed " + Get<int>(game, "runSeed") + " (audit run: 516574485) · map root " + V(map.transform.position));
+
+        var tuning = Get<FrontRoomsHunterTuning>(game, "hunterTuning");
+        tuning.releaseDelaySeconds = 1e6f;
+
+        var t0 = Time.time;
+        while (!Get<bool>(game, "startDoorOpened") && Time.time - t0 < 8f) { Resume(); yield return 1; }
+        Log("start door opened=" + Get<bool>(game, "startDoorOpened") + " after " + F2(Time.time - t0) + " s");
+        yield return 30;
+        Time.captureDeltaTime = 1f / 60f;
+
+        env0 = Snap();
+        Log("scene environment at run start (the BEFORE state): " + EnvLine());
+        var cam0 = cam.GetUniversalAdditionalCameraData();
+        Log("camera: fov " + F2(cam.fieldOfView) + " near " + F2(cam.nearClipPlane) + " far " + F2(cam.farClipPlane) + " hdr " + cam.allowHDR + " msaa " + cam.allowMSAA + " post " + cam0.renderPostProcessing + " AA " + cam0.antialiasing);
+
+        var startDoorCell = (GridCoord)Get(game, "startDoorCell");
+        var origin = startDoorCell + new GridCoord(0, 3);
+
+        var windowsL0 = new List<(GridCoord a, GridCoord b)>();
+        var windowsOffice = new List<(GridCoord a, GridCoord b)>();
+        foreach (var c in CellsAround(origin, 60))
+        {
+            if (map.InStartArea(c)) continue;
+            foreach (var s in new[] { new GridCoord(1, 0), new GridCoord(0, 1) })
+            {
+                var n = c + s;
+                if (map.InStartArea(n)) continue;
+                if (map.Cache.Edge(c, n) != EdgeKind.Window) continue;
+                var za = map.Cache.ZoneOf(c);
+                var zb = map.Cache.ZoneOf(n);
+                if (za.theme == ZoneTheme.Office || zb.theme == ZoneTheme.Office)
+                {
+                    if (windowsOffice.Count < 6) windowsOffice.Add(za.theme == ZoneTheme.Office ? (c, n) : (n, c));
+                }
+                else if (windowsL0.Count < 6) windowsL0.Add((c, n));
+            }
+            if (windowsL0.Count >= 6 && windowsOffice.Count >= 6) break;
+        }
+        Log("window candidates · Level 0 " + windowsL0.Count + " · Office " + windowsOffice.Count);
+
+        yield return Representative("01_rep_L0", "L0", origin);
+        if (windowsL0.Count > 0) yield return WindowSequence("window_L0", windowsL0); else Log("NO Level 0 window");
+        if (windowsOffice.Count > 0) yield return WindowSequence("window_Office", windowsOffice); else Log("NO Office window");
+        yield return Representative("34_rep_Office", "Office", origin);
+        yield return Representative("37_rep_Dark", "Dark", origin);
+        yield return DeadLampWindow(origin);
+        yield return Props();
+        yield return DeskVignette();
+        yield return HutchStaged(origin);
+        Log("DONE");
+    }
+
+    // ---------------- representative frames (audit scoring) ----------------
+    static IEnumerator Representative(string id, string kind, GridCoord origin)
+    {
+        GridCoord? coarse = null;
+        foreach (var c in CellsAround(origin, 50))
+        {
+            if (map.InStartArea(c)) continue;
+            var z = map.Cache.ZoneOf(c);
+            if (kind == "L0" && z.theme == ZoneTheme.Level0 && z.height == ZoneHeight.Standard) { coarse = c; break; }
+            if (kind == "Office" && z.theme == ZoneTheme.Office) { coarse = c; break; }
+            if (kind == "Dark") { coarse = origin; break; }
+        }
+        if (!coarse.HasValue) { Log(kind + ": no cell found"); yield break; }
+        Place(map.CellCenter(coarse.Value), map.CellCenter(coarse.Value) + Vector3.forward * 5f + Vector3.up * 1.5f);
+        yield return Settle(30);
+        Resume();
+        var here = map.CellOf(PlayerRoot.position);
+        GridCoord best = here; GridCoord bestStep = Steps[0]; float bestScore = float.MinValue;
+        var fixtures = AllFixtures();
+        foreach (var c in CellsAround(here, 14))
+        {
+            if (!map.IsBuilt(c) || map.InStartArea(c)) continue;
+            var z = map.ZoneOf(c);
+            if (kind == "L0" && (z.theme != ZoneTheme.Level0 || z.height != ZoneHeight.Standard)) continue;
+            if (kind == "Office" && z.theme != ZoneTheme.Office) continue;
+            if (!FreeStanding(map.CellCenter(c))) continue;
+            foreach (var s in Steps)
+            {
+                var run = StraightRun(c, s);
+                float score;
+                if (kind == "Dark")
+                {
+                    if (run < 2) continue;
+                    var light = 0f;
+                    var p = map.CellCenter(c);
+                    foreach (var f in fixtures)
+                    {
+                        var mode = (int)Get(f, "mode");
+                        var lt = Get<Light>(f, "light");
+                        if (lt == null) continue;
+                        var d = Vector3.Distance(new Vector3(lt.transform.position.x, 0f, lt.transform.position.z), p);
+                        var bi = (float)Get(f, "baseIntensity");
+                        light += (mode == 3 ? .02f : mode == 4 ? .3f : mode == 2 ? .6f : 1f) * bi / (1f + d * d);
+                    }
+                    score = -light + run * .001f;
+                }
+                else if (kind == "Office")
+                {
+                    if (run < 2) continue;
+                    score = run + (DressingNear(map.CellCenter(c), 5f) ? 20f : 0f);
+                }
+                else score = run;
+                if (score > bestScore) { bestScore = score; best = c; bestStep = s; }
+            }
+        }
+        lastRepCell = best;
+        var feet = map.CellCenter(best);
+        Place(feet, map.CellCenter(best + bestStep + bestStep + bestStep) + Vector3.up * 1.45f);
+        yield return Settle(20);
+        Resume();
+        var z2 = map.ZoneOf(best);
+        yield return Cycle(id, "representative " + kind + " · cell " + best + " " + z2.theme + "/" + z2.height + " · looking " + bestStep + " (run " + StraightRun(best, bestStep) + ") · score " + F2(bestScore) + " (audit procedure)", null, kind == "L0");
+        if (kind == "Office")
+        {
+            var side = new GridCoord(bestStep.y, -bestStep.x);
+            Look(map.CellCenter(best + side + side) + Vector3.up * 1.3f);
+            yield return 3;
+            yield return Cycle("35_rep_Office_b", "Office, quarter turn (audit frame 35)");
+        }
+    }
+
+    static GridCoord lastRepCell;
+
+    static IEnumerator DeadLampCell()
+    {
+        // The audit's 'Dark' pick is the darkest spot by summed light, not necessarily a cell whose own lamp is dead.
+        // Add a frame standing under a dead lamp (mode 3), so the DeadLamp cube is shown in the game.
+        var here = map.CellOf(PlayerRoot.position);
+        foreach (var c in CellsAround(here, 14))
+        {
+            if (!map.IsBuilt(c) || map.InStartArea(c) || c == lastRepCell) continue;
+            var z = map.ZoneOf(c);
+            if (z.theme != ZoneTheme.Level0 || z.height == ZoneHeight.Tall) continue;
+            var fx = FixtureOf(c);
+            if (fx == null || (int)Get(fx, "mode") != 3) continue;
+            if (!FreeStanding(map.CellCenter(c))) continue;
+            GridCoord? step = null; var bestRun = 1;
+            foreach (var s in Steps) { var r = StraightRun(c, s); if (r > bestRun) { bestRun = r; step = s; } }
+            if (!step.HasValue) continue;
+            Place(map.CellCenter(c), map.CellCenter(c + step.Value + step.Value + step.Value) + Vector3.up * 1.45f);
+            yield return Settle(20);
+            Resume();
+            yield return Cycle("38_deadlamp_cell", "standing under a dead lamp (mode 3) · cell " + c + " " + z.theme + "/" + z.height + " · looking " + step.Value + " (run " + bestRun + ")");
+            yield break;
+        }
+        Log("dead-lamp cell: none within 14 cells");
+    }
+
+    // ---------------- windows (audit viewpoints) ----------------
+    static IEnumerator WindowSequence(string label, List<(GridCoord a, GridCoord b)> candidates)
+    {
+        foreach (var (a0, b0) in candidates)
+        {
+            var a = a0; var b = b0;
+            var cross = map.CrossingPoint(a, b);
+            var dir = Dir(a, b);
+            var center = cross + Vector3.up * ((ModuleUnits.WindowSill + ModuleUnits.WindowTop) * .5f);
+            Place(cross - dir * 1.5f, center);
+            yield return Settle(20);
+            Resume();
+            var col = WindowCollider(a, b);
+            if (col == null) { Log(label + ": window " + a + "-" + b + " not built; next"); continue; }
+            if (!FreeStanding(cross - dir * 1.5f))
+            {
+                var t = a; a = b; b = t; dir = -dir;
+                if (!FreeStanding(cross - dir * 1.5f)) { Log(label + ": both sides blocked; next"); continue; }
+            }
+            var pane = col.GetComponent<Renderer>();
+            var za = map.ZoneOf(a); var zb = map.ZoneOf(b);
+            var where = "window " + a + "→" + b + " · camera side " + za.theme + "/" + za.height + " · far side " + zb.theme + "/" + zb.height;
+            var side = Vector3.Cross(Vector3.up, dir).normalized;
+
+            Place(cross - dir * 1.5f, center);
+            yield return 5;
+            Resume();
+            yield return Cycle(label + "_1.5m", "head-on from 1.5 m · " + where, pane, label == "window_L0", true);
+            Place(cross - dir * 1.2f + side * 1.4f, center);
+            yield return 4;
+            yield return Cycle(label + "_oblique50", "~50° (1.2 m back, 1.4 m to the side; audit frame " + (label == "window_L0" ? "04" : "23") + ") · " + where, pane, false, true);
+            Place(cross - dir * .7f, center);
+            yield return 4;
+            yield return Cycle(label + "_0.7m", "head-on from 0.7 m · " + where, pane, label == "window_L0", true);
+
+            var steepOk = false; var grazeFeet = Vector3.zero;
+            foreach (var off in new[] { .6f, .7f, .8f })
+            foreach (var along in new[] { 1.15f, -1.15f, 1.0f, -1.0f })
+            {
+                if (steepOk) break;
+                var f = cross - dir * off + side * along;
+                if (!FreeStanding(f)) continue;
+                var eye = f + Vector3.up * ModuleUnits.PlayerEye;
+                var blocked = false;
+                foreach (var h in Physics.RaycastAll(eye, (center - eye).normalized, (center - eye).magnitude - .02f, ~0, QueryTriggerInteraction.Ignore))
+                    if (h.collider != col && !h.collider.transform.IsChildOf(PlayerRoot)) { blocked = true; break; }
+                if (blocked) continue;
+                grazeFeet = f; steepOk = true;
+            }
+            if (steepOk)
+            {
+                Place(grazeFeet, center);
+                yield return 4;
+                var dist = Vector3.Distance(new Vector3(grazeFeet.x, 0f, grazeFeet.z), new Vector3(cross.x, 0f, cross.z));
+                var inc = Vector3.Angle(-dir, (grazeFeet + Vector3.up * ModuleUnits.PlayerEye - center).normalized);
+                yield return Cycle(label + "_steep", "steep, " + F(inc, "0") + "° from the pane normal (" + F2(dist) + " m from the opening centre, same cell) · " + where, pane, false, true);
+            }
+            else Log(label + ": no clear steep viewpoint");
+            yield break;
+        }
+        Log(label + ": no usable window among candidates");
+    }
+
+    // ---------------- dead lamp: a window seen from under a dead lamp, and a lit window with a dead room beyond ----------------
+    static IEnumerator DeadLampWindow(GridCoord origin)
+    {
+        var cands = new List<(GridCoord a, GridCoord b)>();
+        foreach (var c in CellsAround(origin, 70))
+        {
+            if (map.InStartArea(c)) continue;
+            foreach (var s in new[] { new GridCoord(1, 0), new GridCoord(0, 1) })
+            {
+                var n = c + s;
+                if (map.InStartArea(n) || map.Cache.Edge(c, n) != EdgeKind.Window) continue;
+                cands.Add((c, n));
+            }
+            if (cands.Count >= 80) break;
+        }
+        Log("dead-lamp window search: " + cands.Count + " window edges within 70 cells");
+        (GridCoord a, GridCoord b)? under = null, beyond = null;
+        for (var pass = 0; pass < 2 && !(under.HasValue && beyond.HasValue); pass++)
+        {
+            foreach (var (c0, n0) in cands)
+            {
+                if (under.HasValue && beyond.HasValue) break;
+                if (pass == 1 && !(map.IsBuilt(c0) && map.IsBuilt(n0)))
+                {
+                    Place(map.CellCenter(c0), map.CellCenter(n0) + Vector3.up * 1.2f);
+                    yield return Settle(3);
+                    Resume();
+                }
+                if (!map.IsBuilt(c0) || !map.IsBuilt(n0) || WindowCollider(c0, n0) == null) continue;
+                foreach (var (a, b) in new[] { (c0, n0), (n0, c0) })
+                {
+                    var fa = FixtureOf(a); var fb = FixtureOf(b);
+                    var deadA = fa != null && (int)Get(fa, "mode") == 3;
+                    var deadB = fb != null && (int)Get(fb, "mode") == 3;
+                    if (!FreeStanding(map.CellCenter(a))) continue;
+                    if (!under.HasValue && deadA) under = (a, b);
+                    else if (!beyond.HasValue && !deadA && fa != null && deadB) beyond = (a, b);
+                }
+            }
+        }
+        Log("dead-lamp windows: camera under a dead lamp " + (under.HasValue ? under.Value.a + "→" + under.Value.b : "none")
+            + " · lit camera side, dead lamp beyond " + (beyond.HasValue ? beyond.Value.a + "→" + beyond.Value.b : "none"));
+        if (under.HasValue) yield return DeadWindowViews("38_deadlamp_window", under.Value.a, under.Value.b, "camera under a dead lamp (mode 3)");
+        else yield return DeadLampCell();
+        if (beyond.HasValue) yield return DeadWindowViews("39_dark_beyond_window", beyond.Value.a, beyond.Value.b, "camera lit, dead lamp in the far cell");
+    }
+
+    static IEnumerator DeadWindowViews(string id, GridCoord a, GridCoord b, string what)
+    {
+        var cross = map.CrossingPoint(a, b);
+        var dir = Dir(a, b);
+        var center = cross + Vector3.up * ((ModuleUnits.WindowSill + ModuleUnits.WindowTop) * .5f);
+        Place(cross - dir * 1.5f, center);
+        yield return Settle(20);
+        Resume();
+        var col = WindowCollider(a, b);
+        if (col == null) { Log(id + ": pane missing"); yield break; }
+        var pane = col.GetComponent<Renderer>();
+        var za = map.ZoneOf(a); var zb = map.ZoneOf(b);
+        var where = what + " · window " + a + "→" + b + " · camera side " + za.theme + "/" + za.height + " · far side " + zb.theme + "/" + zb.height;
+        yield return Cycle(id + "_1.5m", "head-on from 1.5 m · " + where, pane, false, true);
+        var side = Vector3.Cross(Vector3.up, dir).normalized;
+        foreach (var s in new[] { 1f, -1f })
+        {
+            var f = cross - dir * 1.2f + side * 1.4f * s;
+            if (!FreeStanding(f)) continue;
+            Place(f, center);
+            yield return 4;
+            yield return Cycle(id + "_oblique50", "~50° · " + where, pane, false, true);
+            break;
+        }
+    }
+
+    // ---------------- props with Prop_Glass / Prop_BottleBlue ----------------
+    static HashSet<string> kitNames;
+
+    static bool IsGlassMat(Material m) => m != null && (m == propGlassNew || m == propGlassOld || m == propBottleNew || m == propBottleOld);
+
+    static Transform KitRoot(Transform t)
+    {
+        while (t != null && !kitNames.Contains(t.name)) t = t.parent;
+        return t;
+    }
+
+    /// <summary>World bounds of the sub-meshes that use a glass material (falls back to the renderer bounds).</summary>
+    static Bounds GlassBounds(Renderer r)
+    {
+        var mf = r.GetComponent<MeshFilter>();
+        var mats = r.sharedMaterials;
+        if (mf != null && mf.sharedMesh != null)
+        {
+            Bounds? acc = null;
+            for (var i = 0; i < mats.Length && i < mf.sharedMesh.subMeshCount; i++)
+            {
+                if (!IsGlassMat(mats[i])) continue;
+                var lb = mf.sharedMesh.GetSubMesh(i).bounds;
+                for (var k = 0; k < 8; k++)
+                {
+                    var corner = lb.center + Vector3.Scale(lb.extents, new Vector3((k & 1) == 0 ? -1 : 1, (k & 2) == 0 ? -1 : 1, (k & 4) == 0 ? -1 : 1));
+                    var w = r.transform.TransformPoint(corner);
+                    if (acc.HasValue) { var b = acc.Value; b.Encapsulate(w); acc = b; } else acc = new Bounds(w, Vector3.zero);
+                }
+            }
+            if (acc.HasValue && acc.Value.size.sqrMagnitude > 1e-6f) return acc.Value;
+        }
+        return r.bounds;
+    }
+
+    static bool TryView(Vector3 target, Transform root, Vector3 front, float[] dists, float[] angs, out Vector3 feet)
+    {
+        feet = Vector3.zero;
+        front.y = 0f;
+        if (front.sqrMagnitude < 1e-4f) front = Vector3.forward;
+        front.Normalize();
+        var floorY = map.transform.position.y;
+        foreach (var dist in dists)
+        foreach (var ang in angs)
+        {
+            var dir = Quaternion.Euler(0f, ang, 0f) * front;
+            var f = new Vector3(target.x, floorY, target.z) + dir * dist;
+            if (!FreeStanding(f)) continue;
+            var eye = f + Vector3.up * ModuleUnits.PlayerEye;
+            var to = target - eye;
+            var blocked = false;
+            foreach (var h in Physics.RaycastAll(eye, to.normalized, to.magnitude, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (h.collider.transform.IsChildOf(PlayerRoot)) continue;
+                if (root != null && h.collider.transform.IsChildOf(root)) continue;
+                if (to.magnitude - h.distance < .2f) continue;
+                blocked = true; break;
+            }
+            if (blocked) continue;
+            feet = f;
+            return true;
+        }
+        return false;
+    }
+
+    static IEnumerator Props()
+    {
+        kitNames = new HashSet<string>(FrontRoomsKitLibrary.AllNames());
+        var census = new Dictionary<string, int>();
+        var found = new List<(Transform root, Renderer r, string kit, bool bottle, float dist)>();
+        var player = PlayerRoot.position;
+        foreach (var r in map.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            var mats = r.sharedMaterials;
+            if (!mats.Any(IsGlassMat)) continue;
+            var root = KitRoot(r.transform);
+            var live = r.enabled && r.gameObject.activeInHierarchy;
+            var key = (root != null ? root.name : "(no kit root) " + r.name) + (live ? "" : " [inactive renderer]");
+            census[key] = census.TryGetValue(key, out var k) ? k + 1 : 1;
+            if (!live || root == null) continue;
+            found.Add((root, r, root.name, mats.Any(m => m == propBottleNew || m == propBottleOld), Vector3.Distance(root.position, player)));
+        }
+        Log("glass-material renderer census, built map: " + string.Join(", ", census.Select(kv => kv.Key + " ×" + kv.Value)));
+        var desks = map.GetComponentsInChildren<Transform>().Count(t => t.name == "Kit_OfficeDesk");
+        var phones = map.GetComponentsInChildren<Transform>().Count(t => t.name == "Kit_DeskPhone");
+        Log("built map also has Kit_OfficeDesk ×" + desks + ", Kit_DeskPhone ×" + phones);
+
+        var shots = new List<(string id, Transform root, Renderer r, float[] dists, float[] angs, string note)>();
+        var bottle = found.Where(f => f.bottle).OrderBy(f => f.dist).FirstOrDefault();
+        if (bottle.r != null) shots.Add(("40_prop_bottle_WaterCooler", bottle.root, bottle.r, new[] { .8f, 1.0f, 1.25f }, new[] { 20f, -20f, 0f, 35f, -35f }, "Prop_BottleBlue water bottle on Kit_WaterCooler"));
+        var vend = found.Where(f => f.kit == "Kit_VendingMachine").OrderBy(f => f.dist).FirstOrDefault();
+        if (vend.r != null)
+        {
+            shots.Add(("40_prop_vending_front", vend.root, vend.r, new[] { 1.2f, 1.5f, 1.8f }, new[] { 0f, 15f, -15f }, "Prop_Glass front of Kit_VendingMachine"));
+            shots.Add(("40_prop_vending_oblique", vend.root, vend.r, new[] { 1.2f, 1.5f, 1.0f }, new[] { 50f, -50f, 40f, -40f }, "Prop_Glass front of Kit_VendingMachine, ~45° (where a reflection should show)"));
+        }
+        var other = found.Where(f => !f.bottle && f.kit != "Kit_VendingMachine").OrderBy(f => f.dist).FirstOrDefault();
+        if (other.r != null) shots.Add(("40_prop_" + other.kit, other.root, other.r, new[] { .9f, 1.2f, 1.5f }, new[] { 0f, 25f, -25f }, "Prop_Glass on " + other.kit));
+        foreach (var s in shots)
+        {
+            if (s.r == null) continue;
+            var gb = GlassBounds(s.r);
+            if (!TryView(gb.center, s.root, s.root.forward, s.dists, s.angs, out var feet)) { Log(s.id + ": no clear view"); continue; }
+            Place(feet, gb.center);
+            yield return Settle(10);
+            Resume();
+            var d = Vector3.Distance(new Vector3(feet.x, 0f, feet.z), new Vector3(gb.center.x, 0f, gb.center.z));
+            var inc = Vector3.Angle(s.root.forward, (feet + Vector3.up * ModuleUnits.PlayerEye - gb.center).normalized);
+            yield return Cycle(s.id, s.note + " · glass bounds " + V(gb.size) + " m · camera " + F2(d) + " m away, " + F(inc, "0") + "° off the kit's front · zone by rule");
+        }
+    }
+
+    // ---------------- STAGED: glass on a real office desk (the generator puts no glass items on desks in this map) ----------------
+    static IEnumerator DeskVignette()
+    {
+        var desks = map.GetComponentsInChildren<Transform>().Where(t => t.name == "Kit_OfficeDesk").ToList();
+        var player = PlayerRoot.position;
+        var info = FrontRoomsKitLibrary.GetInfo("Kit_OfficeDesk");
+        var top = .74f;
+        if (info != null && info.TrySupport("top", out var tc, out _)) top = tc.y;
+        foreach (var d in desks.OrderBy(t => (t.position - player).sqrMagnitude).Take(40))
+        {
+            var lookAt = d.TransformPoint(new Vector3(0f, top + .08f, .12f));
+            if (!TryView(lookAt, d, d.forward, new[] { 1.25f, 1.45f, 1.1f }, new[] { 0f, 20f, -20f }, out var feet)) continue;
+            var staged = new GameObject("G10 STAGED desk glass");
+            var rot = d.rotation;
+            Vector3 OnTop(float x, float z) => d.TransformPoint(new Vector3(x, top, z));
+            var phone = FrontRoomsKitLibrary.Spawn("Kit_DeskPhone", staged.transform, OnTop(.45f, .2f), rot * Quaternion.Euler(0f, -18f, 0f), null, false, "Kit_DeskPhone");
+            var tumbler = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            tumbler.name = "G10 stand-in tumbler (Prop_Glass)";
+            UnityEngine.Object.DestroyImmediate(tumbler.GetComponent<Collider>());
+            tumbler.transform.SetParent(staged.transform, false);
+            tumbler.transform.SetPositionAndRotation(OnTop(-.32f, .24f) + Vector3.up * .055f, rot);
+            tumbler.transform.localScale = new Vector3(.075f, .055f, .075f);
+            var tr = tumbler.GetComponent<MeshRenderer>(); tr.sharedMaterial = propGlassNew; tr.shadowCastingMode = ShadowCastingMode.Off;
+            var bottle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            bottle.name = "G10 stand-in bottle (Prop_BottleBlue)";
+            UnityEngine.Object.DestroyImmediate(bottle.GetComponent<Collider>());
+            bottle.transform.SetParent(staged.transform, false);
+            bottle.transform.SetPositionAndRotation(OnTop(-.14f, .16f) + Vector3.up * .14f, rot);
+            bottle.transform.localScale = new Vector3(.085f, .14f, .085f);
+            var br = bottle.GetComponent<MeshRenderer>(); br.sharedMaterial = propBottleNew; br.shadowCastingMode = ShadowCastingMode.Off;
+            Place(feet, lookAt);
+            yield return Settle(10);
+            Resume();
+            var dist = Vector3.Distance(new Vector3(feet.x, 0f, feet.z), new Vector3(lookAt.x, 0f, lookAt.z));
+            yield return Cycle("41_desk_glass_STAGED", "STAGED on a real Kit_OfficeDesk at " + V(d.position) + ": Kit_DeskPhone (real kit, Prop_Glass display) + stand-in cylinder tumbler (Prop_Glass) and bottle (Prop_BottleBlue); camera " + F2(dist) + " m from the desk front, eye height");
+            UnityEngine.Object.Destroy(staged);
+            yield return 2;
+            yield break;
+        }
+        Log("desk vignette: no Kit_OfficeDesk with a clear view among " + desks.Count);
+    }
+
+    // ---------------- STAGED: glass case goods (Kit_Hutch, Kit_DisplayCabinet) in a free Level 0 cell ----------------
+    static IEnumerator HutchStaged(GridCoord origin)
+    {
+        var here = map.CellOf(PlayerRoot.position);
+        foreach (var start in new[] { here, origin })
+        foreach (var c in CellsAround(start, 16))
+        {
+            if (!map.IsBuilt(c) || map.InStartArea(c)) continue;
+            var z = map.ZoneOf(c);
+            if (z.theme != ZoneTheme.Level0 || z.height != ZoneHeight.Standard) continue;
+            var fx = FixtureOf(c);
+            if (fx == null || (int)Get(fx, "mode") == 3) continue;
+            var centre = map.CellCenter(c);
+            foreach (var s in Steps)
+            {
+                var toCam = Dir(c, c + s);
+                var side = Vector3.Cross(Vector3.up, toCam).normalized;
+                var spots = new[] { centre - toCam * .4f + side * .55f, centre - toCam * .4f - side * .55f, centre + toCam * 1.6f };
+                if (!spots.All(FreeStanding)) continue;
+                var camFeet = centre + toCam * 1.6f;
+                var staged = new GameObject("G10 STAGED glass case goods");
+                var face = Quaternion.LookRotation(toCam, Vector3.up);
+                FrontRoomsKitLibrary.Spawn("Kit_Hutch", staged.transform, spots[0], face, null, false, "Kit_Hutch");
+                FrontRoomsKitLibrary.Spawn("Kit_DisplayCabinet", staged.transform, spots[1], face, null, false, "Kit_DisplayCabinet");
+                Place(camFeet, centre - toCam * .4f + Vector3.up * 1.05f);
+                yield return Settle(10);
+                Resume();
+                yield return Cycle("42_hutch_cabinet_STAGED", "STAGED in cell " + c + " " + z.theme + "/" + z.height + ": Kit_Hutch (frame left) and Kit_DisplayCabinet (frame right), free-standing, glass doors facing the camera, camera 2.0 m back at eye height");
+                UnityEngine.Object.Destroy(staged);
+                yield return 2;
+                yield break;
+            }
+        }
+        Log("hutch staging: no free Level 0 cell found");
+    }
+}

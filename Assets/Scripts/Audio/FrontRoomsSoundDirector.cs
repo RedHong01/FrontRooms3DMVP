@@ -151,8 +151,9 @@ namespace FrontRooms.Audio
                 started = true;
                 if (muteLegacyUnityAudio) AudioListener.volume = 0f;
                 StartRoomTone();
-                FrontRoomsFmod.Note("ready");
-                Debug.Log("[FrontRoomsAudio] FMOD ready: banks loaded, room tone on, legacy Unity audio muted.");
+                var stamp = FrontRoomsFmod.SoundSetStamp();
+                FrontRoomsFmod.Note("ready; sound set " + stamp);
+                Debug.Log("[FrontRoomsAudio] FMOD ready: " + stamp + ". Room tone on; Unity audio is off, so everything heard is FMOD.");
             }
             if (!caught && now >= nextBedCheck) { nextBedCheck = now + 1f; StartRoomTone(); }   // restarts a bed FMOD finished
             EnsureRunVoices();

@@ -1,91 +1,93 @@
-# The glow ink: four narrative directions for the phosphorescent underprint
+# The glow ink: narrative design for the phosphorescent underprint (EGRESS)
 
-Status: proposal, revision 2, 2026-10-03. Nothing is implemented. Written by the narrative chat.
+Status: chosen direction, revision 3, 2026-10-03. Nothing is implemented. Written by the narrative chat.
 
 **Scope.**
 - Mechanics belong to `20_level_design_phosphor.md` (Afterglow Blazes, "LD" below), and nothing here changes them.
-- This document fills LD §12, the narrative slots, four different ways.
+- This document fills LD §12, the narrative slots.
+- **A.11 is the frozen content spec** for the ink textures, which the wallpaper-print chat renders.
 
-**Revision 1** recommended EGRESS and only sketched the other three directions.
+**History.**
+- Revision 1 recommended EGRESS.
+- Revision 2 developed all four directions to the same depth for comparison.
+- Revision 3 records Red's choice. The other three directions are kept as Appendices B–D, and the comparison is Appendix E.
 
 **Red's decisions, 2026-10-03** (relayed by the wallpaper-print chat):
-1. Develop all four directions to the same depth before choosing. EGRESS stays the recommendation, but this document does not pre-decide.
-2. **Forged FLOW from T4 is ON** (LD Q4). Each direction answers who forges and why.
-3. **The HUD threat readout is off by default** and moves to an assist (LD Q1). Every direction assumes the player has no distance readout.
-4. **The visible paper is WP03 "Hard edge":** clean mitred chevron bands at 55°, no streaks (Figma 2407:884; `Tools/print/patterns/hard_edge.py`, `ARM_DEG = 55`).
+1. **Direction: EGRESS.**
+2. **Forged FLOW from T4 is ON** (LD Q4).
+3. **HUD:** all Relay state text (distance, HUNT/SEARCH, CHASE) is hidden. The assist toggle is the only way to show it.
+4. **Q3:** the chase wave fires on CHASE only.
+5. **Visible paper:** WP03 "Hard edge", clean mitred chevron bands at 55° (Figma 2407:884; `Tools/print/patterns/hard_edge.py`, `ARM_DEG = 55`).
+6. **The Relay warning is now staged** (owned by the systems chat; `Documentation/RELAY_PURSUIT_REDESIGN.md`). The lamps never dim where the Relay is:
+   - stage 1: your room's lamps flicker;
+   - stage 2: muffled footsteps;
+   - stage 3: a lock-on cue, then Chase.
 
-Still open with Red: LD Q3 (pressure trigger), Q8 (EAR), Q10 (legend/placard), Q11 (escalation coupling), plus §12 below.
+   The ink's part is in A.10.
+
+**Still open with Red:**
+- LD Q8 (EAR), Q10 (placard), Q11 (escalation coupling);
+- §7 below.
 
 ---
 
-## 1. How to compare the four
+## 1. How to read this
 
-Every direction chapter (§4–§7) has the same nine parts:
+- **§4 is the build spec.** A.1–A.9 cover the fiction, trust and forger, the moving print, the LD slots, the marks, the run arc and the rules. A.10 is the staged warning. A.11 is the frozen texture content.
+- **§1.1 lists the ten marks.** Each sits on a mechanical slot that the shader's procedural shapes draw (LD §9). The fiction changes only the names and what you see up close.
 
-| Part | What it covers |
-|---|---|
-| .1 | Pitch and deck line |
-| .2 | The fiction |
-| .3 | Trust and the forger |
-| .4 | Link to the moving print |
-| .5 | LD §12 slots |
-| .6 | Ten marks |
-| .7 | Run arc |
-| .8 | Writing rules |
-| .9 | Strengths, risks and costs |
+### 1.1 The ten marks (mechanical slots)
 
-§8 sets them side by side.
-
-### 1.1 The same ten marks in every direction
-
-The mechanics are identical in all four directions, so each mark appears in the same place, at the same time, with the same shape seen from a distance (LD §9). Only three things change: its name, what you see up close, and what it means.
-
-| # | LD code | Where and when | What you see at range (all directions) |
+| # | LD code | Where and when | What you see at range |
 |---|---|---|---|
-| M1 | FLOW | First-dark beat, T0: the end wall 6–9 m ahead as a lamp dies in view | Open chevrons, 400 mm tall, 8 per 3 m wall, in the 0.8–2.0 m band |
+| M1 | FLOW | First-dark beat, T0: the end wall 6–9 m ahead as a lamp dies in view; then every on-route dark cell | Open chevrons, 400 mm tall, 8 per 3 m wall, in the 0.8–2.0 m band, pointing along the wall |
 | M2 | HERE | The wall beside a door, or a window, on the route | Two vertical bars, 100 × 900 mm, framing the door (0.8 m beside a window) |
 | M3 | STOP | The mouth of a dead-end pocket | Two closed horizontal bars, 600 × 120 mm, on every roll |
 | M4 | BREACH | Both faces of a door the Relay broke (permanent) | HERE bars plus a 100 mm diagonal bar |
-| M5 | Pressure | Committed as the chase wave front passes. Chase only by default (Q3) | Doubled chevrons to a door, then doubled bars at it |
+| M5 | Pressure | Committed as the chase wave front passes (Chase only) | Doubled chevrons to a door, then doubled bars at it |
 | M6 | GROUND | Any charged dark cell that is off the route | Faint, even glow with no direction (weight 0.35) |
 | M7 | EAR bloom (P2, Q8) | The dark cells round a noise the Relay accepted (source cell plus open neighbours) | The ground glow swells over 1.5 s |
-| M8 | FLOW, T2 variant | Every FLOW from T2 on | Unchanged. Only the close-up content changes |
-| M9 | GROUND, T3 layer | Rare, dark cells near doors | As M6, with new close-up content |
-| M10 | Forged FLOW (T4+, ON) | A lit, steady cell at an unmarked branch mouth, pointing into the pocket | FLOW chevrons glowing **under a working lamp** (G = 0.8 whatever the lamp does). This is the far tell |
+| M8 | FLOW, T2+ variant | Every FLOW from T2 on | Unchanged. Only the close-up content changes |
+| M9 | GROUND scratch, T3+ | Rare: about 1 in 8 GROUND cells, one tile per face | As M6, with scratches up close |
+| M10 | Forged FLOW (T4+) | A lit, steady cell at an unmarked branch mouth, pointing into the pocket | FLOW chevrons glowing **under a working lamp** (G = 0.8 whatever the lamp does). This is the far tell |
 
-**Where the close-up content lives.** The wallpaper-print chat proposed this, and the visual chat has not yet agreed:
-- **`_FR_InkType`** is a texture array in glyph-local space, with one layer per message, variant, tier or forged state. The content runs along the stroke.
-- **`_FR_InkSubstance`** is BC4, roll-tiled, with one GROUND layer per tier.
-- Both are fetched only where the glow mask is non-zero.
+**Where the close-up content lives.** These are the two global arrays in `Tools/print/README.md` § "Planned: glow-ink textures" (spec v1, agreed in principle with the visual chat):
 
-The content can be type (A), hand texture (B), scratches (C) or smear (D). Every layer must meet four rules:
-- mean coverage ≥ 0.6 inside strokes (field 1.0, knockouts 0.55);
+| Global | Coordinates | Holds |
+|---|---|---|
+| **`_FR_InkType`** | Glyph-local: u = metres along the wall / 0.75; v = (height − 0.8 m) / 0.75 | One layer per message or variant |
+| **`_FR_InkSubstance`** | Print UV, one roll tile | One GROUND layer per run tier |
+
+Both are fetched only inside the glow mask. Every layer must meet three rules:
+- mean ≥ 0.6 in any 100 mm square inside strokes (field 1.0, knockouts about 0.55);
 - detail strokes ≥ 2.5 mm, so the 4× mips keep them;
-- legible within about 1.5 m;
-- human marks never use the procedural shapes (chevrons, bars, brackets), so they cannot be confused with the grammar. In C the code is human, so there the rule is that only the code's own shapes count.
+- legible within about 1.5 m.
+
+**Human marks never use the procedural shapes** (chevrons, bars, brackets), so they cannot be confused with the grammar.
 
 ---
 
-## 2. What every direction must honour
+## 2. What EGRESS must honour
 
-| Rule (source) | Consequence for every direction |
+| Rule (source) | Consequence |
 |---|---|
-| Glows only where the cell's own lamp is dead, dying or sagging; a lit wall shows nothing (LD R1) | The fiction says why it hides in light |
-| Fresh dark is bright; starved dark (a dead cell among dead neighbours) is blank (LD R2) | The fiction says why it needs light first |
-| Only wallpaper carries it: no Office drywall, doors, start area or title stream rooms (LD R3) | The fiction says why Office and the front rooms are blind |
-| Calm routes lead to the nearest door or window into an **unvisited zone**. They ignore the Relay and never lead back (LD R5) | It knows the building, not the monster, and it always moves you on |
-| Pressure routes appear in Chase, pointing to doors away from the Relay. The wave runs ahead from the Relay's cell at 8 m/s (LD R6, §4) | It reacts when the hunt starts running |
-| Truthful before T4. From T4 only FLOW is forged, and a forgery glows under a lit lamp (LD R9; Red: ON) | The forger is someone else, and only says "go" |
+| Glows only where the cell's own lamp is dead, dying or sagging; a lit wall shows nothing (LD R1) | The product is invisible by day |
+| Fresh dark is bright; starved dark (a dead cell among dead neighbours) is blank (LD R2) | It needs light to charge: "no light in, no light out" |
+| Only wallpaper carries it: no Office drywall, doors, start area or title stream rooms (LD R3) | Base-building paper only. Office is tenant fit-out; the front rooms are off the plan |
+| Calm routes lead to the nearest door or window into an **unvisited zone**. They ignore the Relay and never lead back (LD R5) | It knows the building, not the monster, and leads away from evacuated compartments |
+| Pressure routes appear **on CHASE only**, pointing to doors away from the Relay. The wave runs ahead from the Relay's cell at 8 m/s (LD R6, §4; Red: Q3) | Full alarm from the zone of origin |
+| Truthful before T4. From T4 only FLOW is forged, and a forgery glows under a lit lamp (LD R9; Red: ON) | The other occupant forges it, and only says "go" |
 | A message never changes in view (LD R10) | Changes happen unseen, under light, or at a sag or wave front |
 | **Dark is never cover.** The Relay's sight is a 12 m ray with no light term (LD R13) | No line, mark or prop may imply that darkness, low light or tall halls hide you |
-| **No distance readout** (Red: Q1 = yes) | The ink and sound are the player's only threat information. No direction may turn the ink into radar |
+| **All Relay state text is hidden** (Red; assist toggle only) | The ink, the staged warning and sound are the player's only information. The ink never becomes radar |
+| The staged warning flickers the player's own room (systems doc) | The ink gasps beside the player (GROUND only), if the flicker is a smooth sag under 3 Hz (A.10) |
 | Era lock: 1990, nothing designed after 1993 (`office_and_film/22_era_lock.md`) | ZnS:Cu, not strontium aluminate (invented 1993, patented 1994). Dates ≤ 1990. Period type |
 | IP: concepts only. No wiki text, no Async (`03_ip_canon.md` §5) | Original wording, no real brands, no real names |
-| The Relay's look is still open (`research/hunter/10`, `11`) | Say what a direction fixes about the Relay (see §8) |
+| The Relay's look is still open (`research/hunter/10`, `11`) | EGRESS fixes its role (the alarm's responder, `research/relay_pursuit/30_narrative.md`), not its body |
 
 ---
 
-## 3. Anchors (verified; URLs in §14)
+## 3. Anchors (verified; URLs in §9)
 
 ### 3.1 Charlotte Perkins Gilman, "The Yellow Wall-paper" (*New England Magazine*, January 1892; public domain)
 
@@ -165,7 +167,7 @@ The content can be type (A), hand texture (B), scratches (C) or smear (D). Every
 
 ---
 
-## 4. Direction A: EGRESS, the building's own exit plan
+## 4. EGRESS: the building's own exit plan (chosen)
 
 *Author: the place, as a machine.*
 
@@ -178,7 +180,7 @@ The underprint is the building's power-failure exit guidance. It is honest about
 **Who printed it, and when.**
 - A contract-wallcovering mill (unnamed) printed a non-radioactive, light-charged ZnS:Cu underprint under the WP03 hard-edge print, in 1990.
 - It was sold as base-building life safety: "invisible by day, there when the power fails".
-- Each roll was drawn for one position on the floor plan. The roll stamp reads `LEVEL 0 · SHEET A-3 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1`.
+- Each roll was drawn for one position on the floor plan. The roll stamp reads `LEVEL 0 · SHEET A-3 OF 4` / `ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1` (A.11).
 - The underprint is invented. Its parts (pigment, chevron egress marking, NO EXIT, self-tests) are real and from the period.
 
 **Why only in the dark.**
@@ -192,7 +194,7 @@ The underprint is the building's power-failure exit guidance. It is honest about
 - When the building rearranges itself unseen, it re-papers, and the plan is redrawn every time the room is.
 - Egress leads away from the compartment you occupy. A compartment you have left counts as evacuated, so the plan never sends you back.
 
-**Chase.**
+**Chase** (the wave fires on CHASE only).
 - When the Relay commits to a chase, a silent alarm spreads from its cell, the zone of origin.
 - The lamps drop to emergency level so the paper can be read. **The dark is for the paper, not for you.**
 - The plan switches to ALARM ROUTE: doors you can shut, putting a compartment between you and the origin.
@@ -212,19 +214,19 @@ The underprint is the building's power-failure exit guidance. It is honest about
 - `YOU ARE HERE`, a start room, and `SEE SHEET A-3`;
 - its glow legend lights only when its lamp is off.
 
-**WP03 tie.** The mill drew the egress chevrons wider and blunter than the décor's 55° bands, because guidance must never be mistaken for decoration (see §10).
+**WP03 tie.** The mill drew the egress chevrons wider and blunter than the décor's 55° bands, because guidance must never be mistaken for decoration (see §5).
 
 ### A.3 Trust and the forger
 **Trust.**
 - Every mark is the building's and true about the building.
 - It knows nothing about the occupant who hunts, and calm routes can lead you into it.
-- With no distance readout, the player learns to treat the plan as a map, never as a warning.
+- With all Relay state text hidden from the HUD, the player learns to treat the plan as a map, never as a warning. Warnings come from the staged warning (A.10).
 
 **The forger: the other occupant.**
 - From T4 the roll stamp reads `OCCUPANTS 2`. Someone else has learned the ink and wants company.
 - **Why only FLOW:** they want you to come to them, and the building's "go" is the only word they have taught themselves.
 - **Why it shows under light:** real afterglow can never show under the lamp that feeds it. A FLOW you can see in full light is giving off its own light. It is too bright to be paper.
-- **The close tell:** the type is hand-drawn imitation, uneven, with one S reversed.
+- **The close tell:** the type is hand-drawn imitation, `THIƧ WAY OUT`: uneven, with the S of THIS reversed (A.11, layer 8).
 
 ### A.4 Link to the moving print
 
@@ -258,26 +260,26 @@ The underprint is the building's power-failure exit guidance. It is honest about
 
 | # | Name | Up close | What it means here |
 |---|---|---|---|
-| M1 | WAY ON | `THIS WAY OUT` knocked out of the strokes in three lines | The route to a new compartment runs this way |
-| M2 | EXIT | `EXIT` stacked. Beside a window: `EXIT · BREAK GLASS` | Leave here. The building doesn't know who hears glass |
-| M3 | NO EXIT | `NO EXIT`, with NO above EXIT as the code sets it | A pocket. Always true |
+| M1 | WAY ON | `THIS WAY OUT` knocked out of the strokes in repeating lines | The route to a new compartment runs this way |
+| M2 | EXIT | `EXIT` running down the bars. Beside a window: `EXIT · BREAK GLASS` | Leave here. The building doesn't know who hears glass |
+| M3 | NO EXIT | `NO` set larger above `EXIT`, as the code arranges it | A pocket. Always true |
 | M4 | OUT OF SERVICE | `OUT OF SERVICE · DOES NOT CLOSE` | The damage log. Over a run, a map of dead doors |
-| M5 | ALARM ROUTE | `ALARM`; on the door bars, `KEEP CLOSED` | A door you can shut between you and the origin |
-| M6 | ROLL STAMP | Register crosshairs + `LEVEL 0 · SHEET A-3 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1` | The substrate. It carries the escalation |
+| M5 | ALARM ROUTE | `ALARM · THIS WAY OUT`; on the door bars, `FIRE DOOR · KEEP CLOSED` | A door you can shut between you and the origin |
+| M6 | ROLL STAMP | Register crosshairs + `LEVEL 0 · SHEET A-3 OF 4` / `ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1` | The substrate. It carries the escalation |
 | M7 | LOGGED | No new text | It was heard here, so leave quietly |
-| M8 | THIS WAY ON | `THIS WAY ON`; the stamp reads `SHEET A-1114` | The plan has stopped pretending there is an outside. An Exit 8-style changed sign |
-| M9 | SCRATCH-THROUGH | Tallies and initials scratched through the décor (`R.M. 6/90`, `IT ONLY GOES IN`) | Other occupants were here. No gameplay meaning |
-| M10 | FORGERY | Hand-drawn imitation `THIS WAY OUT`, one S reversed; the stamp reads `OCCUPANTS 2` | Not the building's. It leads into a NO EXIT pocket |
+| M8 | THIS WAY ON | `THIS WAY ON`; the stamp reads `SHEET A-1114 OF 4` | The plan has stopped pretending there is an outside. An Exit 8-style changed sign |
+| M9 | SCRATCH-THROUGH | A tally and words scratched through the décor: `IT ONLY GOES IN`, `SAME ROLL AGAIN`, `COUNTED 41 DOORS`, `R.M. 6/90`, `D.K. 11/90` | Other occupants were here. No gameplay meaning |
+| M10 | FORGERY | Hand-drawn imitation `THIƧ WAY OUT`; the stamp reads `OCCUPANTS 2` | Not the building's. It leads into a NO EXIT pocket |
 
 ### A.7 Run arc
 
 | Tier | Content | What the player realises |
 |---|---|---|
 | T0 | M1–M3, M6 | It's a safety system |
-| T1 | + M4, the first self-test, the first alarm route | It knows the building, not the monster |
-| T2 | M8 | Every exit leads in |
+| T1 | + M4, the first self-test, the first alarm route; the stamp reads `SHEET A-4 OF 4` | It knows the building, not the monster |
+| T2 | M8, `SHEET A-1114 OF 4` | Every exit leads in |
 | T3 | M9 | Others followed it before me |
-| T4+ | `OCCUPANTS 2`, M10. Optional: GROUND figures (§8.3) | Someone else writes in it |
+| T4+ | `OCCUPANTS 2`, M10. Optional GROUND figures are not in v1 (§7) | Someone else writes in it |
 
 Optional Caught line: `OCCUPANT ACCOUNTED FOR` (map chat's HUD).
 
@@ -298,11 +300,297 @@ Optional Caught line: `OCCUPANT ACCOUNTED FOR` (map chat's HUD).
 - Quieter dread. The late tiers (M8–M10) carry the scare.
 
 **Costs:**
-- About 12 type layers, 4 substance layers and a placard prop.
+- 10 type layers, 5 substance layers and a placard prop (A.11).
+
+### A.10 The staged Relay warning (EGRESS reading)
+
+The systems chat owns the warning (`Documentation/RELAY_PURSUIT_REDESIGN.md`). The full fiction is in `research/relay_pursuit/30_narrative.md` §5. In short, the lamps never dim where the Relay is: the warnings happen around **you**.
+
+| Stage | Game | EGRESS reading | The ink |
+|---|---|---|---|
+| 1 | Within about 30 m of walking, your room's lamps flicker irregularly as a group | Pre-alarm: the panel moves your compartment to emergency power and tests it before verification | The paper beside you gasps green: **GROUND only, no message** (LD R5). It is the annunciator lighting *your* zone, a local warning and not radar. It shows only if the flicker is a smooth sag under 3 Hz, because stutter cells force the ink to 0 (LD R15) |
+| 2 | Within about 15 m, muffled footsteps | The sweep is on your floor | Nothing new |
+| 3 | It sees you: a lock-on cue of about 0.6 s, then Chase | Alarm verified, full alarm locked to your compartment | The chase wave (CHASE only) commits ALARM ROUTE (M5) |
+
+Revision 2 had an ink halo around the Relay (the herald brown-out). It is **withdrawn**. None of the three stages is a stealth rule (LD R13).
+
+### A.11 Frozen ink content v1 (for `_FR_InkType` / `_FR_InkSubstance`)
+
+Frozen 2026-10-03 so that the wallpaper-print chat can render without guessing. Layer numbers follow `Tools/print/README.md` § "Planned: glow-ink textures". Red may rewrite any string before render; anything else needs a new revision of this section.
+
+**Common to every type layer:**
+
+| Setting | Value |
+|---|---|
+| Font | TeX Gyre Heros Bold (`Assets/Fonts/Period1990/TeXGyre/`), caps only |
+| Pixel scale | 1024 px per 750 mm tile = 1.365 px/mm |
+| Values | Field 1.0; type knocked out to 0.55. The stroke outline is the shader's InkShape, not the texture |
+| Repeat | Every line or column repeats its phrase in a cycle, fitted to exactly 750 mm so the tile is seamless. Choose the repeat count that needs the least tracking change, keeping tracking within −1 to +4 mm per character. Never break a word at the tile edge |
+| Separator | `·` (U+00B7) with one space each side |
+| Reading direction | u must not be mirrored for type. Text reads left to right on every face, whichever way a FLOW points (shader note: use an unmirrored face u for the type fetch, separate from FaceSign) |
+| Horizontal layers | Line pitch 37.5 mm (20 lines per tile). Each line is offset by half a phrase from the line above (brick), so strokes clipped by InkShape show varied fragments |
+| Rotated layers (vertical bars) | Text runs down the bar, rotated 90° clockwise, so it reads top to bottom. Column pitch 37.5 mm. Columns are brick-offset by half a phrase. This survives any bar position. If the shader later supplies bar-local u, horizontal stacked words centred in the bar may replace it |
+
+**`_FR_InkType` layers:**
+
+| Layer | Mark | Orientation | Cap height | Phrase (one cycle) |
+|---|---|---|---|---|
+| 0 FLOW | M1 | horizontal | 22 mm | `THIS WAY OUT` |
+| 1 FLOW T2+ | M8 | horizontal | 22 mm | `THIS WAY ON` |
+| 2 HERE door | M2 | rotated | 22 mm | `EXIT` |
+| 3 HERE window | M2 | rotated | 22 mm | `EXIT · BREAK GLASS` |
+| 4 STOP | M3 | horizontal, pairs | `NO` 30 mm over `EXIT` 18 mm | See the STOP note below |
+| 5 BREACH | M4 | rotated | 22 mm | `OUT OF SERVICE · DOES NOT CLOSE` |
+| 6 Pressure chevron | M5 | horizontal | 22 mm | `ALARM · THIS WAY OUT` |
+| 7 Pressure door | M5 | rotated | 22 mm | `FIRE DOOR · KEEP CLOSED` |
+| 8 Forged FLOW | M10 | horizontal, hand-lettered | ≈ 22 mm | `THIƧ WAY OUT` (see below) |
+| 9 GROUND scratch *(new; uses a reserved slot)* | M9 | wall-anchored, one cluster | 25–35 mm | See the scratch note below |
+| 10–15 | reserved | | | |
+
+- **STOP (layer 4).** Cells of 125 × 62.5 mm (6 × 12 per tile). In each cell, `NO` (30 mm cap) is centred above `EXIT` (18 mm cap) with a 6 mm gap, so a pair is 54 mm tall. This follows the code's arrangement (NO larger, above EXIT). Alternate rows are offset by half a cell. A 120 mm bar always contains at least one whole pair (62.5 + 54 ≤ 120).
+- **Forged (layer 8).** The same phrase and pitch as layer 0, but hand-lettered, not set in Heros:
+  - a monoline marker stroke of 2.5–4 mm;
+  - each glyph rotated ±5°, baseline jitter ±2.5 mm, glyph size ±8 %, uneven spacing ±3 mm;
+  - line pitch drifting ±4 mm, and random per-line offsets instead of the brick offset;
+  - the S of `THIS` mirrored (Ƨ) in every phrase;
+  - fixed seed 1990, so it is deterministic. It must still tile seamlessly.
+- **Scratch (layer 9).**
+  - **Values:** background 0, scratches 1.0, composited as ink = max(substance, scratch).
+  - **Look:** hand-scratched: monoline 2.5–3 mm, ragged ends, each item rotated ±6°, different hands.
+  - **Layout:** one cluster in the lower part of the tile (v 0.1–0.9), never crossing the tile edge. It contains:
+    - a tally of 4 gates (four uprights crossed by a diagonal) plus 3 strokes, 40 mm tall;
+    - `IT ONLY GOES IN`;
+    - `SAME ROLL AGAIN`;
+    - `COUNTED 41 DOORS`;
+    - `R.M. 6/90` and `D.K. 11/90`, at 25 mm cap.
+  - **Shader rule (ask, visual chat):**
+    - show layer 9 only from T3, only on GROUND cells where `Hash(seed, cell & 63, 977) < 0.125`;
+    - only on one 0.75 m tile per face (picked by hash), and only for v ∈ [0, 1), i.e. 0.8–1.55 m.
+  - The same cluster repeating on different walls is intended ("SAME ROLL AGAIN").
+
+**`_FR_InkSubstance` layers** (print UV, one 750 × 1125 mm roll tile; README tiers 1–5 = LD T0–T4+):
+
+| Setting | Value |
+|---|---|
+| Field | 0.7. This leaves headroom for scratches at 1.0 |
+| Marks | Knocked out to 0.4 |
+| Register crosshairs | Two, at (60, 60) mm and (690, 1065) mm from the tile's top left. Each is a Ø 16 mm circle plus a 30 mm cross, both with a 2.5 mm stroke |
+| Stamp block | Heros Bold, 20 mm cap, tracking +1 mm, left-aligned at x = 90 mm, baselines at y = 560 and 590 mm |
+
+| Layer | LD tier | Stamp line 1 | Stamp line 2 |
+|---|---|---|---|
+| 0 | T0 | `LEVEL 0 · SHEET A-3 OF 4` | `ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1` |
+| 1 | T1 | `LEVEL 0 · SHEET A-4 OF 4` | `ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1` |
+| 2 | T2 | `LEVEL 0 · SHEET A-1114 OF 4` | `ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1` |
+| 3 | T3 | `LEVEL 0 · SHEET A-1114 OF 4` | `ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1` |
+| 4 | T4+ | `LEVEL 0 · SHEET A-1114 OF 4` | `ROLL 0417 · PRINTED 03/90 · OCCUPANTS 2` |
+
+Notes:
+- "SHEET A-1114 OF 4" is the T2 anomaly, Exit 8-style: a sheet number larger than the set.
+- Every roll carries the same roll number, which is deliberate.
+- T3 changes nothing in the stamp, because the scratches come from layer 9.
+- The optional T4+ creeping-figure layer is **not in v1** (§7, Q1).
+
+```json
+{
+  "spec": "glow-ink content v1 (EGRESS), 30_narrative_phosphor.md A.11, frozen 2026-10-03",
+  "type_common": {"font": "TeXGyre/texgyreheros-bold.otf", "px_per_mm": 1.3653, "field": 1.0, "knockout": 0.55,
+    "separator": " · ", "pitch_mm": 37.5, "brick_offset": "half phrase", "fit": "exact 750 mm cycle, tracking -1..+4 mm/char",
+    "u_mirrored": false, "rotated": "90deg clockwise, reads top to bottom"},
+  "ink_type": [
+    {"layer": 0, "mark": "M1 FLOW", "orient": "horizontal", "cap_mm": 22, "phrase": "THIS WAY OUT"},
+    {"layer": 1, "mark": "M8 FLOW T2+", "orient": "horizontal", "cap_mm": 22, "phrase": "THIS WAY ON"},
+    {"layer": 2, "mark": "M2 HERE door", "orient": "rotated", "cap_mm": 22, "phrase": "EXIT"},
+    {"layer": 3, "mark": "M2 HERE window", "orient": "rotated", "cap_mm": 22, "phrase": "EXIT · BREAK GLASS"},
+    {"layer": 4, "mark": "M3 STOP", "orient": "pairs", "cell_mm": [125, 62.5], "top": {"text": "NO", "cap_mm": 30},
+      "bottom": {"text": "EXIT", "cap_mm": 18}, "gap_mm": 6, "row_offset": "half cell"},
+    {"layer": 5, "mark": "M4 BREACH", "orient": "rotated", "cap_mm": 22, "phrase": "OUT OF SERVICE · DOES NOT CLOSE"},
+    {"layer": 6, "mark": "M5 pressure chevron", "orient": "horizontal", "cap_mm": 22, "phrase": "ALARM · THIS WAY OUT"},
+    {"layer": 7, "mark": "M5 pressure door", "orient": "rotated", "cap_mm": 22, "phrase": "FIRE DOOR · KEEP CLOSED"},
+    {"layer": 8, "mark": "M10 forged FLOW", "orient": "horizontal", "cap_mm": 22, "phrase": "THIƧ WAY OUT",
+      "hand": {"stroke_mm": [2.5, 4], "rot_deg": 5, "baseline_mm": 2.5, "scale": 0.08, "spacing_mm": 3, "pitch_drift_mm": 4, "seed": 1990}},
+    {"layer": 9, "mark": "M9 GROUND scratch", "orient": "cluster", "value_bg": 0.0, "value_mark": 1.0, "composite": "max",
+      "items": ["TALLY 4x5+3", "IT ONLY GOES IN", "SAME ROLL AGAIN", "COUNTED 41 DOORS", "R.M. 6/90", "D.K. 11/90"],
+      "cap_mm": [25, 35], "stroke_mm": [2.5, 3], "rot_deg": 6, "v_range": [0.1, 0.9],
+      "show": "tier>=T3 && GROUND && Hash(seed, cell&63, 977) < 0.125 && one tile per face && v in [0,1)"}
+  ],
+  "ink_substance": {"tile_mm": [750, 1125], "field": 0.7, "marks": 0.4,
+    "register": [{"xy_mm": [60, 60]}, {"xy_mm": [690, 1065]}], "register_shape": "circle d16 + cross 30, stroke 2.5",
+    "stamp": {"cap_mm": 20, "tracking_mm": 1, "x_mm": 90, "baselines_mm": [560, 590]},
+    "tiers": [
+      {"layer": 0, "ld": "T0", "lines": ["LEVEL 0 · SHEET A-3 OF 4", "ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1"]},
+      {"layer": 1, "ld": "T1", "lines": ["LEVEL 0 · SHEET A-4 OF 4", "ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1"]},
+      {"layer": 2, "ld": "T2", "lines": ["LEVEL 0 · SHEET A-1114 OF 4", "ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1"]},
+      {"layer": 3, "ld": "T3", "lines": ["LEVEL 0 · SHEET A-1114 OF 4", "ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1"]},
+      {"layer": 4, "ld": "T4+", "lines": ["LEVEL 0 · SHEET A-1114 OF 4", "ROLL 0417 · PRINTED 03/90 · OCCUPANTS 2"]}
+    ]}
+}
+```
+
 
 ---
 
-## 5. Direction B: SUB-PATTERN, those behind the paper
+## 5. WP03 and the glyphs (a note for the visual chat)
+
+WP03's décor already contains chevron bands at 55° and small arrows in the motif band. In failing cells both layers breathe together. Three cues separate them, recorded by the print chat in LD §9:
+1. **Orientation.** WP03's chevrons point *up* the wall; FLOW chevrons point *along* it, toward the route.
+2. **Medium.** The décor is lit albedo and vanishes in the dark; FLOW is dark-only emission.
+3. **Angle (this document's ask).** FLOW arms about 30–35° from horizontal, isolated in the 0.8–2.0 m band. The décor's are continuous mitred bands. The final angle is the visual chat's call.
+
+EGRESS gives the difference a reason: life-safety guidance must never be mistaken for decoration (A.2).
+
+---
+
+## 6. Coordination log
+
+**With the wallpaper-print chat, 2026-10-03.**
+- Adopted:
+  - the two-layer close-up pipeline (§1.1);
+  - field 1.0 / type 0.55;
+  - the T2 variant layer and the forged layer (bit 6);
+  - the placard as a prop with an InkShape legend;
+  - the Flash fallback "WHERE THE LIGHT DIES, THE PAPER POINTS";
+  - the wording "a compartment you haven't been in";
+  - EAR is local and P2.
+- The print chat relayed Red's decisions (header).
+- The FLOW-vs-WP03 cues are recorded in LD §9.
+- **Next step:** it renders the ink content from A.11.
+
+**With the systems chat (系统设计), 2026-10-03.**
+- For the Relay pursuit redesign, the narrative chat wrote `research/relay_pursuit/30_narrative.md`. It covers the fire-alarm reading of the loop, the trigger rooms and the staged warning.
+- The systems chat folded it into `RELAY_PURSUIT_REDESIGN.md` §7 and §10.
+- The herald, omen and restrike are deleted there. Burst flicker is a smooth sag under 3 Hz, so the ink's stage 1 gasp (A.10) works.
+
+**Asks:**
+
+| Chat | Ask |
+|---|---|
+| Print | Render A.11; add layer 9 to the README layer table |
+| Visual | Unmirrored u for the type fetch; layer 9 shader rule (A.11); a placard prop; a green that reads as print, not Kane cracks; the §5 glyph angle |
+| Map | Placard placement (Q10); the Flash line on the hint card (`FrontRooms3DGame.cs:1546`), used only if playtest needs it; the optional Caught line |
+| Sound | The ink stays silent. No alarm bell. Lock-on cue references are in `relay_pursuit/30_narrative.md` §5 |
+
+---
+
+## 7. Open questions for Red
+
+1. **The T4+ GROUND figure layer for EGRESS** (small creeping figures as "the occupants", seen only during a sag from ≥ 6 m): add it, or leave it out? It is not in v1.
+2. **Placard (LD Q10):** a framed evacuation plan on the map side of the start door. Yes or no?
+3. **Caught line:** `OCCUPANT ACCOUNTED FOR` under CAUGHT. Yes or no?
+4. **Strings:** A.11 freezes every string, including the M9 scratch lines. Change any before the print chat renders?
+5. **Media for the research page:** approve the download batch (§9.2)?
+
+## 8. Not done / limits
+- **No Figma research frame yet.** It needs the media in §9.2 first, and the download approval is pending.
+- **Unverified:**
+  - the Haunted Mansion's original portrait mechanism;
+  - the 1990-edition NFPA wording;
+  - glow-star dates (one source);
+  - fire-alarm and hunting terms (listed in `relay_pursuit/30_narrative.md` §7).
+- **The egress underprint is an invented product.** No claim is made that it existed.
+- **A WebFetch call auto-cached one state PDF** (about 145 KB) in the session's tool-results folder. It was deleted unread, and nothing reached the project.
+
+## 9. Sources
+
+### 9.1 Ledger (fetched 2026-10-03)
+- **Gilman:**
+  - https://www.gutenberg.org/cache/epub/1952/pg1952-images.html
+  - https://www.gutenberg.org/cache/epub/1952/pg1952.txt
+  - https://en.wikipedia.org/wiki/The_Yellow_Wallpaper
+- **Kane:**
+  - https://en.wikipedia.org/wiki/Backrooms_(web_series)
+  - https://openlibrary.org/isbn/9780415263573
+  - ep 13: https://youtu.be/a7ckzgIgx_o (linked from https://www.youtube.com/watch?v=ywVxpZ4XUBM)
+  - ep 24: https://www.youtube.com/watch?v=ZbPaWvqAEq4
+- **The Exit 8:**
+  - https://en.wikipedia.org/wiki/The_Exit_8
+  - https://automaton-media.com/en/interviews/interview-the-exit-8-developer-kotake-create-on-the-perks-of-being-a-solo-dev-and-how-platform-8-came-to-be/
+  - https://www.youtube.com/watch?v=pDTFOTTlw7I
+- **Haunted Mansion:**
+  - https://en.wikipedia.org/wiki/The_Haunted_Mansion
+  - https://wdwnt.com/2019/01/video-lightning-strike-changing-portrait-scene-gets-an-upgrade-in-the-haunted-mansion-at-the-magic-kingdom/
+  - https://wdwnt.com/?p=1045810
+- **Phosphors:**
+  - https://en.wikipedia.org/wiki/Phosphor
+  - https://en.wikipedia.org/wiki/Zinc_sulfide
+  - https://en.wikipedia.org/wiki/Phosphorescence
+  - https://www.mphotoluminescent.com/ms-series-sulfide-based-msgg-4d.html
+  - https://en.wikipedia.org/wiki/Strontium_aluminate
+  - https://www.nemoto.co.jp/?p=437
+  - https://en.wikipedia.org/wiki/Super-LumiNova
+  - https://en.wikipedia.org/wiki/Luminous_paint
+- **Radium:**
+  - https://en.wikipedia.org/wiki/Undark
+  - https://en.wikipedia.org/wiki/Radium_Girls
+  - https://en.wikipedia.org/wiki/Radium_dial
+- **Egress:**
+  - https://en.wikipedia.org/wiki/Air_Canada_Flight_797
+  - https://www.law.cornell.edu/cfr/text/14/25.812
+  - https://www.govinfo.gov/content/pkg/FR-1999-06-23/html/99-15928.htm
+  - https://rosap.ntl.bts.gov/view/dot/12801
+  - https://en.wikipedia.org/wiki/MS_Scandinavian_Star
+  - https://trid.trb.org/View/444262
+  - https://iadclexicon.org/low-location-lighting-lll/
+  - https://en.wikipedia.org/wiki/Tritium_radioluminescence
+  - https://orau.org/health-physics-museum/collection/radioluminescent/tritium-exit-sign.html
+  - https://idighardware.com/2009/11/not-an-exit/
+  - https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.37
+  - https://meyerfire.com/daily/corridor-with-a-non-exit-door-at-end-a-dead-end
+  - https://www.mphotoluminescent.com/ul-924-photoluminescent-exit-sign.html
+  - https://iaeimagazine.org/magazine/2003/september2003/photoluminescent-exit-signs/
+  - https://www.dinmedia.de/en/standard/din-67510/2003509
+  - https://www.inspectpoint.com/resources/articles/emergency-lighting-and-exit-sign-testing-requirements
+- **Period objects:**
+  - https://en.wikipedia.org/wiki/Hypercolor
+  - https://www.mentalfloss.com/culture/fashion-beauty/hypercolor-clothing-fad
+  - https://en.wikipedia.org/wiki/Fluorescence
+  - https://en.wikipedia.org/wiki/Blacklight_poster
+  - https://en.wikipedia.org/wiki/DayGlo
+  - https://en.wikipedia.org/wiki/Magic_Eye
+  - https://en.wikipedia.org/wiki/Autostereogram
+  - https://thehustle.co/originals/youngest-female-inventor
+  - https://en.wikipedia.org/wiki/Glo_Friends
+  - https://en.wikipedia.org/wiki/Glo_Worm
+  - https://en.wikipedia.org/wiki/Laser_tag
+  - https://en.wikipedia.org/wiki/Laser_Quest
+- **Marking and hunting:**
+  - https://en.wikipedia.org/wiki/Hobo
+  - https://en.wikipedia.org/wiki/Trail_blazing
+  - https://en.wikipedia.org/wiki/Maze-solving_algorithm
+  - https://en.wikipedia.org/wiki/Drag_hunting
+  - https://en.wikipedia.org/wiki/Fox_hunting
+- **Project:**
+  - `20_level_design_phosphor.md`
+  - `10_synthesis.md`
+  - `research/hunter/03_gameplay_tech.md` §6
+  - `Tools/print/patterns/hard_edge.py`
+
+### 9.2 Media for the research page (metadata checked 2026-10-03; download needs Red's approval)
+
+Target: `Research/week02/phosphor-narrative/` (`stills/`, `clips/`, `SOURCES.md`). Raw YouTube downloads stay in the session scratchpad.
+
+| File | Source | License | Size |
+|---|---|---|---|
+| `gn_gilman_hatfield_1892.png` | Commons, *Joseph Henry Hatfield Yellow Wallpaper.png* (1892 illustration) | Public domain | 119 KB |
+| `gn_undark_ad_1921.jpg` | Commons, *Undark (Radium Girls) advertisement, 1921.jpg* | Public domain | 1.2 MB |
+| `gn_radium_dial_uv.jpg` | Commons, *Radium Dial UV.jpg* (Arma95) | CC BY-SA 3.0 | 94 KB |
+| `gn_tritium_exit_sign.jpg` | Commons, *Tritium-exit-sign.jpg* (Gazebo), 1920 px thumb | CC BY-SA 4.0 | ≈ 0.6 MB |
+| `gn_photoluminescent_exit_sign.jpg` | Commons, *Photoluminescent Exit Sign.jpg*. Modern, used for the physics only | CC BY-SA 4.0 | ≈ 0.5 MB |
+| `gn_scandinavian_star_1990-04.jpg` | Commons, *MS Scandinavian Star 001.jpg* (Terje Fredh / Sjöhistoriska museet) | CC BY-SA 4.0 | 602 KB |
+| `gn_haunted_mansion_portraits.jpg` | Commons, *Hall of portraits, Haunted Mansion, Disneyland.jpg* | CC BY-SA 3.0 | 1.7 MB |
+| `gn_hypercolor.jpg` | Commons, *Generra Hypercolor 2.jpg* | Public domain | 693 KB |
+| `gn_autostereogram_shark.png` | Commons, *Stereogram Tut Random Dot Shark.png* | CC BY-SA 3.0 | 183 KB |
+| `gn_hobo_signs_museum.jpg` | Commons, *Hobo signs and symbols.jpg* (Ryan Somma, National Cryptologic Museum) | CC BY 2.0 | ≈ 0.8 MB |
+| `gn_hobo_markings_new_orleans.jpg` | Commons, *HoboMarkingsCanalStFerryCropped.jpg* (Infrogmation) | CC BY 2.5 | 120 KB |
+| `gn_painted_blaze.jpg` | Commons, *Painted blaze.JPG* (Daniel Case) | CC BY-SA 3.0 | 200 KB |
+| `gn_drag_de_pau_1863.jpg` | Commons, *Album de chasse le drag de Pau, Planche 14* (1863) | Public domain | 350 KB |
+| `gn_kane_ep24_stretched_wallpaper` (mp4 + gif + poster) | YouTube ZbPaWvqAEq4, Kane Pixels, *Static Dead End* (242 s) | © (research excerpt) | raw ≈ 13 MB; kept ≈ 4 MB |
+| `gn_kane_ep13_isbn_still.jpg` | YouTube a7ckzgIgx_o, Kane Pixels, *9780415263573* (33 s) | © | raw ≈ 2 MB; kept ≈ 0.2 MB |
+| `gn_kane_ep16_green_cracks` (mp4 + gif + poster) | YouTube sA5PxGHqpTo, Kane Pixels, *Found Footage #2* (803 s) | © | raw ≈ 22 MB (480p); kept ≈ 4 MB |
+| `gn_exit8_rules_sign` (mp4 + gif + poster) | YouTube pDTFOTTlw7I, IGN, *The Exit 8 PlayStation launch trailer* (75 s) | © | raw ≈ 17 MB; kept ≈ 4 MB |
+| `gn_haunted_mansion_lightning` (mp4 + gif + poster) | YouTube IYczePEqTHA, cthulhufae, *Lightning Portrait Hall* (44 s) | © | raw ≈ 8 MB; kept ≈ 4 MB |
+
+## Appendix B. Alternative: SUB-PATTERN, those behind the paper
 
 *Author: the people the place has kept.*
 
@@ -446,7 +734,7 @@ Optional Caught line: none, or the GROUND procession gains one figure on the nex
 
 ---
 
-## 6. Direction C: BLAZES, the wanderers' code
+## Appendix C. Alternative: BLAZES, the wanderers' code
 
 *Author: earlier people, alive, curated by the building.*
 
@@ -580,7 +868,7 @@ Optional Caught line: none.
 
 ---
 
-## 7. Direction D: DRAG LINE, the hunt's laid course
+## Appendix D. Alternative: DRAG LINE, the hunt's laid course
 
 *Author: the hunt; the Relay is its hound.*
 
@@ -711,9 +999,9 @@ Optional Caught line: `RUN 214 · 6 MIN`, as a course-card entry using the exist
 
 ---
 
-## 8. Side by side
+## Appendix E. Side by side (how EGRESS was chosen)
 
-### 8.1 Key answers
+### E.1 Key answers
 
 | | A EGRESS | B SUB-PATTERN | C BLAZES | D DRAG LINE |
 |---|---|---|---|---|
@@ -730,7 +1018,7 @@ Optional Caught line: `RUN 214 · 6 MIN`, as a course-card entry using the exist
 | Gilman | Going round | Literal | The smooch | Someone behind lays it |
 | Biggest risk | Quieter dread | Ghosts read as friendly | Two authors | Breaks "help" |
 
-### 8.2 Scores (1–5)
+### E.2 Scores (1–5)
 
 | | Mechanics fit | 1990 grounding | Dread / ambiguity | Self-teaching | Leaves the Relay open | Escalation runway | **Total** |
 |---|---|---|---|---|---|---|---|
@@ -744,7 +1032,7 @@ Changes since revision 1:
 - C's self-teaching rises: THE CODE legend.
 - D rises one point for leaving the Relay's look open.
 
-### 8.3 What the player learns, and when
+### E.3 What the player learns, and when
 
 | Beat (LD §5) | A | B | C | D |
 |---|---|---|---|---|
@@ -762,158 +1050,11 @@ The optional **GROUND figure layer** at T4+ (small creeping figures tiled per ro
 
 ---
 
-## 9. Recommendation
+### E.4 The recommendation Red accepted
 
-**EGRESS remains the recommendation.** It is the only direction where every LD rule has its own in-fiction reason without a second author or a stretch. It is grounded in real 1990 objects, and it fixes nothing about the Relay while the hunter design is open.
+**Red chose EGRESS on 2026-10-03, as recommended.** It is the only direction where every LD rule has its own in-fiction reason without a second author or a stretch. It is grounded in real 1990 objects, and it fixes nothing about the Relay while the hunter design is open.
 
-**When another direction should win:**
+**When another direction would have won** (kept for the record):
 - **B**, if the deck needs the single scariest image and Red accepts that the game turns overtly supernatural. B's forger is the best of the four.
 - **C**, if warmth and an easy pitch matter more than tight logic.
 - **D**, only if Red wants the ink to be a lure first and help second, which changes LD's thesis.
-
----
-
-## 10. WP03 and the glyphs (a note for the visual chat)
-
-WP03's décor already contains chevron bands at 55° and small arrows in the motif band. In failing cells both layers breathe together. Three cues separate them, recorded by the print chat in LD §9:
-1. **Orientation.** WP03's chevrons point *up* the wall; FLOW chevrons point *along* it, toward the route.
-2. **Medium.** The décor is lit albedo and vanishes in the dark; FLOW is dark-only emission.
-3. **Angle (this document's ask).** FLOW arms about 30–35° from horizontal, isolated in the 0.8–2.0 m band. The décor's are continuous mitred bands. The final angle is the visual chat's call.
-
-Each direction gives the visual difference a reason: A safety design, B hands round off corners, C stencils cut from the bands, D laid along them.
-
----
-
-## 11. Coordination log
-
-**With the wallpaper-print chat, 2026-10-03.** All of its answers are adopted:
-- The two-layer close-up pipeline (§1.1), pending the visual chat.
-- Micro-type field 1.0 / type 0.55, OK.
-- The T2 variant layer and the forged layer (bit 6).
-- The placard as a prop with an InkShape legend. The print chat withdrew its stream-room legend exception, pending Red.
-- The Flash fallback "WHERE THE LIGHT DIES, THE PAPER POINTS". It names no symbol and works for all four directions.
-- Wording: "a compartment you haven't been in".
-- EAR is local and P2.
-
-It also relayed Red's four decisions above. WP05 references are replaced by WP03.
-
-**Asks if Red picks a direction:**
-
-| Chat | Ask |
-|---|---|
-| Visual | The chosen content layers, the legend prop, a green that reads as print (not Kane cracks), and the §10 glyph angle |
-| Map | Legend placement (Q10), the Flash line on the hint card (`FrontRooms3DGame.cs:1546`), the optional Caught line |
-| Sound | The ink stays silent. A: no alarm bell. Optional relay click at sags (motif §4.3) |
-
----
-
-## 12. Open questions for Red
-
-1. Which direction? A is recommended. Compare §8 first.
-2. The T4+ GROUND figure layer: in B (natural), in A (the occupants), or nowhere?
-3. Legend object (Q10): the placard (A), torn corner (B), THE CODE (C) or meet card (D). It follows the direction. Yes or no to having one at all?
-4. Optional Caught line for the chosen direction (A `OCCUPANT ACCOUNTED FOR`, D `RUN 214 · 6 MIN`)?
-5. Text on walls: A and C put English words in the ink, readable within 1.5 m. OK?
-6. Who writes the human lines (A M9, C M6/M9)? Red, or I draft about 12 (initials and dates ≤ 1990, no real names)?
-7. Approve the media capture for the research frame (§14.2)?
-
-## 13. Not done / limits
-- **No Figma research frame yet.** It needs real media first (§14.2, approval pending).
-- **Unverified:**
-  - the Haunted Mansion's original portrait mechanism;
-  - the 1990-edition NFPA wording;
-  - glow-star dates (one source);
-  - "earth stopping" (not on the fetched page, so it isn't used);
-  - "hunt country" as a term (used as flavour only).
-- **The egress underprint (A) and the glow ground (C) are invented products.** No claim is made that they existed.
-- **A WebFetch call auto-cached one state PDF** (about 145 KB) in the session's tool-results folder. It was deleted unread, and nothing reached the project.
-
-## 14. Sources
-
-### 14.1 Ledger (fetched 2026-10-03)
-- **Gilman:**
-  - https://www.gutenberg.org/cache/epub/1952/pg1952-images.html
-  - https://www.gutenberg.org/cache/epub/1952/pg1952.txt
-  - https://en.wikipedia.org/wiki/The_Yellow_Wallpaper
-- **Kane:**
-  - https://en.wikipedia.org/wiki/Backrooms_(web_series)
-  - https://openlibrary.org/isbn/9780415263573
-  - ep 13: https://youtu.be/a7ckzgIgx_o (linked from https://www.youtube.com/watch?v=ywVxpZ4XUBM)
-  - ep 24: https://www.youtube.com/watch?v=ZbPaWvqAEq4
-- **The Exit 8:**
-  - https://en.wikipedia.org/wiki/The_Exit_8
-  - https://automaton-media.com/en/interviews/interview-the-exit-8-developer-kotake-create-on-the-perks-of-being-a-solo-dev-and-how-platform-8-came-to-be/
-  - https://www.youtube.com/watch?v=pDTFOTTlw7I
-- **Haunted Mansion:**
-  - https://en.wikipedia.org/wiki/The_Haunted_Mansion
-  - https://wdwnt.com/2019/01/video-lightning-strike-changing-portrait-scene-gets-an-upgrade-in-the-haunted-mansion-at-the-magic-kingdom/
-  - https://wdwnt.com/?p=1045810
-- **Phosphors:**
-  - https://en.wikipedia.org/wiki/Phosphor
-  - https://en.wikipedia.org/wiki/Zinc_sulfide
-  - https://en.wikipedia.org/wiki/Phosphorescence
-  - https://www.mphotoluminescent.com/ms-series-sulfide-based-msgg-4d.html
-  - https://en.wikipedia.org/wiki/Strontium_aluminate
-  - https://www.nemoto.co.jp/?p=437
-  - https://en.wikipedia.org/wiki/Super-LumiNova
-  - https://en.wikipedia.org/wiki/Luminous_paint
-- **Radium:**
-  - https://en.wikipedia.org/wiki/Undark
-  - https://en.wikipedia.org/wiki/Radium_Girls
-  - https://en.wikipedia.org/wiki/Radium_dial
-- **Egress:**
-  - https://en.wikipedia.org/wiki/Air_Canada_Flight_797
-  - https://www.law.cornell.edu/cfr/text/14/25.812
-  - https://www.govinfo.gov/content/pkg/FR-1999-06-23/html/99-15928.htm
-  - https://rosap.ntl.bts.gov/view/dot/12801
-  - https://en.wikipedia.org/wiki/MS_Scandinavian_Star
-  - https://trid.trb.org/View/444262
-  - https://iadclexicon.org/low-location-lighting-lll/
-  - https://en.wikipedia.org/wiki/Tritium_radioluminescence
-  - https://orau.org/health-physics-museum/collection/radioluminescent/tritium-exit-sign.html
-  - https://idighardware.com/2009/11/not-an-exit/
-  - https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.37
-  - https://meyerfire.com/daily/corridor-with-a-non-exit-door-at-end-a-dead-end
-  - https://www.mphotoluminescent.com/ul-924-photoluminescent-exit-sign.html
-  - https://iaeimagazine.org/magazine/2003/september2003/photoluminescent-exit-signs/
-  - https://www.dinmedia.de/en/standard/din-67510/2003509
-  - https://www.inspectpoint.com/resources/articles/emergency-lighting-and-exit-sign-testing-requirements
-- **Period objects:**
-  - https://en.wikipedia.org/wiki/Hypercolor
-  - https://www.mentalfloss.com/culture/fashion-beauty/hypercolor-clothing-fad
-  - https://en.wikipedia.org/wiki/Fluorescence
-  - https://en.wikipedia.org/wiki/Blacklight_poster
-  - https://en.wikipedia.org/wiki/DayGlo
-  - https://en.wikipedia.org/wiki/Magic_Eye
-  - https://en.wikipedia.org/wiki/Autostereogram
-  - https://thehustle.co/originals/youngest-female-inventor
-  - https://en.wikipedia.org/wiki/Glo_Friends
-  - https://en.wikipedia.org/wiki/Glo_Worm
-  - https://en.wikipedia.org/wiki/Laser_tag
-  - https://en.wikipedia.org/wiki/Laser_Quest
-- **Marking and hunting:**
-  - https://en.wikipedia.org/wiki/Hobo
-  - https://en.wikipedia.org/wiki/Trail_blazing
-  - https://en.wikipedia.org/wiki/Maze-solving_algorithm
-  - https://en.wikipedia.org/wiki/Drag_hunting
-  - https://en.wikipedia.org/wiki/Fox_hunting
-- **Project:**
-  - `20_level_design_phosphor.md`
-  - `10_synthesis.md`
-  - `research/hunter/03_gameplay_tech.md` §6
-  - `Tools/print/patterns/hard_edge.py`
-
-### 14.2 Media to capture (needs Red's approval; sizes are estimates)
-
-| Proposed file (`Research/week02/phosphor-narrative/`) | Source | Est. size | Supports |
-|---|---|---|---|
-| `kane_ep24_stretched_wallpaper.mp4` (5–8 s) | YouTube ZbPaWvqAEq4 | 3–6 MB | all |
-| `kane_ep13_title_still.png` | YouTube a7ckzgIgx_o | ~0.3 MB | all (Gilman link) |
-| `kane_ep16_green_cracks.mp4` (5 s) | Ep 16 (URL to look up) | 3–5 MB | the "not cracks" rule |
-| `exit8_rules_sign.mp4` (5 s) | YouTube pDTFOTTlw7I | 3–5 MB | legend, tells |
-| `haunted_mansion_portraits.mp4` (5 s) | WDWNT 2019 article video | 3–5 MB | lamp-gasp changes |
-| `gilman_1892_nem_page.jpg` | Wikimedia Commons scan (URL to look up; public domain) | ~1 MB | B, all |
-| `tritium_exit_sign.jpg` | ORAU museum page | ~0.2 MB | A |
-| `hobo_signs_chart.jpg` | Wikimedia Commons (URL to look up) | ~0.5 MB | C |
-| `radium_dial_clock.jpg` | Wikimedia Commons (URL to look up) | ~0.5 MB | C forger |
-| `drag_hunt_photo.jpg` | Wikimedia Commons (URL to look up) | ~0.5 MB | D |

@@ -1,0 +1,85 @@
+{
+  "type": [
+    {
+      "index": 0,
+      "name": "FLOW",
+      "mean": 0.928,
+      "min_100mm_mean": 0.897
+    },
+    {
+      "index": 1,
+      "name": "FLOW T2+",
+      "mean": 0.898,
+      "min_100mm_mean": 0.879
+    },
+    {
+      "index": 2,
+      "name": "HERE door",
+      "mean": 0.989,
+      "min_100mm_mean": 0.907
+    },
+    {
+      "index": 3,
+      "name": "HERE window",
+      "mean": 0.989,
+      "min_100mm_mean": 0.909
+    },
+    {
+      "index": 4,
+      "name": "STOP",
+      "mean": 0.995,
+      "min_100mm_mean": 0.946
+    },
+    {
+      "index": 5,
+      "name": "BREACH",
+      "mean": 0.989,
+      "min_100mm_mean": 0.899
+    },
+    {
+      "index": 6,
+      "name": "pressure chevron",
+      "mean": 0.916,
+      "min_100mm_mean": 0.888
+    },
+    {
+      "index": 7,
+      "name": "pressure door",
+      "mean": 0.988,
+      "min_100mm_mean": 0.905
+    },
+    {
+      "index": 8,
+      "name": "forged FLOW",
+      "mean": 0.929,
+      "min_100mm_mean": 0.893
+    }
+  ],
+  "substance": [
+    {
+      "tier": 1,
+      "ground_mean": 0.799,
+      "overlay_cover": 0.0
+    },
+    {
+      "tier": 2,
+      "ground_mean": 0.799,
+      "overlay_cover": 0.0
+    },
+    {
+      "tier": 3,
+      "ground_mean": 0.799,
+      "overlay_cover": 0.0
+    },
+    {
+      "tier": 4,
+      "ground_mean": 0.799,
+      "overlay_cover": 0.0074
+    },
+    {
+      "tier": 5,
+      "ground_mean": 0.799,
+      "overlay_cover": 0.0072
+    }
+  ]
+}

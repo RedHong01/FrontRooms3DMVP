@@ -12,9 +12,11 @@ public static class FrontRoomsLook
     // The practicals are downward spots, so the ceiling faces down into the
     // ground colour: the warm bounce off a lit beige carpet. Walls take the
     // equator; floors face the sky colour, which is the dim ceiling.
-    public static readonly Color AmbientSky = new Color(.22f, .21f, .17f);
-    public static readonly Color AmbientEquator = new Color(.34f, .31f, .22f);
-    public static readonly Color AmbientGround = new Color(.62f, .56f, .40f);
+    // Values are Red's, tuned in the Lighting window (FrontRooms3D.unity), so
+    // calling ApplyAmbient at run start leaves the game's image unchanged.
+    public static readonly Color AmbientSky = new Color(.20f, .19f, .15f);
+    public static readonly Color AmbientEquator = new Color(.26f, .24f, .17f);
+    public static readonly Color AmbientGround = new Color(.40f, .36f, .24f);
     public static readonly Color FogColor = new Color(.16f, .15f, .11f);
     public const float FogDensity = .014f;
     public const float ReflectionIntensity = .3f;

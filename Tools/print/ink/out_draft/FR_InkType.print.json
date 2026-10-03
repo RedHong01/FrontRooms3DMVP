@@ -1,0 +1,9 @@
+{
+  "columns": 4,
+  "rows": 4,
+  "slices": 16,
+  "sliceWidth": 1024,
+  "sliceHeight": 1024,
+  "frameMetres": 0.75,
+  "encoding": "R ink field 1.0 / type 0.55, linear"
+}

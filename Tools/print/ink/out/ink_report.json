@@ -1,0 +1,268 @@
+{
+  "spec": "glow-ink content v1 (EGRESS), 30_narrative_phosphor.md A.11, frozen 2026-10-03",
+  "type": [
+    {
+      "layer": 0,
+      "mark": "M1 FLOW",
+      "orient": "horizontal",
+      "repeats": 3,
+      "tracking_mm": 0.0,
+      "cap_mm_used": 22,
+      "mean": 0.901,
+      "seam_xy": [
+        0.37,
+        0.0
+      ],
+      "min_mean_100mm": 0.874
+    },
+    {
+      "layer": 1,
+      "mark": "M8 FLOW T2+",
+      "orient": "horizontal",
+      "repeats": 3,
+      "tracking_mm": 1.35,
+      "cap_mm_used": 22,
+      "mean": 0.906,
+      "seam_xy": [
+        0.42,
+        0.0
+      ],
+      "min_mean_100mm": 0.883
+    },
+    {
+      "layer": 2,
+      "mark": "M2 HERE door",
+      "orient": "rotated",
+      "repeats": 8,
+      "tracking_mm": -0.08,
+      "cap_mm_used": 22,
+      "mean": 0.908,
+      "seam_xy": [
+        0.0,
+        0.72
+      ],
+      "min_mean_100mm": 0.89
+    },
+    {
+      "layer": 3,
+      "mark": "M2 HERE window",
+      "orient": "rotated",
+      "repeats": 2,
+      "tracking_mm": 1.48,
+      "cap_mm_used": 22,
+      "mean": 0.903,
+      "seam_xy": [
+        0.0,
+        0.28
+      ],
+      "min_mean_100mm": 0.867
+    },
+    {
+      "layer": 4,
+      "mark": "M3 STOP",
+      "orient": "pairs",
+      "pair_mm": 54,
+      "cells": [
+        6,
+        12
+      ],
+      "fits_120mm_bar": true,
+      "mean": 0.917,
+      "seam_xy": [
+        0.52,
+        0.0
+      ],
+      "min_mean_100mm": 0.904
+    },
+    {
+      "layer": 5,
+      "mark": "M4 BREACH",
+      "orient": "rotated",
+      "repeats": 1,
+      "tracking_mm": 4.0,
+      "tracking_limited_to_mm": 4.0,
+      "word_space_mm": 3.37,
+      "cap_mm_used": 22,
+      "mean": 0.916,
+      "seam_xy": [
+        0.0,
+        0.06
+      ],
+      "min_mean_100mm": 0.881
+    },
+    {
+      "layer": 6,
+      "mark": "M5 pressure chevron",
+      "orient": "horizontal",
+      "repeats": 2,
+      "tracking_mm": -0.51,
+      "cap_mm_used": 22,
+      "mean": 0.895,
+      "seam_xy": [
+        0.2,
+        0.0
+      ],
+      "min_mean_100mm": 0.86
+    },
+    {
+      "layer": 7,
+      "mark": "M5 pressure door",
+      "orient": "rotated",
+      "repeats": 2,
+      "tracking_mm": -1.0,
+      "tracking_limited_to_mm": -1.0,
+      "word_space_mm": -3.42,
+      "cap_mm_used": 21.0,
+      "mean": 0.881,
+      "seam_xy": [
+        0.0,
+        1.4
+      ],
+      "min_mean_100mm": 0.857
+    },
+    {
+      "layer": 8,
+      "mark": "M10 forged FLOW",
+      "orient": "horizontal",
+      "repeats": 3,
+      "tracking_mm": 0.97,
+      "hand": true,
+      "mean": 0.923,
+      "seam_xy": [
+        0.71,
+        0.0
+      ],
+      "min_mean_100mm": 0.874
+    },
+    {
+      "layer": 9,
+      "mark": "M9 GROUND scratch",
+      "orient": "cluster",
+      "items_bbox_mm": [
+        [
+          "IT ONLY GOES IN",
+          62,
+          113,
+          428,
+          173
+        ],
+        [
+          "SAME ROLL AGAIN",
+          92,
+          196,
+          441,
+          248
+        ],
+        [
+          "COUNTED 41 DOORS",
+          70,
+          282,
+          427,
+          327
+        ],
+        [
+          "R.M. 6/90",
+          447,
+          363,
+          597,
+          398
+        ],
+        [
+          "D.K. 11/90",
+          105,
+          435,
+          270,
+          469
+        ],
+        [
+          "TALLY 4x5+3",
+          465,
+          132,
+          660,
+          178
+        ]
+      ],
+      "allowed_image_y_mm": [
+        75,
+        675
+      ],
+      "mean": 0.022,
+      "seam_xy": [
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "substance": [
+    {
+      "layer": 0,
+      "ld": "T0",
+      "stamp_right_edge_mm": [
+        465.6,
+        719.6
+      ],
+      "stamp_fits": true,
+      "mean": 0.697,
+      "seam_xy": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "layer": 1,
+      "ld": "T1",
+      "stamp_right_edge_mm": [
+        465.6,
+        719.6
+      ],
+      "stamp_fits": true,
+      "mean": 0.697,
+      "seam_xy": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "layer": 2,
+      "ld": "T2",
+      "stamp_right_edge_mm": [
+        514.7,
+        719.6
+      ],
+      "stamp_fits": true,
+      "mean": 0.697,
+      "seam_xy": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "layer": 3,
+      "ld": "T3",
+      "stamp_right_edge_mm": [
+        514.7,
+        719.6
+      ],
+      "stamp_fits": true,
+      "mean": 0.697,
+      "seam_xy": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "layer": 4,
+      "ld": "T4+",
+      "stamp_right_edge_mm": [
+        514.7,
+        719.6
+      ],
+      "stamp_fits": true,
+      "mean": 0.697,
+      "seam_xy": [
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

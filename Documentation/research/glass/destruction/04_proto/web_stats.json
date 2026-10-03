@@ -1,0 +1,126 @@
+[
+ {
+  "name": "web_eye_centre",
+  "seed": 1001,
+  "impact_uv": [
+   0.5,
+   0.7
+  ],
+  "radials_start": 10,
+  "radial_tracks_total": 30,
+  "rings": 11,
+  "pieces": {
+   "shard": 103,
+   "tooth": 32,
+   "crush": 11
+  },
+  "shard_area_cm2_p10_p50_p90": [
+   4.7,
+   43.9,
+   409.5
+  ],
+  "avg_verts": 4.91,
+  "tris": {
+   "shard": 5660,
+   "tooth": 1780,
+   "crush": 580
+  },
+  "tris_total": 8020,
+  "coverage_pct": 100.0,
+  "gen_s_cpython": 0.1287,
+  "blender_mesh_s": 2.86
+ },
+ {
+  "name": "web_eye_left",
+  "seed": 2002,
+  "impact_uv": [
+   0.27,
+   0.66
+  ],
+  "radials_start": 9,
+  "radial_tracks_total": 29,
+  "rings": 11,
+  "pieces": {
+   "shard": 89,
+   "tooth": 26,
+   "crush": 10
+  },
+  "shard_area_cm2_p10_p50_p90": [
+   2.6,
+   29.0,
+   584.7
+  ],
+  "avg_verts": 4.74,
+  "tris": {
+   "shard": 4672,
+   "tooth": 1420,
+   "crush": 524
+  },
+  "tris_total": 6616,
+  "coverage_pct": 99.83,
+  "gen_s_cpython": 0.0094,
+  "blender_mesh_s": 0.145
+ },
+ {
+  "name": "web_low_right",
+  "seed": 3003,
+  "impact_uv": [
+   0.72,
+   0.42
+  ],
+  "radials_start": 11,
+  "radial_tracks_total": 39,
+  "rings": 11,
+  "pieces": {
+   "shard": 123,
+   "tooth": 36,
+   "crush": 12
+  },
+  "shard_area_cm2_p10_p50_p90": [
+   3.4,
+   52.8,
+   351.9
+  ],
+  "avg_verts": 4.71,
+  "tris": {
+   "shard": 6636,
+   "tooth": 1740,
+   "crush": 612
+  },
+  "tris_total": 8988,
+  "coverage_pct": 100.0,
+  "gen_s_cpython": 0.0088,
+  "blender_mesh_s": 0.222
+ },
+ {
+  "name": "web_eye_centre_b",
+  "seed": 4004,
+  "impact_uv": [
+   0.52,
+   0.72
+  ],
+  "radials_start": 12,
+  "radial_tracks_total": 32,
+  "rings": 12,
+  "pieces": {
+   "shard": 112,
+   "tooth": 25,
+   "crush": 13
+  },
+  "shard_area_cm2_p10_p50_p90": [
+   4.1,
+   50.2,
+   304.8
+  ],
+  "avg_verts": 4.57,
+  "tris": {
+   "shard": 5636,
+   "tooth": 1316,
+   "crush": 668
+  },
+  "tris_total": 7620,
+  "coverage_pct": 100.0,
+  "gen_s_cpython": 0.0075,
+  "blender_mesh_s": 0.162
+ }
+]

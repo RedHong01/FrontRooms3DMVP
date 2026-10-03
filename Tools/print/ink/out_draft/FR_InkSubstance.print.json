@@ -1,0 +1,12 @@
+{
+  "columns": 5,
+  "rows": 1,
+  "slices": 5,
+  "sliceWidth": 768,
+  "sliceHeight": 1152,
+  "tileMetres": [
+    0.75,
+    1.125
+  ],
+  "encoding": "R ground substance, G rare overlay (gate per cell), linear"
+}

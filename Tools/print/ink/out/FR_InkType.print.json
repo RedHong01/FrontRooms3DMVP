@@ -1,0 +1,10 @@
+{
+  "columns": 4,
+  "rows": 4,
+  "slices": 16,
+  "sliceWidth": 1024,
+  "sliceHeight": 1024,
+  "singleChannel": true,
+  "frameMetres": 0.75,
+  "encoding": "R: layers 0-8 field 1.0 / type 0.55; layer 9 marks 1.0 on 0; 10-15 unused (1.0); linear"
+}

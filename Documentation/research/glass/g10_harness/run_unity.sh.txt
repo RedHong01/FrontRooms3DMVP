@@ -1,0 +1,17 @@
+#!/bin/zsh
+# Usage: run_unity.sh <Class.Method> <logfile> [quit]
+# Waits until no other Unity instance has proj_glass open (a sibling workflow shares it), then runs.
+P=/private/tmp/claude-501/-Users-redwang-Desktop-ArtCenter-Fall26T7-EGAM-401A-01-Individual-Game-Project/5656cffd-bc90-45f6-86a3-09b26549df8d/scratchpad/proj_glass
+U=/Applications/Unity/Hub/Editor/6000.3.10f1/Unity.app/Contents/MacOS/Unity
+METHOD=$1; LOG=$2; QUIT=$3
+for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+  while ps -axo command | grep -v grep | grep -q -- "-projectPath $P"; do echo "$(date +%T) clone busy, waiting"; sleep 10; done
+  if [ "$QUIT" = "quit" ]; then
+    $U -batchmode -projectPath $P -executeMethod $METHOD -quit -logFile $LOG
+  else
+    $U -batchmode -projectPath $P -executeMethod $METHOD -logFile $LOG
+  fi
+  code=$?
+  if grep -q "another Unity instance is running" $LOG 2>/dev/null; then echo "$(date +%T) lock clash, retry"; sleep 15; continue; fi
+  echo "$(date +%T) exit $code"; exit $code
+done
