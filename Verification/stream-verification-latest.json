@@ -1,6 +1,6 @@
 {
     "suite": "FrontRooms room stream and Relay",
-    "timestampUtc": "2026-10-02T02:32:24.6738560Z",
+    "timestampUtc": "2026-10-03T05:21:47.4189590Z",
     "unityVersion": "6000.3.10f1",
     "scope": "Room pool, profile order and Relay state machine with a scripted player. Rendering, audio and human playability are separate.",
     "passed": 5,
@@ -19,7 +19,7 @@
         {
             "name": "A walking player is hunted but not caught; the Relay is released out of sight",
             "passed": true,
-            "detail": "released 13.4 s after the handoff in room +3; closest 4.4 m; 15 doors broken; 8 Run alarms; 1 rebases; final state Hunt"
+            "detail": "released 13.4 s after the handoff in room +3; closest 4.4 m; 15 doors broken; 8 Run alarms; 2 rebases; final state Hunt"
         },
         {
             "name": "A player who stops after the release is caught",
