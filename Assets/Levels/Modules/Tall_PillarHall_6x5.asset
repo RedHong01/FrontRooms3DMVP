@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Tall_PillarHall_6x5
   m_EditorClassIdentifier: Assembly-CSharp::FrontRoomsRoomModule
   notes: 'Level 0 tall hall: a colonnade on the 6 m grid and a pile of furniture
-    in one bay.'
+    in one bay. The Relay may step in through the north doorway.'
   data:
     width: 6
     depth: 5
@@ -29,6 +29,14 @@ MonoBehaviour:
     customColumns: []
     fill: 3
     props: []
+    markers:
+    - kind: 1
+      x: 10.5
+      z: 14.4
+      y: 0
+      yaw: 180
+      tag: doorway
+      host: 
     lamps: 040000040000040000040000040003040000040000040000040000040000
     weight: 1
     allowRotate: 1

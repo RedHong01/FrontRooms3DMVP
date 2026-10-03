@@ -43,6 +43,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     public static event Action<Vector3> PlayerClimbed;
     /// <summary>The game paused (true: Esc or lost focus) or resumed (false). Also false when a paused run is torn down.</summary>
     public static event Action<bool> Paused;
+    /// <summary>The run's difficulty tier: 1 when a run starts, then each rise (level profile Tiers: every 4 new zones, or 2 minutes without one).</summary>
+    public static event Action<int> TierChanged;
 
     [SerializeField, Tooltip("The Level 0 maze's numbers: generation, run seed, streaming, light budget, dressing (Assets/Levels/FrontRoomsLevel0.asset). Empty: the code defaults.")]
     FrontRoomsLevelProfile levelProfile;
@@ -86,6 +88,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     [SerializeField, Tooltip("Initial display mode. The player can switch HDR on or off from Display Settings while paused.")]
     bool defaultHdr = true;
     const string HdrPreferenceKey = "FrontRooms.Display.HDR";
+    // Assist: the Relay's state and distance on the HUD. Off by default (Red, 2026-10-03): the
+    // Relay is to be heard, not read; a player can turn it on in the pause screen's settings.
+    const string RelayReadoutPreferenceKey = "FrontRooms.Assist.RelayReadout";
+    bool relayReadout;
     bool hdrEnabled;
     bool displaySettingsOpen;
     Font monoFont, bayonFont, serifFont;
@@ -161,6 +167,20 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     string prompt;
     readonly HashSet<GridCoord> zonesVisited = new HashSet<GridCoord>();
     GridCoord currentZone;
+    // Difficulty: the run's tier and the seconds since the last new zone. The Relay runs on
+    // relayTuning, rebuilt every frame from hunterTuning (the Inspector's base) and the tier.
+    int tier = 1;
+    float tierStall;
+    readonly FrontRoomsHunterTuning relayTuning = new FrontRoomsHunterTuning();
+    FrontRoomsTierRules TierRules
+    {
+        get
+        {
+            var profile = levelProfile != null ? levelProfile : FrontRoomsLevelProfile.Default;
+            if (profile.tiers == null) profile.tiers = new FrontRoomsTierRules();
+            return profile.tiers;
+        }
+    }
     int keysTaken, runSeed;
     static bool restart;
 
@@ -310,6 +330,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         BindHunter();
         BuildMaterials();
         hdrEnabled = PlayerPrefs.GetInt(HdrPreferenceKey, defaultHdr ? 1 : 0) != 0;
+        relayReadout = PlayerPrefs.GetInt(RelayReadoutPreferenceKey, 0) != 0;
         ApplyHdrMode(hdrEnabled, false);
         BuildHud();
         BuildSound();
@@ -582,12 +603,17 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         map.DoorMoved += OnDoorMoved;
         map.GlassBroken += OnGlassBroken;
         map.KeyTaken += OnKeyTaken;
+        // A live build radius change moves the far plane (in the start rooms UpdateStartRooms sets it every frame).
+        map.LiveApplied += () => { if (cam != null && roomStream == null) cam.farClipPlane = map.SightDistance; };
         map.StreamFocus = map.CellCenter(startDoorCell);
         map.StartLampsNorth = 0f;
         map.StartLampsSouth = 0f;
         map.Begin(playerRoot, false);
 
-        relay = new FrontRoomsMapHunter(map, hunterTuning, playerBody, hunter, runSeed);
+        tier = 1;
+        tierStall = 0f;
+        UpdateRelayTuning();
+        relay = new FrontRoomsMapHunter(map, relayTuning, playerBody, hunter, runSeed);
         relay.StateChanged += state => Event("hunter", state.ToString());
         relay.DoorBlow += p =>
         {
@@ -606,6 +632,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         SetPhase(Phase.Playing);
         Event("start", "map seed " + runSeed + ", stream room " + terminal);
         MapRunStarted?.Invoke(map, relay);
+        map.GenerationTier = tier;
+        TierChanged?.Invoke(tier);
         Log("START · in place in stream room " + terminal + " · maze seed " + runSeed + " behind its door, map root " + map.transform.position + ", door cell " + startDoorCell
             + " · " + watch.Elapsed.TotalMilliseconds.ToString("0.0", CultureInfo.InvariantCulture) + " ms (map " + createMs.ToString("0.0", CultureInfo.InvariantCulture) + ", placing " + placeMs.ToString("0.0", CultureInfo.InvariantCulture) + ")");
     }
@@ -873,7 +901,19 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             if (zone != currentZone || zonesVisited.Count == 0)
             {
                 currentZone = zone;
-                if (zonesVisited.Add(zone)) Event("zone", zone.ToString());
+                if (zonesVisited.Add(zone))
+                {
+                    Event("zone", zone.ToString());
+                    tierStall = 0f;
+                    RaiseTier(TierRules.TierForZones(zonesVisited.Count), "zones");
+                }
+            }
+            // A run that stalls still gets harder.
+            tierStall += dt;
+            if (tierStall >= TierRules.stallSeconds)
+            {
+                tierStall = 0f;
+                RaiseTier(tier + 1, "stall");
             }
         }
         UpdateAim(dt);
@@ -883,7 +923,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // Dormant until the door back to the stream rooms has shut behind the
         // player: its release clock only starts once they are in the maze for good.
         if (relay.Released || streamFade >= 0f || roomStream == null)
+        {
+            UpdateRelayTuning();
             relay.Tick(dt, playerRoot.position, cam.transform.position, playerRoot.forward);
+        }
 #if UNITY_EDITOR
         if (tickWatch != null && tickWatch.Elapsed.TotalMilliseconds > autoRelayTickMs)
         {
@@ -1000,12 +1043,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             // The room it stands in and how deep it is in a doorway, for the rig's crammed poses.
             hunterRig.CeilingHeight = MapGrid.CeilingHeight(map.ZoneOf(map.CellOf(position)).height);
             hunterRig.DoorSqueeze = relay.DoorSqueeze;
-            hunterRig.TickAnimation(dt, motion, relay.Moving, state == HunterState.Chase ? 1.15f : 1f);
+            hunterRig.TickAnimation(dt, motion, relay.Moving, state == HunterState.Chase ? 1.15f * ChasePace : 1f);
         }
         // Under FMOD the sound layer plays its steps from the rig's foot plants (AUDIO_CONTRACT.md).
         if (!relay.Moving || (FrontRooms.Audio.FrontRoomsFmod.Ready && hunterRig != null && hunterRig.RaisesSteps)) return;
         hunterStepTime += dt;
-        if (hunterStepTime < (state == HunterState.Chase ? .29f : .44f)) return;
+        if (hunterStepTime < (state == HunterState.Chase ? .29f / ChasePace : .44f)) return;
         hunterStepTime = 0f;
         var p = Flat(position);
         var distance = Vector2.Distance(playerPos, p);
@@ -1266,9 +1309,20 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (displaySettingsText == null) return;
         var mode = hdrEnabled ? "HDR RENDER  /  ON" : "HDR RENDER  /  OFF  (SDR)";
+        var readout = relayReadout ? "RELAY READOUT  /  ON" : "RELAY READOUT  /  OFF";
         displaySettingsText.text = "<size=30><b>DISPLAY SETTINGS</b></size>\n\n"
             + "OUTPUT\n<size=34><color=#F4DF3B>" + mode + "</color></size>\n\n"
-            + "H  TOGGLE HDR\nESC  CLOSE";
+            + "ASSIST\n<size=26><color=#F4DF3B>" + readout + "</color></size>\n<size=16>THE RELAY'S STATE AND DISTANCE ON SCREEN</size>\n\n"
+            + "H  TOGGLE HDR    T  TOGGLE RELAY READOUT\nESC  CLOSE";
+    }
+
+    /// <summary>The assist that shows the Relay's state and distance, remembered across runs.</summary>
+    void SetRelayReadout(bool on)
+    {
+        relayReadout = on;
+        PlayerPrefs.SetInt(RelayReadoutPreferenceKey, on ? 1 : 0);
+        PlayerPrefs.Save();
+        UpdateDisplaySettingsText();
     }
 
     void ToggleDisplaySettings()
@@ -1418,9 +1472,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         gameplayHudAlpha = 0f;
         ApplyGameplayHudAlpha();
 
-        displaySettingsPanel = Panel(g.transform, "Display settings", new Vector2(.5f, .5f), Vector2.zero, new Vector2(920, 420), new Color(.055f, .055f, .05f, .97f));
-        Rule(displaySettingsPanel.transform, "Display settings accent", new Vector2(0, .5f), new Vector2(28, 0), new Vector2(4, 176), accent);
-        displaySettingsText = Text(displaySettingsPanel.transform, "Display settings text", new Vector2(.5f, .5f), new Vector2(18, 0), new Vector2(760, 320), 24, TextAnchor.MiddleCenter);
+        displaySettingsPanel = Panel(g.transform, "Display settings", new Vector2(.5f, .5f), Vector2.zero, new Vector2(920, 560), new Color(.055f, .055f, .05f, .97f));
+        Rule(displaySettingsPanel.transform, "Display settings accent", new Vector2(0, .5f), new Vector2(28, 0), new Vector2(4, 236), accent);
+        displaySettingsText = Text(displaySettingsPanel.transform, "Display settings text", new Vector2(.5f, .5f), new Vector2(18, 0), new Vector2(760, 460), 24, TextAnchor.MiddleCenter);
         displaySettingsText.color = paper;
         displaySettingsPanel.SetActive(false);
         overlay = new GameObject("Menu"); overlay.transform.SetParent(g.transform, false); var image = overlay.AddComponent<Image>(); overlayImage = image;
@@ -1492,7 +1546,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         else overlayText.enabled = true;
         if (p == Phase.Paused) overlayText.text = "<size=88><b>PAUSED</b></size>\n\n<size=13>WASD  MOVE    MOUSE  LOOK    SHIFT  SPRINT    E  DOOR    HOLD E  BREAK GLASS\nR  RESTART    O  DISPLAY SETTINGS</size>\n\n<color=#F4DF3B><size=20>ESC  RESUME</size></color>";
         if (p == Phase.Caught)
-            overlayText.text = "<size=88><b>CAUGHT</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  " + zonesVisited.Count + " ZONES  /  " + keysTaken + " KEYS  /  " + (relay == null ? 0 : relay.DoorsBroken) + " DOORS BROKEN</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
+            overlayText.text = "<size=88><b>CAUGHT</b></size>\n\n<size=24>" + Mathf.RoundToInt(elapsed) + " S  /  TIER " + tier + "  /  " + zonesVisited.Count + " ZONES  /  " + keysTaken + " KEYS  /  " + (relay == null ? 0 : relay.DoorsBroken) + " DOORS BROKEN</size>\n\n<color=#F4DF3B><size=20>R  TRY AGAIN</size></color>";
     }
     void OnApplicationFocus(bool focused)
     {
@@ -1507,6 +1561,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (phase == Phase.Title && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) RequestTitleStart();
         else if (phase == Phase.Paused && Input.GetKeyDown(KeyCode.O)) ToggleDisplaySettings();
         else if (displaySettingsOpen && Input.GetKeyDown(KeyCode.H)) ApplyHdrMode(!hdrEnabled, true);
+        else if (displaySettingsOpen && Input.GetKeyDown(KeyCode.T)) SetRelayReadout(!relayReadout);
         else if (Input.GetKeyDown(KeyCode.Escape) && displaySettingsOpen) ToggleDisplaySettings();
         else if (Input.GetKeyDown(KeyCode.Escape) && (phase == Phase.Playing || phase == Phase.Paused)) SetPhase(phase == Phase.Playing ? Phase.Paused : Phase.Playing);
         if (Input.GetKeyDown(KeyCode.R) && phase != Phase.Playing && phase != Phase.Title) { restart = true; SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex); }
@@ -1537,9 +1592,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         var zone = inStartRooms ? new ZoneInfo { height = ZoneHeight.Standard, theme = ZoneTheme.Level0 } : map.ZoneOf(map.CellOf(playerRoot.position));
         var released = relay != null && relay.Released;
         var threat = !released ? "" : relay.State == HunterState.BreakDoor ? "RELAY  /  BREAKING DOOR" : "RELAY  /  " + relay.State.ToString().ToUpperInvariant();
-        roomMetaText.text = play ? "ZONE " + zonesVisited.Count.ToString("00") + "  /  " + zone.height.ToString().ToUpperInvariant() + "  " + MapGrid.CeilingHeight(zone.height).ToString("0.0") + " M" : "";
+        roomMetaText.text = play ? "ZONE " + zonesVisited.Count.ToString("00") + "  /  TIER " + tier + "  /  " + zone.height.ToString().ToUpperInvariant() + "  " + MapGrid.CeilingHeight(zone.height).ToString("0.0") + " M" : "";
         roomText.text = play ? (inStartRooms ? "LEVEL 0 / THE LOBBY" : ZoneName(zone)) : "";
-        var showThreat = play && released;
+        // The Relay's state and distance are an assist, off by default.
+        var showThreat = play && released && relayReadout;
         threatStateText.text = showThreat ? threat : "";
         distanceText.text = showThreat ? "RELAY  " + Mathf.RoundToInt(RelayDistance()) + " M" : "";
         if (crosshairImage != null) crosshairImage.enabled = play;
@@ -1575,6 +1631,31 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (keyHudGroup != null) keyHudGroup.alpha = gameplayHudAlpha;
     }
     void Flash(string message, float duration = 3f) { flash = message; flashTime = duration; }
+
+    /// <summary>How much faster than the base the tier makes the chase: the run cycle and its step clock follow, so the feet keep up (1 at tier 1).</summary>
+    float ChasePace => relayTuning.chaseSpeed / Mathf.Max(.01f, hunterTuning.chaseSpeed);
+
+    /// <summary>The Relay's tuning this frame: the Inspector's base, scaled by the tier's row. Base edits and tier changes both apply on the next frame and never compound.</summary>
+    void UpdateRelayTuning()
+    {
+        relayTuning.CopyFrom(hunterTuning);
+        TierRules.At(tier).ApplyTo(relayTuning);
+    }
+
+    /// <summary>Raise the run's tier to <paramref name="next"/> (never lower, capped at the table): chunks generated from now on take it too.</summary>
+    void RaiseTier(int next, string why)
+    {
+        next = Mathf.Min(next, TierRules.MaxTier);
+        if (next <= tier) return;
+        tier = next;
+        if (map != null) map.GenerationTier = tier;
+        Event("tier", tier + " (" + why + ")");
+        Log("TIER " + tier + " · " + why + " · " + zonesVisited.Count + " zones, " + elapsed.ToString("0.0", CultureInfo.InvariantCulture) + " s");
+#if UNITY_EDITOR
+        if (autopilot) autoTiers.Add(autoPlayClock.ToString("0.0", CultureInfo.InvariantCulture) + " s tier " + tier + " (" + why + ", " + zonesVisited.Count + " zones)");
+#endif
+        TierChanged?.Invoke(tier);
+    }
     void Event(string kind, string detail) { events.Add(elapsed.ToString("0.000", CultureInfo.InvariantCulture) + "," + kind + ",\"" + detail.Replace("\"", "\"\"") + "\"," + RelayDistance().ToString("0.00", CultureInfo.InvariantCulture)); }
     void OnDestroy()
     {
@@ -1631,6 +1712,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     readonly HashSet<GridCoord> autoCells = new HashSet<GridCoord>();
     readonly List<string> autoErrorLog = new List<string>();
     readonly List<string> autoStates = new List<string>();
+    readonly List<string> autoTiers = new List<string>();
 
     [Serializable]
     sealed class AutopilotReport
@@ -1641,6 +1723,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         public float distanceWalked;
         public int cellsVisited;
         public int zonesVisited;
+        public int tier;
+        public List<string> tierLog = new List<string>();
         public int maxChunksBuilt;
         public int routes;
         public int doorsOpened;
@@ -2022,6 +2106,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             distanceWalked = autoDistance,
             cellsVisited = autoCells.Count,
             zonesVisited = zonesVisited.Count,
+            tier = tier,
+            tierLog = new List<string>(autoTiers),
             maxChunksBuilt = autoMaxChunks,
             routes = autoRoutes,
             doorsOpened = autoDoorsOpened,

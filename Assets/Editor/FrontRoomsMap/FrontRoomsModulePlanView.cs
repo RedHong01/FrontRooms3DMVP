@@ -12,10 +12,15 @@ using UnityEngine;
 ///
 /// Click a prop to select it (again: the one under it), drag to move (0.05 m
 /// snap, Ctrl 0.5 m; the preview rebuilds when you let go), R turns it 90°,
-/// Delete removes it, Esc deselects. Click an edge to cycle wall → arch →
-/// open. Right-click a cell for its lamp. With Custom columns, click an inner
-/// corner (Shift: 0.9 m). With a palette kit armed, a click places it (Shift
-/// keeps it armed); a kit dragged from the palette lands where it is dropped.
+/// Delete removes it, Esc deselects. Gameplay markers (K key spot, R Relay
+/// entry) are picked before props and move, turn and go the same way; their
+/// selection is the plan's own (props are also selected in the Scene view,
+/// markers are not), and a prop and a marker are never selected together.
+/// Click an edge to cycle wall → arch → open. Right-click a cell for its lamp,
+/// or a key spot or Relay entry there. With Custom columns, click an inner
+/// corner (Shift: 0.9 m). With a palette kit or a marker kind armed, a click
+/// places it (Shift keeps it armed); a kit dragged from the palette lands
+/// where it is dropped.
 /// </summary>
 public sealed class FrontRoomsModulePlanView
 {
@@ -23,8 +28,9 @@ public sealed class FrontRoomsModulePlanView
     static readonly Color WallColor = new Color(.95f, .94f, .90f), ArchColor = new Color(.96f, .85f, .25f), OpenColor = new Color(1f, 1f, 1f, .12f);
     static readonly Color PropColor = new Color(.55f, .75f, .95f, .55f), PropSelected = new Color(1f, .6f, .2f, .75f), GhostColor = new Color(.4f, 1f, .5f, .45f);
     static readonly Color StripColor = new Color(.3f, .9f, .4f, .12f);
+    static readonly Color KeyColor = new Color(1f, .82f, .2f, .95f), RelayColor = new Color(.8f, .4f, 1f, .95f), MarkerSelected = Color.white;
     const float Edge = 7f;
-    static GUIStyle centeredMini;
+    static GUIStyle centeredMini, markerLetter;
 
     readonly Action repaint;
     FrontRoomsRoomModule module;
@@ -32,11 +38,19 @@ public sealed class FrontRoomsModulePlanView
     // The props array the selection was last checked against, and the selected prop then (see Follow).
     ModuleProp[] selectedIn;
     ModuleProp selectedProp;
-    // A prop is held by the mouse, and whether the drag has moved it yet.
-    bool dragging, moved;
+    // The selected marker, the markers array it was last checked against, and the marker then (as for props).
+    int selectedMarker = -1;
+    ModuleMarker[] markerIn;
+    ModuleMarker markerData;
+    // A prop or (markerDrag) a marker is held by the mouse, and whether the drag has moved it yet.
+    bool dragging, moved, markerDrag;
     Vector2 dragOffset;
     // The armed or dragged kit and the module point under the mouse, drawn where it would land.
     (string kit, Vector2 at)? ghost;
+    // The module point under the mouse while a marker kind is armed.
+    Vector2? markerGhost;
+    string armedKit;
+    ModuleMarkerKind? armedMarker;
 
     /// <param name="repaint">Repaints the panel that draws this plan.</param>
     public FrontRoomsModulePlanView(Action repaint) => this.repaint = repaint;
@@ -44,22 +58,86 @@ public sealed class FrontRoomsModulePlanView
     /// <summary>Raised when the designer picks a prop here or in the prop fields (-1: none). The window selects it in the Scene too.</summary>
     public event Action<int> SelectionChanged;
 
-    /// <summary>The kit a click in the plan places, or null. The window's palette arms it.</summary>
-    public string ArmedKit { get; set; }
+    /// <summary>The kit a click in the plan places, or null. The window's palette arms it; arming one disarms a marker kind.</summary>
+    public string ArmedKit
+    {
+        get => armedKit;
+        set
+        {
+            armedKit = value;
+            if (value != null) armedMarker = null;
+            markerGhost = null;
+        }
+    }
+
+    /// <summary>The marker kind a click in the plan places, or null. The Markers section arms it; arming one disarms a kit.</summary>
+    public ModuleMarkerKind? ArmedMarker
+    {
+        get => armedMarker;
+        set
+        {
+            armedMarker = value;
+            if (value != null) armedKit = null;
+            ghost = null;
+            markerGhost = null;
+        }
+    }
 
     /// <summary>The selected prop's index, or -1.</summary>
     public int Selected => selected;
 
+    /// <summary>The selected marker's index, or -1.</summary>
+    public int SelectedMarker => selectedMarker;
+
+    /// <summary>What a click in the plan does now, for the line under it.</summary>
+    public string Help => ArmedKit != null ? "Click to place " + ArmedKit + " (Shift: keep placing). Esc stops."
+        : ArmedMarker != null ? "Click to place a " + FrontRoomsModuleEditing.MarkerName(ArmedMarker.Value) + " (Shift: keep placing). Esc stops."
+        : "Click a prop or a marker (K key spot, R Relay entry) to select (again: the one under it), drag to move, R turns, Delete removes, Esc deselects. "
+          + "Click an edge: wall → arch → open. Right-click a cell: its lamp, or a key spot or Relay entry there.";
+
     static GUIStyle CenteredMini => centeredMini ?? (centeredMini = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } });
 
-    /// <summary>Select a prop (-1: none). <paramref name="notify"/> is false when the selection comes from the Scene view.</summary>
+    static GUIStyle MarkerLetter => markerLetter ?? (markerLetter = new GUIStyle(EditorStyles.miniBoldLabel) { alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.black } });
+
+    /// <summary>Select a prop (-1: none). <paramref name="notify"/> is false when the selection comes from the Scene view. A selected marker is let go.</summary>
     public void Select(int index, bool notify = true)
     {
         // Given by an edit that knows where its prop went: trusted as it is.
         selectedIn = null;
+        if (index >= 0 && selectedMarker >= 0)
+        {
+            selectedMarker = -1;
+            markerIn = null;
+            repaint();
+        }
         if (index == selected) return;
         selected = index;
         if (notify) SelectionChanged?.Invoke(index);
+        repaint();
+    }
+
+    /// <summary>
+    /// Select a marker (-1: none). Markers live only in the module, so the
+    /// Scene selection is not touched, except that a selected prop is let go
+    /// (there and here).
+    /// </summary>
+    public void SelectMarker(int index)
+    {
+        // Given by an edit that knows where its marker went: trusted as it is.
+        markerIn = null;
+        if (index >= 0) Select(-1);
+        if (index == selectedMarker) return;
+        selectedMarker = index;
+        repaint();
+    }
+
+    /// <summary>The panel shows another module: end a drag (it reaches the old module's preview) and select nothing, without telling the Scene view.</summary>
+    public void Forget()
+    {
+        EndDrag();
+        selected = selectedMarker = -1;
+        selectedIn = null;
+        markerIn = null;
         repaint();
     }
 
@@ -67,13 +145,14 @@ public sealed class FrontRoomsModulePlanView
     public void EndDrag()
     {
         if (dragging && moved && module != null) FrontRoomsRoomModule.NotifyChanged(module);
-        dragging = moved = false;
+        dragging = moved = markerDrag = false;
     }
 
     /// <summary>
-    /// Keep the selection on its prop when the props array has been replaced:
-    /// props removed, reordered or added in the other panel or the Scene view,
-    /// or an undo. If the prop is gone, nothing is selected. Draw calls it first.
+    /// Keep the selection on its prop or marker when the array has been
+    /// replaced: props or markers removed, reordered or added in the other
+    /// panel or the Scene view, or an undo. If it is gone, nothing is
+    /// selected. Draw calls it first.
     /// </summary>
     public void Follow(RoomModuleData m)
     {
@@ -88,11 +167,25 @@ public sealed class FrontRoomsModulePlanView
         if (selected >= m.props.Length) selected = -1;
         selectedIn = m.props;
         if (selected >= 0) selectedProp = m.props[selected];
+
+        if (selectedMarker >= 0 && markerIn != null && !ReferenceEquals(markerIn, m.markers))
+        {
+            var at = Array.IndexOf(m.markers, markerData);
+            // Not found, but the same kind where it was in a list as long: the marker itself was edited (an undone move).
+            selectedMarker = at >= 0 ? at
+                : m.markers.Length == markerIn.Length && selectedMarker < m.markers.Length && m.markers[selectedMarker].kind == markerData.kind ? selectedMarker
+                : -1;
+        }
+        if (selectedMarker >= m.markers.Length) selectedMarker = -1;
+        markerIn = m.markers;
+        if (selectedMarker >= 0) markerData = m.markers[selectedMarker];
     }
 
     /// <summary>Draw the plan, as large as fits <paramref name="availableWidth"/>, and handle its events.</summary>
     public void Draw(FrontRoomsRoomModule target, float availableWidth)
     {
+        // Another module: a selection or a drag of the old one must not carry over (Follow would find a like prop or marker).
+        if (module != null && target != module) Forget();
         module = target;
         var m = module.data;
         Follow(m);
@@ -110,6 +203,9 @@ public sealed class FrontRoomsModulePlanView
         var fronts = new Vector3[m.props.Length][];
         var band = Mathf.Max(3f / metre, .08f);
         for (var k = 0; k < m.props.Length; k++) Shape(m.props[k], band, ToPlan, out polys[k], out fronts[k]);
+        var markerAt = m.markers.Select(q => ToPlan(q.x, q.z)).ToArray();
+        // At least a few pixels across, so a marker can be picked in a big room.
+        float MarkerRadius(ModuleMarkerKind kind) => kind == ModuleMarkerKind.RelayEntry ? Mathf.Max(7f, ModuleUnits.RelayRadius * metre) : Mathf.Max(6f, .15f * metre);
         var edges = new List<(Rect rect, int i, int j, int dx, int dy, bool vertical)>();
         for (var j = 0; j < m.depth; j++)
         for (var i = 0; i < m.width; i++)
@@ -148,9 +244,10 @@ public sealed class FrontRoomsModulePlanView
                 repaint();
             }
         }
-        if ((e.type == EventType.DragExited || e.type == EventType.MouseLeaveWindow) && ghost != null)
+        if ((e.type == EventType.DragExited || e.type == EventType.MouseLeaveWindow) && (ghost != null || markerGhost != null))
         {
             ghost = null;
+            markerGhost = null;
             repaint();
         }
         if (ArmedKit != null && (e.type == EventType.MouseMove || e.type == EventType.MouseDrag))
@@ -162,11 +259,23 @@ public sealed class FrontRoomsModulePlanView
                 repaint();
             }
         }
+        if (ArmedMarker != null && (e.type == EventType.MouseMove || e.type == EventType.MouseDrag))
+        {
+            var now = inside ? ToModule(e.mousePosition) : (Vector2?)null;
+            if (now != markerGhost)
+            {
+                markerGhost = now;
+                repaint();
+            }
+        }
 
-        // Left click: an armed kit is placed; else props first (topmost; again cycles to the one under it), then columns, then edges, else deselect.
+        // Left click: an armed kit or marker is placed; else markers first, then props (topmost; again cycles to the one
+        // under it), then columns, then edges, else deselect.
         if (e.type == EventType.MouseDown && e.button == 0 && inside)
         {
             GUIUtility.keyboardControl = 0;
+            var markerHits = new List<int>();
+            for (var k = m.markers.Length - 1; k >= 0; k--) if ((markerAt[k] - e.mousePosition).magnitude <= MarkerRadius(m.markers[k].kind) + 2f) markerHits.Add(k);
             var hits = new List<int>();
             for (var k = m.props.Length - 1; k >= 0; k--) if (Inside(polys[k], e.mousePosition)) hits.Add(k);
             var columnHit = ColumnAt(m, e.mousePosition, ToPlan);
@@ -176,11 +285,27 @@ public sealed class FrontRoomsModulePlanView
                 Place(ArmedKit, ToModule(e.mousePosition));
                 if (!e.shift) Disarm();
             }
+            else if (ArmedMarker != null)
+            {
+                PlaceMarker(module, ArmedMarker.Value, ToModule(e.mousePosition));
+                if (!e.shift) Disarm();
+            }
+            else if (markerHits.Count > 0)
+            {
+                var at = markerHits.IndexOf(selectedMarker);
+                SelectMarker(at >= 0 ? markerHits[(at + 1) % markerHits.Count] : markerHits[0]);
+                dragging = markerDrag = true;
+                moved = false;
+                dragOffset = ToModule(e.mousePosition) - new Vector2(m.markers[selectedMarker].x, m.markers[selectedMarker].z);
+                Undo.IncrementCurrentGroup();
+                FrontRoomsModuleEditing.Record(module, "Move marker");
+            }
             else if (hits.Count > 0)
             {
                 var at = hits.IndexOf(selected);
                 Select(at >= 0 ? hits[(at + 1) % hits.Count] : hits[0]);
                 dragging = true;
+                markerDrag = false;
                 moved = false;
                 dragOffset = ToModule(e.mousePosition) - new Vector2(m.props[selected].x, m.props[selected].z);
                 Undo.IncrementCurrentGroup();
@@ -203,7 +328,11 @@ public sealed class FrontRoomsModulePlanView
                 m.SetEdge(q.i, q.j, q.dx, q.dy, kind == ModuleEdge.Wall ? ModuleEdge.Arch : kind == ModuleEdge.Arch ? ModuleEdge.Open : ModuleEdge.Wall);
                 Changed();
             }
-            else Select(-1);
+            else
+            {
+                Select(-1);
+                SelectMarker(-1);
+            }
             e.Use();
             repaint();
         }
@@ -243,33 +372,55 @@ public sealed class FrontRoomsModulePlanView
                 var label = ToPlan(m.props[k].x, m.props[k].z);
                 GUI.Label(new Rect(label.x - 40f, label.y - 8f, 80f, 16f), FrontRoomsModuleEditing.Short(m.props[k].kit), CenteredMini);
             }
+            // Markers on top of the props, the selected one ringed in white.
+            for (var k = 0; k < m.markers.Length; k++) DrawMarker(markerAt[k], m.markers[k], MarkerRadius(m.markers[k].kind), k == selectedMarker, 1f);
             // Where the armed or dragged kit would go, wall units already against their wall.
             if (ghost != null)
             {
                 Shape(FrontRoomsModuleEditing.NewProp(m, ghost.Value.kit, ghost.Value.at), band, ToPlan, out var poly, out var front);
                 DrawProp(poly, front, GhostColor);
             }
+            // Where the armed marker would go.
+            if (ArmedMarker != null && markerGhost != null)
+            {
+                var g = FrontRoomsModuleEditing.NewMarker(m, ArmedMarker.Value, markerGhost.Value);
+                DrawMarker(ToPlan(g.x, g.z), g, MarkerRadius(g.kind), false, .5f);
+            }
             foreach (var q in edges) EditorGUIUtility.AddCursorRect(q.rect, MouseCursor.Link);
-            if (ArmedKit != null) EditorGUIUtility.AddCursorRect(area, MouseCursor.ArrowPlus);
+            if (ArmedKit != null || ArmedMarker != null) EditorGUIUtility.AddCursorRect(area, MouseCursor.ArrowPlus);
         }
 
-        if (dragging && selected >= 0 && e.type == EventType.MouseDrag)
+        if (dragging && e.type == EventType.MouseDrag && (markerDrag ? selectedMarker >= 0 : selected >= 0))
         {
             // Moves show in the plan at once; the preview rebuilds when the drag ends. An axis changes
             // only once the mouse takes it to another snap step, so a wall unit slid along its wall keeps its exact gap.
             var to = ToModule(e.mousePosition) - dragOffset;
             var step = e.control || e.command ? .5f : FrontRoomsModuleEditing.Grid;
-            var p = m.props[selected];
-            var q = p;
-            var x = Mathf.Clamp(FrontRoomsModuleEditing.Snap(to.x, step), 0f, m.WidthMetres);
-            var z = Mathf.Clamp(FrontRoomsModuleEditing.Snap(to.y, step), 0f, m.DepthMetres);
-            if (x != Mathf.Clamp(FrontRoomsModuleEditing.Snap(p.x, step), 0f, m.WidthMetres)) q.x = x;
-            if (z != Mathf.Clamp(FrontRoomsModuleEditing.Snap(p.z, step), 0f, m.DepthMetres)) q.z = z;
-            if (q.x != p.x || q.z != p.z)
+            if (markerDrag)
             {
-                m.props[selected] = q;
-                moved = true;
-                EditorUtility.SetDirty(module);
+                var mk = m.markers[selectedMarker];
+                var at = Dragged(m, new Vector2(mk.x, mk.z), to, step);
+                if (at.x != mk.x || at.y != mk.z)
+                {
+                    mk.x = at.x;
+                    mk.z = at.y;
+                    m.markers[selectedMarker] = mk;
+                    moved = true;
+                    EditorUtility.SetDirty(module);
+                }
+            }
+            else
+            {
+                var p = m.props[selected];
+                var at = Dragged(m, new Vector2(p.x, p.z), to, step);
+                if (at.x != p.x || at.y != p.z)
+                {
+                    p.x = at.x;
+                    p.z = at.y;
+                    m.props[selected] = p;
+                    moved = true;
+                    EditorUtility.SetDirty(module);
+                }
             }
             e.Use();
             repaint();
@@ -278,30 +429,42 @@ public sealed class FrontRoomsModulePlanView
         {
             // A click that only selects leaves the preview as it is.
             if (moved) Changed();
-            dragging = moved = false;
+            dragging = moved = markerDrag = false;
             e.Use();
         }
         // Keys only when no field is being typed in.
-        if ((selected >= 0 || ArmedKit != null) && e.type == EventType.KeyDown && GUIUtility.keyboardControl == 0 && !EditorGUIUtility.editingTextField && !(e.control || e.command || e.alt))
+        var any = selected >= 0 || selectedMarker >= 0;
+        if ((any || ArmedKit != null || ArmedMarker != null) && e.type == EventType.KeyDown && GUIUtility.keyboardControl == 0 && !EditorGUIUtility.editingTextField && !(e.control || e.command || e.alt))
         {
             if (e.keyCode == KeyCode.Escape)
             {
-                if (ArmedKit != null) Disarm(); else Select(-1);
+                if (ArmedKit != null || ArmedMarker != null) Disarm();
+                else
+                {
+                    Select(-1);
+                    SelectMarker(-1);
+                }
                 e.Use();
                 repaint();
             }
-            else if (selected >= 0 && e.keyCode == KeyCode.R) { FrontRoomsModuleEditing.TurnProp(module, selected); e.Use(); repaint(); }
-            else if (selected >= 0 && (e.keyCode == KeyCode.Delete || e.keyCode == KeyCode.Backspace)) { RemoveSelected(); e.Use(); }
+            else if (any && e.keyCode == KeyCode.R)
+            {
+                if (selectedMarker >= 0) FrontRoomsModuleEditing.TurnMarker(module, selectedMarker);
+                else FrontRoomsModuleEditing.TurnProp(module, selected);
+                e.Use();
+                repaint();
+            }
+            else if (any && (e.keyCode == KeyCode.Delete || e.keyCode == KeyCode.Backspace)) { RemoveSelectedAny(); e.Use(); }
         }
         // Edit → Delete (⌘⌫, or Delete where the shortcut takes the key) arrives as a command.
-        if (selected >= 0 && (e.type == EventType.ValidateCommand || e.type == EventType.ExecuteCommand) && (e.commandName == "SoftDelete" || e.commandName == "Delete")
+        if (any && (e.type == EventType.ValidateCommand || e.type == EventType.ExecuteCommand) && (e.commandName == "SoftDelete" || e.commandName == "Delete")
             && GUIUtility.keyboardControl == 0 && !EditorGUIUtility.editingTextField)
         {
-            if (e.type == EventType.ExecuteCommand) RemoveSelected();
+            if (e.type == EventType.ExecuteCommand) RemoveSelectedAny();
             e.Use();
         }
 
-        // Right-click a cell: its lamp.
+        // Right-click a cell: a marker there, or its lamp.
         if (e.type == EventType.ContextClick || (e.type == EventType.MouseDown && e.button == 1))
             for (var j = 0; j < m.depth; j++)
             for (var i = 0; i < m.width; i++)
@@ -310,7 +473,11 @@ public sealed class FrontRoomsModulePlanView
                 var ci = i;
                 var cj = j;
                 var lampModule = module;
+                var point = ToModule(e.mousePosition);
                 var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("Key spot here"), false, () => PlaceMarker(lampModule, ModuleMarkerKind.KeySpot, point));
+                menu.AddItem(new GUIContent("Relay entry here"), false, () => PlaceMarker(lampModule, ModuleMarkerKind.RelayEntry, point));
+                menu.AddSeparator("");
                 foreach (ModuleLamp lamp in Enum.GetValues(typeof(ModuleLamp)))
                 {
                     var value = lamp;
@@ -335,12 +502,64 @@ public sealed class FrontRoomsModulePlanView
         Select(-1);
     }
 
+    /// <summary>Remove the selected marker (Delete in the plan, Remove in the marker fields).</summary>
+    public void RemoveSelectedMarker()
+    {
+        if (selectedMarker < 0) return;
+        FrontRoomsModuleEditing.RemoveMarkers(module, new[] { selectedMarker });
+        SelectMarker(-1);
+    }
+
+    void RemoveSelectedAny()
+    {
+        if (selectedMarker >= 0) RemoveSelectedMarker();
+        else RemoveSelected();
+    }
+
     void Place(string kit, Vector2 at) => Select(FrontRoomsModuleEditing.AddKit(module, kit, at));
+
+    void PlaceMarker(FrontRoomsRoomModule target, ModuleMarkerKind kind, Vector2 at)
+    {
+        var index = FrontRoomsModuleEditing.AddMarker(target, kind, at);
+        if (target == module) SelectMarker(index);
+        repaint();
+    }
 
     void Disarm()
     {
         ArmedKit = null;
+        ArmedMarker = null;
         ghost = null;
+    }
+
+    /// <summary>Where a drag takes a point: snapped inside the room, an axis changing only once the mouse takes it to another snap step.</summary>
+    static Vector2 Dragged(RoomModuleData m, Vector2 was, Vector2 to, float step)
+    {
+        var x = Mathf.Clamp(FrontRoomsModuleEditing.Snap(to.x, step), 0f, m.WidthMetres);
+        var z = Mathf.Clamp(FrontRoomsModuleEditing.Snap(to.y, step), 0f, m.DepthMetres);
+        return new Vector2(x != Mathf.Clamp(FrontRoomsModuleEditing.Snap(was.x, step), 0f, m.WidthMetres) ? x : was.x,
+            z != Mathf.Clamp(FrontRoomsModuleEditing.Snap(was.y, step), 0f, m.DepthMetres) ? z : was.y);
+    }
+
+    /// <summary>A marker: a disc (a Relay entry as wide as its body), its letter, a tick for its yaw (0 = north, up), a Relay entry's tag under it.</summary>
+    static void DrawMarker(Vector2 centre, ModuleMarker mk, float radius, bool selected, float alpha)
+    {
+        var key = mk.kind == ModuleMarkerKind.KeySpot;
+        if (selected)
+        {
+            Handles.color = MarkerSelected;
+            Handles.DrawSolidDisc(centre, Vector3.forward, radius + 2.5f);
+        }
+        var fill = key ? KeyColor : RelayColor;
+        fill.a *= alpha;
+        Handles.color = fill;
+        Handles.DrawSolidDisc(centre, Vector3.forward, radius);
+        var rad = mk.yaw * Mathf.Deg2Rad;
+        var heading = new Vector2(Mathf.Sin(rad), -Mathf.Cos(rad));
+        Handles.color = new Color(.08f, .08f, .08f, .95f * alpha);
+        Handles.DrawAAPolyLine(2.5f, centre + heading * radius * .6f, centre + heading * (radius + 5f));
+        GUI.Label(new Rect(centre.x - 10f, centre.y - 8f, 20f, 16f), key ? "K" : "R", MarkerLetter);
+        if (!key && !string.IsNullOrEmpty(mk.tag)) GUI.Label(new Rect(centre.x - 40f, centre.y + radius, 80f, 14f), mk.tag, CenteredMini);
     }
 
     void Changed()

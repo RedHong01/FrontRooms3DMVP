@@ -1,484 +1,919 @@
-# The glow ink: narrative design proposal for the phosphorescent underprint
+# The glow ink: four narrative directions for the phosphorescent underprint
 
-Status: proposal, 2026-10-03. Nothing is implemented. Written by the narrative chat.
-- Mechanics are owned by `20_level_design_phosphor.md` (Afterglow Blazes, "LD" below), and this document changes none of them. It fills LD §12, the narrative slots.
-- The wallpaper-print chat (动画和动态图形模型技术) reviewed the recommended direction on 2026-10-03. Its corrections are applied, see §9.
-- Every rule LD leaves open with Red is written here as conditional: Q1 HUD, Q3 pressure trigger, Q4 lies, Q8 EAR, Q10 legend.
+Status: proposal, revision 2, 2026-10-03. Nothing is implemented. Written by the narrative chat.
+
+**Scope.**
+- Mechanics belong to `20_level_design_phosphor.md` (Afterglow Blazes, "LD" below), and nothing here changes them.
+- This document fills LD §12, the narrative slots, four different ways.
+
+**Revision 1** recommended EGRESS and only sketched the other three directions.
+
+**Red's decisions, 2026-10-03** (relayed by the wallpaper-print chat):
+1. Develop all four directions to the same depth before choosing. EGRESS stays the recommendation, but this document does not pre-decide.
+2. **Forged FLOW from T4 is ON** (LD Q4). Each direction answers who forges and why.
+3. **The HUD threat readout is off by default** and moves to an assist (LD Q1). Every direction assumes the player has no distance readout.
+4. **The visible paper is WP03 "Hard edge":** clean mitred chevron bands at 55°, no streaks (Figma 2407:884; `Tools/print/patterns/hard_edge.py`, `ARM_DEG = 55`).
+
+Still open with Red: LD Q3 (pressure trigger), Q8 (EAR), Q10 (legend/placard), Q11 (escalation coupling), plus §12 below.
 
 ---
 
-## 0. Summary
+## 1. How to compare the four
 
-**Recommendation: EGRESS.**
-- The underprint is the building's own power-failure exit-guidance system.
-- It is a ZnS:Cu phosphor underprint, printed in 1990 under a contract wallcovering and drawn to the floor plan. Whenever the building rearranges itself, the paper is reprinted with it.
-- It is honest about the building and blind to whatever lives in it.
-- Every "exit" it shows is a way into a compartment you haven't been in yet, and every one leads further in.
+Every direction chapter (§4–§7) has the same nine parts:
+
+| Part | What it covers |
+|---|---|
+| .1 | Pitch and deck line |
+| .2 | The fiction |
+| .3 | Trust and the forger |
+| .4 | Link to the moving print |
+| .5 | LD §12 slots |
+| .6 | Ten marks |
+| .7 | Run arc |
+| .8 | Writing rules |
+| .9 | Strengths, risks and costs |
+
+§8 sets them side by side.
+
+### 1.1 The same ten marks in every direction
+
+The mechanics are identical in all four directions, so each mark appears in the same place, at the same time, with the same shape seen from a distance (LD §9). Only three things change: its name, what you see up close, and what it means.
+
+| # | LD code | Where and when | What you see at range (all directions) |
+|---|---|---|---|
+| M1 | FLOW | First-dark beat, T0: the end wall 6–9 m ahead as a lamp dies in view | Open chevrons, 400 mm tall, 8 per 3 m wall, in the 0.8–2.0 m band |
+| M2 | HERE | The wall beside a door, or a window, on the route | Two vertical bars, 100 × 900 mm, framing the door (0.8 m beside a window) |
+| M3 | STOP | The mouth of a dead-end pocket | Two closed horizontal bars, 600 × 120 mm, on every roll |
+| M4 | BREACH | Both faces of a door the Relay broke (permanent) | HERE bars plus a 100 mm diagonal bar |
+| M5 | Pressure | Committed as the chase wave front passes. Chase only by default (Q3) | Doubled chevrons to a door, then doubled bars at it |
+| M6 | GROUND | Any charged dark cell that is off the route | Faint, even glow with no direction (weight 0.35) |
+| M7 | EAR bloom (P2, Q8) | The dark cells round a noise the Relay accepted (source cell plus open neighbours) | The ground glow swells over 1.5 s |
+| M8 | FLOW, T2 variant | Every FLOW from T2 on | Unchanged. Only the close-up content changes |
+| M9 | GROUND, T3 layer | Rare, dark cells near doors | As M6, with new close-up content |
+| M10 | Forged FLOW (T4+, ON) | A lit, steady cell at an unmarked branch mouth, pointing into the pocket | FLOW chevrons glowing **under a working lamp** (G = 0.8 whatever the lamp does). This is the far tell |
+
+**Where the close-up content lives.** The wallpaper-print chat proposed this, and the visual chat has not yet agreed:
+- **`_FR_InkType`** is a texture array in glyph-local space, with one layer per message, variant, tier or forged state. The content runs along the stroke.
+- **`_FR_InkSubstance`** is BC4, roll-tiled, with one GROUND layer per tier.
+- Both are fetched only where the glow mask is non-zero.
+
+The content can be type (A), hand texture (B), scratches (C) or smear (D). Every layer must meet four rules:
+- mean coverage ≥ 0.6 inside strokes (field 1.0, knockouts 0.55);
+- detail strokes ≥ 2.5 mm, so the 4× mips keep them;
+- legible within about 1.5 m;
+- human marks never use the procedural shapes (chevrons, bars, brackets), so they cannot be confused with the grammar. In C the code is human, so there the rule is that only the code's own shapes count.
+
+---
+
+## 2. What every direction must honour
+
+| Rule (source) | Consequence for every direction |
+|---|---|
+| Glows only where the cell's own lamp is dead, dying or sagging; a lit wall shows nothing (LD R1) | The fiction says why it hides in light |
+| Fresh dark is bright; starved dark (a dead cell among dead neighbours) is blank (LD R2) | The fiction says why it needs light first |
+| Only wallpaper carries it: no Office drywall, doors, start area or title stream rooms (LD R3) | The fiction says why Office and the front rooms are blind |
+| Calm routes lead to the nearest door or window into an **unvisited zone**. They ignore the Relay and never lead back (LD R5) | It knows the building, not the monster, and it always moves you on |
+| Pressure routes appear in Chase, pointing to doors away from the Relay. The wave runs ahead from the Relay's cell at 8 m/s (LD R6, §4) | It reacts when the hunt starts running |
+| Truthful before T4. From T4 only FLOW is forged, and a forgery glows under a lit lamp (LD R9; Red: ON) | The forger is someone else, and only says "go" |
+| A message never changes in view (LD R10) | Changes happen unseen, under light, or at a sag or wave front |
+| **Dark is never cover.** The Relay's sight is a 12 m ray with no light term (LD R13) | No line, mark or prop may imply that darkness, low light or tall halls hide you |
+| **No distance readout** (Red: Q1 = yes) | The ink and sound are the player's only threat information. No direction may turn the ink into radar |
+| Era lock: 1990, nothing designed after 1993 (`office_and_film/22_era_lock.md`) | ZnS:Cu, not strontium aluminate (invented 1993, patented 1994). Dates ≤ 1990. Period type |
+| IP: concepts only. No wiki text, no Async (`03_ip_canon.md` §5) | Original wording, no real brands, no real names |
+| The Relay's look is still open (`research/hunter/10`, `11`) | Say what a direction fixes about the Relay (see §8) |
+
+---
+
+## 3. Anchors (verified; URLs in §14)
+
+### 3.1 Charlotte Perkins Gilman, "The Yellow Wall-paper" (*New England Magazine*, January 1892; public domain)
+
+| Theme | Exact text |
+|---|---|
+| The sub-pattern | "a kind of sub-pattern in a different shade". You see it "only … in certain lights, and not clearly then" |
+| Night and day | "By daylight she is subdued, quiet." By moonlight "it becomes bars!" |
+| The front pattern moves | "The front pattern does move—and no wonder! The woman behind shakes it!" |
+| Many women | "Sometimes I think there are a great many women behind." "so many of those creeping women" |
+| Trying to get out | "nobody could climb through that pattern—it strangles so" |
+| Eyes in the pattern | "two bulbous eyes stare at you upside-down" |
+| The trail | "low down, near the mopboard": "a long, straight, even smooch". Later, "my shoulder just fits in that long smooch" |
+| The ending | "I've got out at last". She is still in the room and has to "creep over him every time!" |
+
+### 3.2 Kane Parsons' *Backrooms*
+- **Ep 13 (2022-05-20, unlisted, 33 s)** is titled 9780415263573.
+  - Wikipedia calls this the ISBN of Gilman's story.
+  - Open Library identifies the exact edition: Catherine J. Golden's critical edition (Routledge, 2004).
+  - On screen, the episode shows only highway surveillance footage of a car disappearing into the road.
+- **Ep 24 "Static Dead End" (2025-02-12):** stretched wallpaper, irregular floor depth, furniture phased into the walls. Canon treats the paper as a skin that can deform.
+- **Ep 16 "Found Footage #2":** green cracks glow in the walls. Our green must read as printed, not as cracks.
+- **Ep 1 "Found Footage":** a graffiti-covered wall comes before the creature.
+
+### 3.3 The Exit 8 (2023) / Platform 8 (2024)
+- A repeating corridor with a stable baseline: an anomaly means turn back, none means go on.
+- The rules are on a sign on the wall at the start.
+- Anomalies run from a changed sign message to a power cut.
+- Kotake added a "don't get off" warning sign so that one anomaly would not feel unfair. This is our rule: **every lie has a tell**.
+
+### 3.4 Haunted Mansion (Disneyland, open to all guests 1969-08-12)
+- The corridor portraits flicker into macabre versions of themselves when the lightning flashes.
+- The original mechanism is unverified.
+- What we take: the paper shows its other face in a lamp's gasp.
+
+### 3.5 Material and period
+**ZnS:Cu:**
+- Sidot, 1866.
+- Green, with a peak at about 531 nm.
+- It charges in light and fades over tens of minutes. One pigment measures 25 mcd/m² at 10 min and 2.5 at 60 min.
+- Strontium aluminate is about 10× brighter and longer-lasting, and dates from 1993–94.
+
+**Luminous paint.** There are three families:
+
+| Family | How it glows |
+|---|---|
+| Fluorescent | Only under UV |
+| Phosphorescent | Glow-in-the-dark, after light |
+| Radioluminescent | Self-luminous |
+
+- **Radium dial paint ("Undark")** was radium plus zinc sulfide. It glows with no charging. It was used through most of the 20th century and replaced by tritium in the 1970s. Old radium clocks were ordinary second-hand stock in 1990.
+- **The Radium Girls' poisoning** is a warning, never a motif.
+
+**Egress by 1990:**
+- **Tritium EXIT signs:** self-luminous, green, familiar in aircraft. Museum example: about the 1970s.
+- **Aircraft floor-path marking:** 14 CFR 25.812(e) (Oct 1984) followed the Air Canada 797 fire (June 1983), with retrofit by 1986. The 1990 strips were **electric**; photoluminescent strips came in 1997.
+- **German glow-sign standard:** DIN 67510, from 1958.
+- **Charging:** a modern glow exit sign needs light on its face during occupancy and takes about 60 min to charge.
+- **NO EXIT:** "NO EXIT" signs (NFPA 101; OSHA "Not an Exit" since 1974) and limits on dead-end corridors.
+- **Self-tests:** NFPA 101 §7.9.3 requires 30 s every 30 days and 1.5 h a year. This is the current edition; the 1990 wording is unverified.
+- **MS *Scandinavian Star*:** fire on 7 April 1990, 159 dead (one paper says 156). SOLAS was amended in 1992; IMO A.752(18) (1993) allows "photoluminescent indicators".
+
+**Childhood objects that pre-teach the rules:**
+- glow-in-the-dark ceiling stars (1970s on, one source);
+- Glo Friends (1985–86);
+- Hypercolor (1991; it shows handprints, fine under the ≤ 1993 limit but not in a 1990 room);
+- blacklight/DayGlo, which glows only while the UV is on, the contrast case;
+- Tyler's 1979 random-dot autostereogram; Magic Eye (Japan 1991, US 1993); Brewster's 1844 "wallpaper effect", where repeated patterns float in depth.
+
+**Marking traditions:**
+- **Hobo signs** (1870s on): chalked to alert the next traveller.
+- **Trail blazes:** a blaze was first a slash in bark; paint is now most common.
+- **The wall follower rule:** it fails in mazes with loops.
+- **Trémaux's method:** you mark the path as you go.
+- **Drag hunting:** hounds hunt an artificially laid scent line. It was popular at 19th-century Oxford and Cambridge and with the Household Cavalry from 1863.
+- **Fox-hunting terms:** a "check" is when hounds lose the scent; the fox "goes to ground" in a den.
+- **"Relay":** the word first meant fresh hounds placed along the line of a chase (`research/hunter/03` §6).
+
+---
+
+## 4. Direction A: EGRESS, the building's own exit plan
+
+*Author: the place, as a machine.*
+
+### A.1 Pitch
+The underprint is the building's power-failure exit guidance. It is honest about the building and blind to whatever lives in it. Every exit it shows is a way into a compartment you haven't been in yet, and every one leads further in.
 
 **Deck line:** *The wallpaper is a fire-exit plan for a building with no outside.*
 
-**Two late grafts:**
-- From BLAZES: other people have scratched words into the paper.
-- From SUB-PATTERN: someone else has learned to write in the ink. This is the T4+ forger, and it applies only if Red keeps forged FLOW (LD Q4).
+### A.2 Fiction
+**Who printed it, and when.**
+- A contract-wallcovering mill (unnamed) printed a non-radioactive, light-charged ZnS:Cu underprint under the WP03 hard-edge print, in 1990.
+- It was sold as base-building life safety: "invisible by day, there when the power fails".
+- Each roll was drawn for one position on the floor plan. The roll stamp reads `LEVEL 0 · SHEET A-3 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1`.
+- The underprint is invented. Its parts (pigment, chevron egress marking, NO EXIT, self-tests) are real and from the period.
 
-**Gilman's twist carries the arc.** Her narrator says she has "got out at last" while creeping round the same room. The building's exits work the same way.
+**Why only in the dark.**
+- Afterglow is swamped under a lamp.
+- The product is meant to stay hidden until the power fails.
+- This is Gilman's sub-pattern, seen "only … in certain lights".
 
----
+**Why it needs light first (starved cells).** This is the spec sheet's install rule: the paper needs normal light to charge. Players can repeat it as "no light in, no light out", and glow stars already taught it.
 
-## 1. What the fiction must honour
+**Why it knows the way.**
+- When the building rearranges itself unseen, it re-papers, and the plan is redrawn every time the room is.
+- Egress leads away from the compartment you occupy. A compartment you have left counts as evacuated, so the plan never sends you back.
 
-| Rule (source) | Narrative consequence |
+**Chase.**
+- When the Relay commits to a chase, a silent alarm spreads from its cell, the zone of origin.
+- The lamps drop to emergency level so the paper can be read. **The dark is for the paper, not for you.**
+- The plan switches to ALARM ROUTE: doors you can shut, putting a compartment between you and the origin.
+- It does not know the Relay breaks doors in 2.5 s.
+
+**Sags** are the emergency-lighting self-test. It is meant to run every 30 days; here it runs every minute or two, because time here is wrong.
+
+**EAR** works like a fire panel's annunciator: the dark cells round a logged noise light up. The paper is reporting, not listening.
+
+**Blind places.**
+- Office zones are tenant fit-out: drywall, not on the base-building plan.
+- The front rooms (title stream) are not on the plan.
+
+**First dark.** A ballast dies, and the fresh-charged plan blooms.
+
+**Legend (Q10).** A framed evacuation-plan placard on the map side of the start door:
+- `YOU ARE HERE`, a start room, and `SEE SHEET A-3`;
+- its glow legend lights only when its lamp is off.
+
+**WP03 tie.** The mill drew the egress chevrons wider and blunter than the décor's 55° bands, because guidance must never be mistaken for decoration (see §10).
+
+### A.3 Trust and the forger
+**Trust.**
+- Every mark is the building's and true about the building.
+- It knows nothing about the occupant who hunts, and calm routes can lead you into it.
+- With no distance readout, the player learns to treat the plan as a map, never as a warning.
+
+**The forger: the other occupant.**
+- From T4 the roll stamp reads `OCCUPANTS 2`. Someone else has learned the ink and wants company.
+- **Why only FLOW:** they want you to come to them, and the building's "go" is the only word they have taught themselves.
+- **Why it shows under light:** real afterglow can never show under the lamp that feeds it. A FLOW you can see in full light is giving off its own light. It is too bright to be paper.
+- **The close tell:** the type is hand-drawn imitation, uneven, with one S reversed.
+
+### A.4 Link to the moving print
+
+| Print event | Fiction |
 |---|---|
-| Glows only where the cell's own lamp is dead, dying or sagging; a lit wall shows nothing (LD R1) | Its job is to be invisible in normal use. |
-| Fresh dark is bright; starved dark (a dead cell among dead neighbours) is blank (LD R2) | It needs light to charge. Blank dark is a rule of the material, not a bug. |
-| Only wallpaper carries it: none on Office drywall, doors, the start area or the title stream rooms (LD R3) | It belongs to the papered base building only. |
-| Calm routes lead to the nearest door or window into an **unvisited zone**, ignore the Relay, and never lead back (LD R5) | It knows the building and not the monster, and it always moves you on. |
-| Pressure routes run during a Chase, to doors away from the Relay; this may extend to Hunt (LD R6, Q3) | It reacts to an emergency. |
-| Truthful before T4. From T4 an optional forged FLOW glows under a lit lamp; only FLOW is forged (LD R9, Q4) | The building never lies. A forgery comes from someone else, and it is too bright to be phosphor. |
-| A message never changes in view (LD R10) | Changes happen unseen, under light, or at a sag or wave front. |
-| **Dark is never cover:** the Relay's sight is a 12 m ray with no light term (LD R13) | No line, mark or placard may imply that darkness hides you. |
-| Era lock 1990, nothing designed after 1993 (`office_and_film/22_era_lock.md`) | ZnS:Cu, not strontium aluminate (invented 1993, patented 1994). Printed dates ≤ 1990. Period sign type. |
-| IP: use concepts only, no wiki text, nothing from Async (`03_ip_canon.md` §5) | Original product, mill and wording. No real brand. |
-| The Relay's identity is still open (hunter directions A–D plus "squeezed giant", `research/hunter/10`, `11`) | The ink fiction must work with any Relay. |
+| Unseen jumps | The building re-papers, and the plan is redrawn underneath: one act, two layers |
+| Slips in a lamp's gasp | The décor moves at night (Gilman). The plan holds still where it is speaking (no slips under messages, LD R11) |
+| Crawl at scripted beats (GROUND only) | The paper settling during a self-test |
+| Chase wave reprint | The alarm redraws the plan from the zone of origin |
+| Relay wake reprint | Facilities follows it and re-papers where it walked |
+| Subliminal drift | The building breathing |
+
+### A.5 LD §12 slots
+
+| Slot | Answer |
+|---|---|
+| What it is, who printed it | A 1990 contract-mill phosphor egress underprint, base-building only |
+| Why NEW thresholds, never back | Drawn to the current plan; leads away from compartments already evacuated |
+| Why it needs light; why dark clusters are blank | The pigment must be charged: "no light in, no light out" |
+| Why it reacts to the chase | A silent alarm from the zone of origin, with alarm routing to doors you can shut |
+| Help or herding | Both. A perfect evacuator with nowhere to send you |
+| Content up close | US life-safety sign type (TeX Gyre Heros Bold, as a stand-in for Helvetica) and roll stamps |
+| Glyph names | WAY ON / EXIT / NO EXIT / OUT OF SERVICE / ALARM ROUTE |
+| Sags | The emergency-lighting self-test |
+| First dark | A ballast dies and the plan blooms |
+| EAR | The annunciator: answering, not listening |
+| Forger | The other occupant: too bright to be paper, hand-drawn type |
+| Gilman | The sub-pattern seen only in certain light; "got out at last" while going round |
+
+### A.6 Ten marks
+
+| # | Name | Up close | What it means here |
+|---|---|---|---|
+| M1 | WAY ON | `THIS WAY OUT` knocked out of the strokes in three lines | The route to a new compartment runs this way |
+| M2 | EXIT | `EXIT` stacked. Beside a window: `EXIT · BREAK GLASS` | Leave here. The building doesn't know who hears glass |
+| M3 | NO EXIT | `NO EXIT`, with NO above EXIT as the code sets it | A pocket. Always true |
+| M4 | OUT OF SERVICE | `OUT OF SERVICE · DOES NOT CLOSE` | The damage log. Over a run, a map of dead doors |
+| M5 | ALARM ROUTE | `ALARM`; on the door bars, `KEEP CLOSED` | A door you can shut between you and the origin |
+| M6 | ROLL STAMP | Register crosshairs + `LEVEL 0 · SHEET A-3 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1` | The substrate. It carries the escalation |
+| M7 | LOGGED | No new text | It was heard here, so leave quietly |
+| M8 | THIS WAY ON | `THIS WAY ON`; the stamp reads `SHEET A-1114` | The plan has stopped pretending there is an outside. An Exit 8-style changed sign |
+| M9 | SCRATCH-THROUGH | Tallies and initials scratched through the décor (`R.M. 6/90`, `IT ONLY GOES IN`) | Other occupants were here. No gameplay meaning |
+| M10 | FORGERY | Hand-drawn imitation `THIS WAY OUT`, one S reversed; the stamp reads `OCCUPANTS 2` | Not the building's. It leads into a NO EXIT pocket |
+
+### A.7 Run arc
+
+| Tier | Content | What the player realises |
+|---|---|---|
+| T0 | M1–M3, M6 | It's a safety system |
+| T1 | + M4, the first self-test, the first alarm route | It knows the building, not the monster |
+| T2 | M8 | Every exit leads in |
+| T3 | M9 | Others followed it before me |
+| T4+ | `OCCUPANTS 2`, M10. Optional: GROUND figures (§8.3) | Someone else writes in it |
+
+Optional Caught line: `OCCUPANT ACCOUNTED FOR` (map chat's HUD).
+
+### A.8 Writing rules
+- The building speaks deadpan US life-safety English, in caps. It is never warm and never says "help".
+- Type is TeX Gyre Heros Bold, with strokes ≥ 2.5 mm.
+- Human marks (M9, and M10's imitation) are words and tallies only.
+- Dates ≤ 1990. No mill name.
+
+### A.9 Strengths, risks, costs
+**Strengths:**
+- Every LD rule has a reason inside the fiction.
+- Grounded in real 1990 objects.
+- Uses the Backrooms' own institutional register without Async.
+- **Fixes nothing about the Relay.**
+
+**Risks:**
+- Quieter dread. The late tiers (M8–M10) carry the scare.
+
+**Costs:**
+- About 12 type layers, 4 substance layers and a placard prop.
 
 ---
 
-## 2. Anchors (verified; URLs in §12)
+## 5. Direction B: SUB-PATTERN, those behind the paper
 
-### 2.1 Charlotte Perkins Gilman, "The Yellow Wall-paper" (*New England Magazine*, January 1892)
-The text is in the public domain (Gutenberg #1952). Gilman's paper is literally two layers, and the second one shows only in certain light:
-- The sub-pattern: "a kind of sub-pattern in a different shade". It is seen "only … in certain lights, and not clearly then".
-- By day vs by night: "By daylight she is subdued, quiet." By moonlight the pattern "becomes bars!"
-- The front pattern moves: "The front pattern does move—and no wonder! The woman behind shakes it!"
-- Many of them: "Sometimes I think there are a great many women behind". Later, "so many of those creeping women".
-- The trail: "a very funny mark on this wall, low down, near the mopboard". It is "a long, straight, even smooch". At the end, "my shoulder just fits in that long smooch around the wall".
-- The ending: "I've got out at last". She is still in the room, and has to "creep over him every time!"
+*Author: the people the place has kept.*
 
-**What we take:**
-- A hidden layer that shows only when the light is wrong.
-- A front pattern that moves.
-- The figure behind it.
-- Getting out that is really going round.
+### B.1 Pitch
+Everyone the place has kept is behind the front pattern. In the dark, they show you where they were going when it caught them.
 
-### 2.2 Kane Parsons' *Backrooms* (Wikipedia episode table; YouTube metadata)
-- **Ep 13**, released 2022-05-20 (unlisted, 33 s), is titled **9780415263573**.
-  - Wikipedia's footnote says this is the ISBN for Gilman's story.
-  - Open Library pins it more precisely: Catherine J. Golden's critical edition, *The Yellow Wall-paper: A Sourcebook and Critical Edition* (Routledge, 2004).
-  - The episode itself shows only highway surveillance footage of a car disappearing into the road. The link to Gilman is in the title alone.
-- **Ep 24, "Static Dead End"** (2025-02-12; an in-video date of 05/29/1990): stretched wallpaper, irregular floor depth, and furniture phased into walls and floors. Canon treats the paper as a skin that can deform, so a moving print is in canon.
-- **Ep 16, "Found Footage #2"** (2022-08-21): green cracks start to glow in the walls around her. Green light in the walls is part of Kane's anomaly language. Our green must read as *printed* (crisp glyphs, faint, period type), never as cracks or portal light.
-- **Ep 1, "Found Footage"**: a wall covered in graffiti comes just before the creature. It is a precedent for human marks, used here only at T3 (§5, M9).
+**Deck line:** *The pattern has people behind it, and they only move in the dark.*
 
-### 2.3 The Exit 8 (2023) / Platform 8 (2024)
-- A repeating corridor with a stable baseline.
-- The rule: an anomaly means turn back; no anomaly means go on. A wrong call resets the count.
-- The rules are posted on a sign on the wall at the start.
-- Anomalies range from subtle (a different message on a sign) to obvious (a power outage).
-- In the Automaton interview, Kotake says he added a "don't get off" warning sign because without it one anomaly felt unfair.
+### B.2 Fiction
+**Who printed it, and when.**
+- Nobody. The WP03 paper was hung in 1990 like any contract paper.
+- Behind its front pattern there is a sub-pattern nobody printed: the people the place has kept. Like Gilman's women, they are "all the time trying to climb through", and "nobody could climb through that pattern—it strangles so".
+- They are not in the walls. They are in the *print*.
 
-**What we take:**
-- A diegetic rules placard (§4.5).
-- Anomalies as changed sign text, e.g. THIS WAY OUT → THIS WAY ON (M8).
-- Every lie gets a tell (M10).
+**Why only in the dark.**
+- "By daylight she is subdued, quiet." They move only when the lamp dies.
+- Their green is light the paper took in. The lamps feed them, and in the dark they give it back.
 
-### 2.4 Haunted Mansion (Disneyland; open to all guests 1969-08-12)
-- In the portrait corridor, the portraits flicker into macabre versions of themselves when the lightning flashes.
-- The Magic Kingdom copied the effect in 2007.
-- The original mechanism is unverified.
+**Why it needs light first.**
+- They can only show you the light they were given.
+- A dark cluster is where they have been hungry too long, and there is nothing left to show.
 
-**What we take:**
-- The paper shows its other face in the lamp's gasp.
-- The visible print slips inside that same dark window (`10_synthesis.md` §5).
+**Why it knows the way.**
+- They are in every sheet of paper, joined wall to wall, and they have walked every room.
+- They point to rooms you haven't been in because they were all heading somewhere new when it caught them. Nobody who was running went back.
 
-### 2.5 The material
-**ZnS:Cu:**
-- First reported by Théodore Sidot in 1866.
-- Green, with a peak at about 531 nm.
-- Charged by light, then fades. A measured ZnS pigment drops from 25 mcd/m² at 10 min to 2.5 at 60 min, so it is visible for tens of minutes to about an hour.
+**Why the marks are shapes.**
+- They can only move along the geometry of the print they are trapped in.
+- Their trails bend into chevrons. Where one was cornered, the pattern "becomes bars!" They hold a door frame as two uprights.
+- The grammar is the shape of the trap.
 
-**Strontium aluminate:** about 10× brighter and longer-lasting. It was invented in 1993 and patented in 1994, which is outside the 1990 room.
+**Chase.**
+- In calm play they cannot feel the Relay, because it walks softly.
+- When it runs, they panic and flee ahead of it. The wave is them.
+- They point at doors because a shut door is what each of them wished they had reached. This says nothing about the dark: they were caught in the light too.
 
-**Radium paint ("Undark") was radium plus zinc sulfide** (US Radium Corp., 1917–26). The dial painters, the "Radium Girls", were poisoned. This is a warning, not a motif.
-- **Writing rule:** the 1990 product is sold as *non-radioactive, light-charged*.
-- Don't use the dial painters' story or likeness.
+**Sags.** Many of them press forward at once to look at you, and the lamps sag. The front pattern bulges.
 
-### 2.6 Glowing egress by 1990 (the real-world basis for EGRESS)
-- **Tritium EXIT signs:**
-  - tritium gas plus a phosphor, probably zinc sulfide, needing no power;
-  - museum examples date from about the 1970s;
-  - green is usually the brightest colour.
+**EAR.** They turn to look where it heard you. They are watching, not listening.
 
-  By 1990 they were familiar in aircraft and buildings.
-- **Aircraft floor-path marking:**
-  - The Air Canada 797 cabin fire was on 2 June 1983.
-  - 14 CFR 25.812(e) (Amdt. 25-58, Oct 1984) requires floor-proximity escape path marking, retrofitted by Nov 1986.
-  - In 1990 these strips were **electric**. Photoluminescent strips came later (FAA AC, 1997).
-- **German glow signs:** DIN 67510 standardised long-afterglow pigments from 1958, with a new edition in 1974.
-- **Charging:**
-  - Glow exit signs need light on their face at all times during occupancy (UL 924 listing, 2 fc).
-  - A glow sign takes about 60 min to charge (IAEI, 2003).
-  - Both sources are modern; they are used for the physics, not as 1990 law.
-- **NO EXIT:**
-  - Doors likely to be mistaken for an exit must be signed. NFPA 101 sets the words NO above EXIT. OSHA 1910.37 has required "Not an Exit" since 1974.
-  - Dead-end corridors are limited because they trap people in a fire.
-- **Self-tests:** NFPA 101 §7.9.3 requires a functional test of emergency lighting at 30-day intervals for at least 30 s, and once a year for 1.5 h. That is the current edition; the 1990 wording is unverified.
-- **MS *Scandinavian Star***:
-  - set on fire on 7 April 1990, killing 159 (one 1993 paper says 156);
-  - SOLAS was amended in 1992;
-  - IMO A.752(18) (1993) allows "photoluminescent indicators" on escape routes.
+**Blind places.**
+- Office drywall has no pattern to be behind.
+- The front rooms' paper is new: nobody is behind it yet.
 
-  This is exactly the year the game is set. A mill selling a glow egress product in 1990 is speculative but timely.
+**First dark.** A lamp dies, and they wake bright and fresh.
 
-> The **egress underprint is invented**. There is no evidence that a phosphor egress wallcovering existed in 1990, and we should not claim one did. Every part of it (pigment, glyph conventions, test cycles, NO EXIT) is real and period-correct.
+**Legend (Q10).** A torn corner of paper beside the start door, as Gilman tears the paper. In the dark the flap shows one chevron and one pair of bars.
 
-### 2.7 Period objects that pre-teach the rules
-- **Glow-in-the-dark ceiling stars (1970s on, one popular-press source):** every 1990 child knows they need light first and fade by morning. This is the starved-cell rule, already learned.
-- **Glo Friends (TV special 1985, series 1986):** small glow-in-the-dark toy bugs. The 1982 Glo Worm was battery-lit, so don't cite it.
-- **Hypercolor (Generra, January 1991):** shirts that kept handprints, hugs and armpits as colour. "Surfaces that remember" were a 1991 consumer thrill. This one is fine within ≤ 1993, but don't put it in a 1990 room.
-- **Fluorescent vs phosphorescent:**
-  - Blacklight/DayGlo glows only while UV is on (Switzer brothers 1930s; US blacklight posters 1967–69).
-  - Our ink is **afterglow, not blacklight**: it needs no source in the dark, and it is a memory of light.
-- **Magic Eye (Japan 1991, US 1993); Tyler's random-dot autostereogram (1979); Brewster's "wallpaper effect" (1844):** a hidden figure in a repeating pattern, and repeats that float when you look wrong. This anchors the optional T4+ figures (§6).
-- **Laser tag:** Photon (Dallas, 1984); Laser Quest (Manchester, 1989). Its blacklight maze arenas are documented only for today, so treat them as a mood reference, not period proof.
+**WP03 tie.** The décor's mitred bands are the bars of their cage. Their own chevrons are blunter, because hands round off corners.
+
+### B.3 Trust and the forger
+**Trust.**
+- They want you out because they never got out.
+- They don't know the Relay is coming until it runs.
+- They are honest and frightened, which is not the same as safe.
+
+**The forger: the one who wants company.**
+- Not all of them want you out. Some want you in with them, as Gilman's narrator ends up among the creeping women.
+- **Why only FLOW:** they only beckon, and never warn.
+- **Why it shows under light:** she has come up to the surface, close enough to the front of the paper to show through even under a lamp. She is no longer subdued by daylight.
+- **The close tell:** the fingertip trails inside the stroke face *back at you*, curling inward. They beckon instead of reaching away.
+
+### B.4 Link to the moving print
+
+| Print event | Fiction |
+|---|---|
+| Unseen jumps | They move. "The woman behind shakes it" |
+| Slips in a lamp's gasp | Gilman's night movement. They stay still where they are pointing (LD R11) |
+| Crawl at scripted beats | Creeping (GROUND only) |
+| Chase wave reprint | Them fleeing ahead of it |
+| Relay wake reprint | The paper flinching where it walked |
+| Subliminal drift | Breathing |
+
+### B.5 LD §12 slots
+
+| Slot | Answer |
+|---|---|
+| What it is, who printed it | Nobody. The kept, behind the front pattern |
+| Why NEW thresholds, never back | They were all heading somewhere new when it caught them |
+| Why it needs light; why dark clusters are blank | They only have what the lamps fed them |
+| Why it reacts to the chase | They flee when it runs; they show the doors they never reached |
+| Help or herding | Help from the frightened, and a lure from the lonely |
+| Content up close | Fingertip trails, handprints, knuckle and forearm marks |
+| Glyph names | THE WAY THEY RAN / THE DOOR THEY HELD / THE BARS / THE SCRATCH / BOTH HANDS |
+| Sags | They crowd forward to look |
+| First dark | They wake |
+| EAR | They watch the spot it heard |
+| Forger | The one at the surface, who wants company |
+| Gilman | Literal: sub-pattern, bars, creeping, climbing through |
+
+### B.6 Ten marks
+
+| # | Name | Up close | What it means here |
+|---|---|---|---|
+| M1 | THE WAY THEY RAN | Four parallel fingertip streaks along each stroke, thinning in the direction of travel | Someone ran this way, toward new ground |
+| M2 | THE DOOR THEY HELD | Handprints stacked up both bars, palms toward the opening. At a window, prints spread flat on the glass side | Through here |
+| M3 | THE BARS | Knuckle and forearm prints across the bars, as if gripping them | Someone was cornered here. Always true |
+| M4 | THE SCRATCH | Four drag lines across the diagonal | It came through. The door will never shut |
+| M5 | BOTH HANDS | Two sets of streaks side by side, smeared from speed | Run, and shut that door |
+| M6 | THE PRESSED | Faint overlapping palm prints, as if from the other side of the paper | They are here |
+| M7 | WATCHING | The palms turn toward the noise source | It heard you here |
+| M8 | CLOSER | The streaks resolve into whole hands | They are nearer the surface |
+| M9 | THE EYES | Gilman's "two bulbous eyes" in the GROUND repeat, upside down, one pair per roll | They see you. No gameplay meaning |
+| M10 | THE BECKONING | Fingertips curl back toward you, toward the pocket | She wants company |
+
+### B.7 Run arc
+
+| Tier | Content | What the player realises |
+|---|---|---|
+| T0 | M1–M3, M6 | Someone left trails |
+| T1 | + M4, the first sag, the first chase | They know the rooms, and they are afraid of it too |
+| T2 | M8 | They are coming closer to the surface |
+| T3 | M9 | They are watching me |
+| T4+ | M10; GROUND procession of small creeping figures tiled per roll, seen in a sag from ≥ 6 m (Gilman's "great many women"; the Brewster/Magic Eye hidden figure) | Not all of them want me out |
+
+Optional Caught line: none, or the GROUND procession gains one figure on the next run's title (the visual chat decides).
+
+### B.8 Writing rules
+- **They are voiceless:** no words anywhere, only bodies and trails. This is the opposite of A.
+- **No faces before T3**, and even then only Gilman's eyes. No gore, no "help me", never seen whole except at a distance.
+- **They never point at the Relay.** Their light is the lamps' light, so nothing implies the dark protects you.
+- **No names.** They are "they", and "she" for the forger, after Gilman.
+
+### B.9 Strengths, risks, costs
+**Strengths:**
+- The strongest dread.
+- Gilman used literally.
+- The forger and the Caught implication are emotionally clear.
+- No text to localise.
+
+**Risks:**
+- Explaining crisp chevrons as hand trails is a stretch. The "shape of the trap" covers it.
+- The "friendly ghosts" reading tilts the ink toward help.
+- No 1990 object grounds it.
+- It says what being caught means (you join them).
+
+**Costs:**
+- Hand-texture layers, which are harder to keep at ≥ 0.6 coverage.
+- One figure layer.
+- A torn-flap decal.
 
 ---
 
-## 3. Four directions
+## 6. Direction C: BLAZES, the wanderers' code
 
-Each direction answers the same six questions:
-1. Who printed it, and when?
-2. Why does it glow only in the dark?
-3. What do the marks mean, and can they be trusted?
-4. How does it connect to the moving print?
-5. How does it escalate?
-6. What does the player learn?
+*Author: earlier people, alive, curated by the building.*
 
-### A. EGRESS: the building's own exit plan (author: the place, as a machine)
-1. **Who printed it, and when.**
-   - A contract wallcovering mill printed a ZnS:Cu underprint beneath the decorative print in 1990. The roll stamp reads PRINTED 03/90.
-   - It was sold as a power-failure guidance system: "invisible by day, there when the power fails".
-   - Each roll was printed for one position on the floor plan.
-   - In the Backrooms the plan never stops changing. Whenever the building rearranges itself unseen, it reprints the paper, and the underprint is redrawn to the new plan.
-2. **Why only in the dark.**
-   - Physics: afterglow is swamped under a working lamp.
-   - Product intent: it is meant to stay hidden until the power fails.
-   - Gilman: the sub-pattern shows only in certain light.
-   - Starved cells: the product needs light to charge. Players can repeat the rule as "no light in, no light out".
-3. **Meaning and trust.** The marks are egress conventions:
-   - FLOW = WAY ON (chevrons);
-   - HERE = EXIT (a door or window framed in bars);
-   - STOP = NO EXIT (the code phrase for a dead end);
-   - BREACH = OUT OF SERVICE (a door that will no longer close);
-   - pressure = ALARM ROUTE (routes to a door you can shut: compartmentation, KEEP CLOSED).
+### C.1 Pitch
+People fell in before you. They found out the paper glows when scratched, so they marked it for whoever came next. The building copies forward only the marks that are still true.
 
-   Trust:
-   - Every mark is true about the building. The building never routes an occupant back into a compartment it has already evacuated.
-   - It knows nothing about the occupant who hunts.
-   - Calm routes can lead you straight into the Relay. That is not malice; the building doesn't know it is there.
-4. **Link to the moving print.** The visible print is the décor that the building redraws. The underprint is the plan under it. Details in §7.
-5. **Escalation:** the plan stops pretending there is an outside. It starts counting a second occupant, and something starts forging its signs (§6).
-6. **What the player learns:**
-   - green means a way on;
-   - bars mean a pocket;
-   - an alarm points at a door;
-   - the building is efficient, and it has nowhere to send you.
+**Deck line:** *Someone marked the way for you. The building only keeps the marks that are still true.*
 
-Strengths:
-- Every LD rule has a reason inside the fiction (table §4.3).
-- It is grounded in real 1990 objects.
-- It is deadpan and institutional, the Backrooms' own register, without touching Async.
-- It works with any Relay.
+### C.2 Fiction
+**Who made it, and when.**
+- The WP03 paper has a phosphor ground coat under its vinyl print. Nobody in here knew why. It could be an off-spec mill run, but the game never explains it, and the wanderers didn't know either.
+- Wanderers in the late 1980s and 1990 learned that scratching through the print exposes the ground, which glows in the dark.
+- They built a four-sign code, like hobo signs chalked for the next traveller and painted trail blazes, and cut it with a stencil so that every hand makes the same shape.
 
-Risks:
-- It is less overtly scary on its own. The grafts in §4 and the escalation in §6 supply the dread.
+**Why only in the dark.** It is glow-in-the-dark ground, and the print hides it in light.
 
-### B. SUB-PATTERN: those behind the paper (author: the absorbed)
-1. **Who and when.** Nobody printed it. Everyone the place has kept is in the paper, and the glow is the light they took in.
-2. **Why only in the dark.** "By daylight she is subdued, quiet." They move only when the lamp dies.
-3. **Meaning and trust.**
-   - FLOW = finger-trails toward a way they never reached.
-   - HERE = handprints round a frame.
-   - STOP = forearms barring the place where one of them ended.
+**Why it needs light first.**
+- It is ordinary glow material. The wanderers' rule: "lamps on, then read".
+- A dark cluster is unreadable, and they knew it.
 
-   They want you out, but they never saw the Relay coming either. Some want company: that is the forger.
-4. **Link to the moving print.** They shake the front pattern. The chase wave is them fleeing ahead of the Relay.
-5. **Escalation.** Faces appear in the substance, then processions, then forgeries. Being caught puts you in the paper.
-6. **What the player learns:** the paper is people.
+**Why it knows the way.**
+- **Two authors.** The hands are human; the choice is the building's.
+- Over years, people scratched thousands of marks in every direction. Each time the building rearranges itself and re-papers, it copies the marks that are still true of the new layout (the place copies everything, like Kane's repeating signs) and paints over the rest.
+- Why does it show you only the ones that lead somewhere new? The code's first rule was "never mark the way back". The building also wants you moving. That second reason is the ambiguity.
 
-Strengths: the strongest dread and the most literal Gilman.
+**Chase.**
+- Wanderers scratched RUN marks at the doors they escaped through.
+- The building shows those only when the hunt runs. It is the building's choice again, and darkness is no part of it.
 
-Risks:
-- The procedural chevrons and bars don't read as hands.
-- The "friendly ghosts" reading tilts the help/lure balance towards help.
-- There is no 1990 object behind it.
-- It fixes what the Relay does to people.
+**Sags.** The place's power is unreliable. In those few seconds, everyone used to stop and read the walls.
 
-### C. BLAZES: the wanderers' code (author: earlier people, alive)
-1. **Who and when.** People who fell in during the 1980s–90 carried hobby glow paint and left a shared code. The model is hobo signs (1870s on: chalk marks left for whoever comes next) and painted trail blazes.
-2. **Why only in the dark.** Glow paint is the only paint that works without power.
-3. **Meaning and trust.** The marks are human: arrows, "door here", "dead end", "it broke this". They are written in good faith but can be out of date.
-4. **Link to the moving print.** The building paints over stale marks, which explains why the visible ones are always current.
-5. **Escalation.** Messages become more personal and frantic, ending with names and tallies.
-6. **What the player learns:** someone was here before.
+**EAR.** The building surfaces old `QUIET` scratches where you were loud.
 
-Strengths: human warmth, and it is easy to grasp.
+**Blind places.**
+- Office drywall has no glow ground.
+- The front rooms are freshly papered, and nobody has scratched them yet.
 
-Risks:
-- Humans can't know which zone is new *to you* or re-point during a chase. A second author (the building) has to curate the marks, which muddies who wrote what.
-- Hand-painted marks clash with the crisp glyph shapes.
-- It sits close to the wiki's explorer-group culture and the found-note cliché.
+**First dark.** A lamp dies, and the scratches bloom.
 
-### D. DRAG LINE: the Relay's laid course (author: the hunter)
-1. **Who and when.** In drag hunting, an artificial scent trail is laid for hounds; it was popular in the 19th century at Oxford, Cambridge and in the Army. The ink is the course of the hunt, laid in advance. "Relay" originally meant fresh hounds placed along the line of a chase (`research/hunter/03` §6).
-2. **Why only in the dark.** The course is run at night.
-3. **Meaning and trust.** It is always true about the course and never about your safety. During a chase it shows doors to shut, because a hunt that ends too soon is no hunt.
-4. **Link to the moving print.** The Relay's wake reprint is its footprint.
-5. **Escalation.** The course tightens. At T4 it stops pretending.
-6. **What the player learns:** following is being herded.
+**Legend (Q10).** "THE CODE": the four signs scratched beside the start door with a word under each. This is the hobo-sign tradition of explaining the signs.
 
-Strengths: the most paranoid reading, and it fits the fact that following the ink makes a run escalate faster.
+**WP03 tie.** The stencils were cut from the décor's own bands, so the signs are made of the paper's geometry.
 
-Risks:
-- It contradicts LD's thesis ("the ink knows the building, not the monster") and the help half of help/lure.
-- It locks the Relay's identity while the hunter design is open.
-- It teaches "never follow", which kills the mechanic.
+### C.3 Trust and the forger
+**Trust.**
+- The marks were made in good faith by people who knew things the building doesn't. M2's window variant says LOUD.
+- Which marks you see is the building's choice.
 
-### Scores (1–5 each)
+**The forger: the keeper.**
+- A wanderer who stopped wanting out. He settled in a pocket and wants visitors.
+- **Why only FLOW:** his home is a dead end, so he never marks dead ends.
+- **Why it shows under light:** he paints with self-luminous paint scraped from old radium-dial clocks, second-hand stock. It glows without charging and does not need the dark, so his marks shine in full light.
+- **The close tell:** a small roof sign above his chevrons, his own addition to the code, meaning "stay".
 
-| | Mechanics fit | 1990 grounding | Dread / ambiguity | Self-teaching clarity | Leaves other chats' choices open | Escalation runway | **Total** |
+### C.4 Link to the moving print
+
+| Print event | Fiction |
+|---|---|
+| Unseen jumps | Re-papering: true marks copied forward, stale ones buried |
+| Slips in a lamp's gasp | The paper settling. Copied marks never slip (LD R11) |
+| Crawl | Re-papering in progress |
+| Chase wave reprint | The building rushing the RUN marks forward |
+| Relay wake reprint | It papers over the marks where it walked |
+| Subliminal drift | — |
+
+### C.5 LD §12 slots
+
+| Slot | Answer |
+|---|---|
+| What it is, who made it | Wanderers' scratches into a glow ground, copied forward by the building |
+| Why NEW thresholds, never back | The code's first rule, plus the building's choice |
+| Why it needs light; why dark clusters are blank | Ordinary glow ground: "lamps on, then read" |
+| Why it reacts to the chase | The RUN marks, shown only when it runs |
+| Help or herding | The marks help. The selection may herd |
+| Content up close | Scratch texture, stencil edges, words and tallies |
+| Glyph names | GO ON / DOOR / DEAD END / IT BROKE THIS / RUN |
+| Sags | Unreliable power: everyone stops to read |
+| First dark | The scratches bloom |
+| EAR | Old QUIET marks surfaced |
+| Forger | The keeper: radium paint, roof sign |
+| Gilman | The "smooch": a rubbed trail along the wall (M6) |
+
+### C.6 Ten marks
+
+| # | Name | Up close | What it means here |
+|---|---|---|---|
+| M1 | GO ON | Stencil edges with scratch fill; `GO ON` scratched small | The way on |
+| M2 | DOOR | Scratched `DOOR`. At a window: `DOOR · LOUD` | Through here. Glass is heard |
+| M3 | DEAD END | Scratched `DEAD END` | A pocket. Always true |
+| M4 | IT BROKE THIS | `IT BROKE THIS` and a tally of blows | The door will never shut |
+| M5 | RUN | Two stencil passes; `RUN · SHUT IT` | Shut that door |
+| M6 | THE SMOOCH | A long rubbed line at shoulder height where people steadied a hand on the wall (the wall-follower habit), with initials | People walked here |
+| M7 | QUIET | An old `QUIET` scratch | You were loud here |
+| M8 | NO NEWER DATE | Tallies get longer. Every date reads 1990 or earlier, however long the tally | Time doesn't pass in here |
+| M9 | MESSAGES | Notes to each other: `WAIT AT THE TALL ROOM`, `11/90 STILL GOING` | People hoped. No gameplay meaning |
+| M10 | THE KEEPER'S LINE | Fresh, even paint, no scratches, a little roof sign above | Someone wants visitors |
+
+### C.7 Run arc
+
+| Tier | Content | What the player realises |
+|---|---|---|
+| T0 | M1–M3, M6 | Someone marked this for me |
+| T1 | + M4, the first chase (M5) | They knew about the monster |
+| T2 | M8 | No date is newer than 1990 |
+| T3 | M9 | They were people, and they're gone |
+| T4+ | M10; GROUND reads `STAY` in the keeper's paint | Not every mark is left for my sake |
+
+Optional Caught line: none.
+
+### C.8 Writing rules
+- **Human, terse, scratched caps.** No "help me", no names (initials only), no wiki explorer-group names or Backrooms wiki items.
+- **Only the four code shapes carry meaning.** Everything else is commentary.
+- **Dates ≤ 1990.**
+- **The window variant may warn (LOUD).** It is the only human knowledge the ink adds. It is never a Relay position.
+
+### C.9 Strengths, risks, costs
+**Strengths:**
+- Human warmth.
+- The easiest to grasp.
+- Real marking traditions behind it.
+- The best legend object (THE CODE).
+
+**Risks:**
+- Two authors. The building's curation is the weakest reason among the four.
+- Hand marks in crisp shapes need the stencil explanation.
+- Close to the wiki's explorer-group culture and the found-note cliché.
+
+**Costs:**
+- Scratch and stencil type layers.
+- A scratched-legend decal.
+
+---
+
+## 7. Direction D: DRAG LINE, the hunt's laid course
+
+*Author: the hunt; the Relay is its hound.*
+
+### D.1 Pitch
+The ink is a drag line: the course of a hunt, laid out ahead of the hounds. You are not escaping. You are running the course.
+
+**Deck line:** *Somebody laid the course. You're the one running it.*
+
+### D.2 Fiction
+**Who laid it, and when.**
+- The hunt. It is not the Relay's body: the Relay is the hound, the "relay" placed along the line (`research/hunter/03` §6).
+- Whoever keeps the hunt is never seen. Call them the huntsman.
+- The line is laid in ordinary phosphorescent luminous paint, always just ahead of you, while you are not looking.
+
+**Why only in the dark.**
+- A night course has to read when the lamps are out.
+- The first-dark beat is the huntsman putting a lamp out: "moving off".
+
+**Why it needs light first.** It is ordinary glow paint, which works only after the lamps have charged it.
+
+**Why it knows the way.**
+- A drag line never doubles back. A good run goes over fresh ground, and the hunt wants a long run.
+- So it always points into compartments you haven't been in.
+
+**Chase.**
+- When the hound views you, the hunt redraws the line to the jumps, the doors you can put behind you, because a run that ends in seconds is a waste.
+- The line doesn't hide you. Nothing does.
+
+**Sags** are the hunt showing a stretch of the course.
+
+**EAR.** Where it heard you, the line freshens: the scent is strong there.
+
+**Blind places.**
+- Office zones are outside the hunt's country. The hound still hunts there, but there is no line.
+- The front rooms are the meet, before the hunt moves off.
+
+**Legend (Q10).** A meet card pinned by the start door: `THE MEET · 03/90`, with ▶▶ LINE · ▮ ▮ JUMP · ═ EARTH. The card is printed and readable in light; its signs glow in the dark.
+
+**WP03 tie.** The line is laid along the paper's bands, as a drag is laid along hedgerows.
+
+### D.3 Trust and the forger
+**Trust.**
+- The line is always true about the course and never about your safety.
+- Calm lines can run you straight into the hound. The hunt wants the hound to find you on the line, eventually.
+- STOP marks the **earths**, the dens where the quarry goes to ground. The hunt marks them honestly because a run that goes to ground ends early.
+
+**The forger: the hound itself.**
+- The hunt plays fair. The hound doesn't: impatient for the kill, it lays a short false line into an earth.
+- **Why only FLOW:** a relay repeats a signal. It can only copy the line, never the other signs.
+- **Why it shows under light:** it is not paint. It is the hound's own light, whatever the Relay turns out to be.
+- **The close tell:** a dragged mark is heavy where it starts and thins out. On a forged line the heavy end is at the pocket, because it was laid from the earth outward.
+
+### D.4 Link to the moving print
+
+| Print event | Fiction |
+|---|---|
+| Unseen jumps | The huntsman re-laying the country |
+| Slips in a lamp's gasp | The huntsman's hand at work. The line never slips (LD R11) |
+| Crawl | The line being laid |
+| Chase wave reprint | The view: the field gallops out from the hound's cell |
+| Relay wake reprint | The hound's tracks |
+| Subliminal drift | — |
+
+### D.5 LD §12 slots
+
+| Slot | Answer |
+|---|---|
+| What it is, who laid it | The hunt's drag line in luminous paint |
+| Why NEW thresholds, never back | A line goes over fresh ground; the hunt wants a long run |
+| Why it needs light; why dark clusters are blank | Ordinary glow paint |
+| Why it reacts to the chase | The view: the line is redrawn to the jumps for a good run |
+| Help or herding | Herding, openly. Running the course is still how you last |
+| Content up close | Smear texture with a heavy start; course-card type on GROUND |
+| Glyph names | THE LINE / THE JUMP / THE EARTH / THE BROKEN GATE / THE VIEW |
+| Sags | The hunt showing the course |
+| First dark | The huntsman puts a lamp out |
+| EAR | The scent freshens |
+| Forger | The hound: its own light, reversed smear |
+| Gilman | The pattern moves because someone behind it lays the line |
+
+### D.6 Ten marks
+
+| # | Name | Up close | What it means here |
+|---|---|---|---|
+| M1 | THE LINE | A dragged smear inside each stroke, heavy at the start and thinning ahead | The course runs this way |
+| M2 | THE JUMP | Smear brushed up the bars. At a window: a wider smear (the big jump) | Over here |
+| M3 | THE EARTH | Two flat smears across | A den: you'd be dug out. Always true |
+| M4 | THE BROKEN GATE | Smear crossed by a diagonal | The gate stays open now |
+| M5 | THE VIEW | Two parallel smears, laid fast | It has seen you. The jump is ahead |
+| M6 | COURSE CARD | Faint printed type: `MEET 03/90 · RUN 213 · 6 MIN` | Other runs happened |
+| M7 | SCENT | Smear freshening round the source | It heard you here |
+| M8 | THE TALLY | The card lists more runs. Most end `TO GROUND` | Runs end |
+| M9 | THE FIELD | Hoof-and-boot scuffs along the GROUND band (the field's passage) | Others rode this. No gameplay meaning |
+| M10 | THE HOUND'S LINE | The smear is heavy at the pocket end | A false line into an earth |
+
+### D.7 Run arc
+
+| Tier | Content | What the player realises |
+|---|---|---|
+| T0 | M1–M3, M6 | It's a course |
+| T1 | + M4, the first chase (M5) | The hunt wants a long run |
+| T2 | M8 | Runs end |
+| T3 | M9 | I'm not the first quarry |
+| T4+ | M10 | The hound cheats |
+
+Optional Caught line: `RUN 214 · 6 MIN`, as a course-card entry using the existing stats.
+
+### D.8 Writing rules
+- **Hunting vocabulary appears only in the content up close**, never in the HUD.
+- **No blood-sport gore.** The Relay is never drawn as a dog. "Hound" is its role, not its look.
+- **The huntsman is never seen or named.** The line never hides you.
+
+### D.9 Strengths, risks, costs
+**Strengths:**
+- The most paranoid reading.
+- The best fit for the escalation coupling (following = being run).
+- Uses the hunter research's own etymology.
+
+**Risks:**
+- It contradicts LD's thesis ("knows the building, not the monster") and the help half of help/lure.
+- It fixes the Relay's *role* (hound) and adds an unseen huntsman.
+- Hunting is a far frame from a 1990 office.
+- It teaches "never follow".
+
+**Costs:**
+- Smear layers.
+- A course-card prop.
+
+---
+
+## 8. Side by side
+
+### 8.1 Key answers
+
+| | A EGRESS | B SUB-PATTERN | C BLAZES | D DRAG LINE |
+|---|---|---|---|---|
+| Author | The building (machine) | The kept | Wanderers + the building | The hunt |
+| Deck line | Fire-exit plan, no outside | People behind the pattern | Marks that are still true | You're running the course |
+| Why only in the dark | Product spec / physics | Subdued by daylight | Glow ground under the print | A night course |
+| Starved = blank because | Needs charging | They're hungry | Needs charging | Needs charging |
+| Forger | The other occupant | The one at the surface | The keeper (radium paint) | The hound |
+| Far tell / near tell | Glows in light / hand-drawn type | Glows in light / beckoning prints | Glows in light / roof sign | Glows in light / reversed smear |
+| Close-up material | Sign type | Hands | Scratches + words | Smear + course card |
+| Text on walls | Yes (caps) | None | Yes (scratched) | Little (card) |
+| 1990 object behind it | Exit signs, egress marking | None | Hobo signs, glow paint | Luminous paint (hunting is a far frame) |
+| Fixes the Relay? | No | What being caught means | No | Its role (hound) |
+| Gilman | Going round | Literal | The smooch | Someone behind lays it |
+| Biggest risk | Quieter dread | Ghosts read as friendly | Two authors | Breaks "help" |
+
+### 8.2 Scores (1–5)
+
+| | Mechanics fit | 1990 grounding | Dread / ambiguity | Self-teaching | Leaves the Relay open | Escalation runway | **Total** |
 |---|---|---|---|---|---|---|---|
-| **A EGRESS** | 5 | 5 | 4 | 5 | 5 | 4 | **28** |
-| B SUB-PATTERN | 3 | 2 | 5 | 4 | 3 | 4 | 21 |
-| C BLAZES | 2 | 4 | 3 | 4 | 4 | 3 | 20 |
-| D DRAG LINE | 4 | 2 | 5 | 3 | 1 | 4 | 19 |
+| **A** | 5 | 5 | 4 | 5 | 5 | 4 | **28** |
+| B | 3 | 2 | 5 | 4 | 3 | 5 | 22 |
+| C | 2 | 4 | 3 | 5 | 5 | 3 | 22 |
+| D | 4 | 2 | 5 | 3 | 2 | 4 | 20 |
+
+Changes since revision 1:
+- B's runway rises: with forgeries ON, its forger is its strongest beat.
+- C's self-teaching rises: THE CODE legend.
+- D rises one point for leaving the Relay's look open.
+
+### 8.3 What the player learns, and when
+
+| Beat (LD §5) | A | B | C | D |
+|---|---|---|---|---|
+| First dark (5–45 s) | Where the light dies, the paper points | Someone wakes and points | Scratches bloom | The huntsman moves off |
+| First door (≤ 60 s) | Green leads to new ground | Their way leads somewhere new | GO ON works | The course goes forward |
+| First STOP (≤ 2 min) | NO EXIT means a pocket | The bars mean someone was cornered | DEAD END | An earth |
+| First sag | The whole plan for 4 s | They crowd to look | Everyone stops to read | A stretch of course |
+| First chase | A door you can shut buys time, not safety | They flee too | RUN marks | The view: jumps ahead |
+| Run 2 | No light in, no light out; tenant space has no plan | No light, nothing to show | Lamps on, then read | Off the country |
+| T2 | Every exit leads in | They're closer | No date after 1990 | Runs end |
+| T3 | Others were here | They watch | They're gone | Not the first quarry |
+| T4+ | Check the light: paper never outshines its lamp | She wants company | Someone wants visitors | The hound cheats |
+
+The optional **GROUND figure layer** at T4+ (small creeping figures tiled per roll, visible only during a sag from ≥ 6 m) is Gilman's "great many women". It belongs most naturally to B, could be added to A as the occupants, and does not fit C or D.
 
 ---
 
-## 4. Recommendation: EGRESS, with two grafts
+## 9. Recommendation
 
-### 4.1 The fiction
-- **The product.** A non-radioactive, light-charged phosphor underprint, printed in 1990 under a commercial-grade contract wallcovering.
-  - The decorative print is a crisp rotary-screen print: the WP05 hybrid, not an ikat.
-  - The underprint is drawn to the plan in glyph conventions taken from exit signs and floor-path marking.
-  - It is sold to the building owner as "base building". Office zones are **tenant fit-out**: drywall, not on the paper's plan, so they are blind.
-  - The mill has no name. Each roll's GROUND carries the stamp `LEVEL 0 · SHEET A-3 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1`. "LEVEL 0" is simply the plan's name for the floor.
-- **The plan is always current.** When the building rearranges itself unseen, it re-papers, and the plan is redrawn every time the room is. That is why the ink knows the layout across interior shifts.
-- **Which way it points.** Egress leads away from the compartment you occupy, and a compartment you've left counts as evacuated. So the ink points to a way into a compartment you haven't been in, through a door or a window, and never back.
-- **The building is a very good evacuator.** It has never had an outside. Following it moves you deeper, faster, and tiers rise sooner (LD §6). The building is helping, and that is the problem.
-- **Self-test (calm power sags, LD §4).**
-  - Emergency lighting is tested at 30-day intervals; here the test comes every minute or two, because time here is wrong.
-  - For 4 s the lamps within 12 m dip and the whole neighbourhood's plan shows.
-- **Alarm (chase wave, LD §4).**
-  - When the Relay commits to a chase, a silent alarm spreads from its cell, the zone of origin, at 8 m/s along the corridors, ahead of you.
-  - The lamps drop to emergency level so the paper can be read. **The dark is for the paper, not for you:** the Relay sees you just as well.
-  - Inside the wave the plan switches to ALARM ROUTE: doors you can shut, putting a compartment between you and the origin. A fire door is meant to be kept closed.
-  - The alarm doesn't know the Relay breaks doors in 2.5 s.
-- **Annunciator (EAR bloom, LD §4; P2 and optional, LD Q8).**
-  - When the Relay accepts a noise, the dark cells round the source glow brighter, like a fire panel lighting the detector that tripped.
-  - The paper isn't listening. It is reporting what was heard.
-- **No sound of its own.** There is no alarm bell, and the ink is silent (LD §11.2).
-  - Optional idea for the sound chat: the self-test and the alarm begin with the click of an emergency-light transfer relay, which matches its relay-click motif (`SOUND_FOLEY_MOTIF_RESEARCH.md` §4.3). The sound chat decides.
+**EGRESS remains the recommendation.** It is the only direction where every LD rule has its own in-fiction reason without a second author or a stretch. It is grounded in real 1990 objects, and it fixes nothing about the Relay while the hunter design is open.
 
-### 4.2 The two grafts
-1. **Scratch-throughs (from BLAZES, T3+).**
-   - Other occupants found that scratching through the front print exposes more underprint, which glows brighter.
-   - They left **words and tallies only, never arrows, bars or brackets**, so human marks can't be confused with the building's grammar.
-   - They appear on GROUND substance only and carry no gameplay meaning.
-2. **The other occupant (from SUB-PATTERN, T4+, only if LD Q4 enables lies).**
-   - The roll stamp starts to read `OCCUPANTS 2`.
-   - Someone else has learned the ink. They write only WAY ON, and they write it into rooms with NO EXIT, because they want company. In Gilman, the room is the trap.
-   - **Their marks are too bright to be paper.** Real afterglow can never show under the lamp that feeds it, so a FLOW you can see under a working lamp is emitting its own light.
-   - Up close, the type is hand-drawn imitation.
-   - If Red prefers, the forger can stay unexplained, or be the Relay ("a relay repeats a signal"). We recommend the other occupant because it keeps the Relay open.
+**When another direction should win:**
+- **B**, if the deck needs the single scariest image and Red accepts that the game turns overtly supernatural. B's forger is the best of the four.
+- **C**, if warmth and an easy pitch matter more than tight logic.
+- **D**, only if Red wants the ink to be a lure first and help second, which changes LD's thesis.
 
-### 4.3 LD §12 slots, filled
+---
 
-| LD slot | Answer |
+## 10. WP03 and the glyphs (a note for the visual chat)
+
+WP03's décor already contains chevron bands at 55° and small arrows in the motif band. In failing cells both layers breathe together. Three cues separate them, recorded by the print chat in LD §9:
+1. **Orientation.** WP03's chevrons point *up* the wall; FLOW chevrons point *along* it, toward the route.
+2. **Medium.** The décor is lit albedo and vanishes in the dark; FLOW is dark-only emission.
+3. **Angle (this document's ask).** FLOW arms about 30–35° from horizontal, isolated in the 0.8–2.0 m band. The décor's are continuous mitred bands. The final angle is the visual chat's call.
+
+Each direction gives the visual difference a reason: A safety design, B hands round off corners, C stencils cut from the bands, D laid along them.
+
+---
+
+## 11. Coordination log
+
+**With the wallpaper-print chat, 2026-10-03.** All of its answers are adopted:
+- The two-layer close-up pipeline (§1.1), pending the visual chat.
+- Micro-type field 1.0 / type 0.55, OK.
+- The T2 variant layer and the forged layer (bit 6).
+- The placard as a prop with an InkShape legend. The print chat withdrew its stream-room legend exception, pending Red.
+- The Flash fallback "WHERE THE LIGHT DIES, THE PAPER POINTS". It names no symbol and works for all four directions.
+- Wording: "a compartment you haven't been in".
+- EAR is local and P2.
+
+It also relayed Red's four decisions above. WP05 references are replaced by WP03.
+
+**Asks if Red picks a direction:**
+
+| Chat | Ask |
 |---|---|
-| What it is and who printed it | A 1990 contract-wallcovering phosphor egress underprint, ZnS:Cu, base-building only |
-| Why it knows the way to NEW thresholds and never leads back | It is drawn to the current plan and leads away from compartments already evacuated |
-| Why it needs light; why dark clusters are blank | A glow pigment must be charged ("no light in, no light out"), and players know this from glow stars |
-| Why it reacts to the chase | A silent alarm from the zone of origin; alarm routing to doors you can shut. Never implies the dark hides you |
-| Help or herding | Both. A perfect evacuator in a building with no outside |
-| B substance up close (< 2 m) | Period sign micro-type plus roll stamps, changing by tier (§5, §6) |
-| Glyph names | WAY ON / EXIT / NO EXIT / OUT OF SERVICE / ALARM ROUTE (shapes unchanged) |
-| Power sags | The emergency-lighting self-test |
-| First-dark beat | A ballast dies in view and the fresh-charged plan blooms. Flash fallback: "WHERE THE LIGHT DIES, THE PAPER POINTS" (the print chat's preference: it names no symbol and gives nothing away) |
-| EAR (P2) | The annunciator: answering, not listening |
-| Forged FLOW (if enabled) | The other occupant. Too bright to be paper, with hand-drawn type |
-| Gilman anchor | The sub-pattern seen only in certain light, the front pattern that moves, and "got out at last" as going round |
-
-### 4.4 Writing rules
-1. Never write, show or imply that darkness, low light or tall halls hide you (LD R13).
-2. Human marks are words and tallies, never arrows, bars or brackets.
-3. The building's voice is deadpan US life-safety English in caps: EXIT, NO EXIT, KEEP CLOSED, OUT OF SERVICE. Never warm, never "help me".
-4. Type: Helvetica stand-in TeX Gyre Heros **Bold** (`FONTS_PERIOD_1990.md`), stroke ≥ 2.5 mm so 4× mips keep the knockouts.
-5. Printed dates ≤ 1990. No real brands, mills or people. No Async. No wiki text.
-6. Green reads as printed, never as cracks or portal light (Kane ep 16).
-7. Every lie has a tell, at range and up close (Exit 8 fairness).
-
-### 4.5 The placard (replaces LD's legend room; conditional on Q10)
-- A framed **evacuation plan** on the map side of the start door, never in the title stream, which stays free of notes (`TITLE_SEQUENCE.md`).
-- Under light it reads as a printed plan: `YOU ARE HERE`, a start room with one door, and beyond the door a blank sheet marked `SEE SHEET A-3`.
-- When its cell's lamp is off, its legend glows. The legend uses the same InkShape silhouettes and is gated by that lamp: ▶▶ WAY ON · ▮ ▮ EXIT · ═ NO EXIT.
-- It is a prop: the visual chat builds it and the map chat places it (print chat, §9).
+| Visual | The chosen content layers, the legend prop, a green that reads as print (not Kane cracks), and the §10 glyph angle |
+| Map | Legend placement (Q10), the Flash line on the hint card (`FrontRooms3DGame.cs:1546`), the optional Caught line |
+| Sound | The ink stays silent. A: no alarm bell. Optional relay click at sags (motif §4.3) |
 
 ---
 
-## 5. Ten marks as they appear in-game
+## 12. Open questions for Red
 
-The type is drawn in glyph-local coordinates, so the words run along the stroke (`_FR_InkType`, §9). Legible within about 1.5 m: a 22 mm cap is about 10 px at 1.5 m at 1080p.
+1. Which direction? A is recommended. Compare §8 first.
+2. The T4+ GROUND figure layer: in B (natural), in A (the occupants), or nowhere?
+3. Legend object (Q10): the placard (A), torn corner (B), THE CODE (C) or meet card (D). It follows the direction. Yes or no to having one at all?
+4. Optional Caught line for the chosen direction (A `OCCUPANT ACCOUNTED FOR`, D `RUN 214 · 6 MIN`)?
+5. Text on walls: A and C put English words in the ink, readable within 1.5 m. OK?
+6. Who writes the human lines (A M9, C M6/M9)? Red, or I draft about 12 (initials and dates ≤ 1990, no real names)?
+7. Approve the media capture for the research frame (§14.2)?
 
-| # | Mark (code) | Where / when | Read at range | Read up close | Meaning, trust |
-|---|---|---|---|---|---|
-| M1 | **WAY ON** (FLOW) | First-dark beat: end wall of a T-junction 6–9 m ahead, as the ballast pops (T0) | Open chevrons, 400 mm, chest height, pointing one way along the wall | Solid green strokes with `THIS WAY OUT` knocked out in three lines | The route to a new compartment runs this way. True. |
-| M2 | **EXIT** (HERE) | Beside a door in a failing cell, breathing with the lamp's dropouts | Two vertical bars framing the door | `EXIT` stacked; beside a window, `EXIT · BREAK GLASS` | Leave here. True, but the building doesn't know who hears glass. |
-| M3 | **NO EXIT** (STOP) | Mouth of a 1-cell alcove, from about 1 min | Two closed horizontal bars per roll | `NO EXIT`, NO above EXIT as the code sets it | A pocket. Always true. |
-| M4 | **OUT OF SERVICE** (BREACH) | Both faces of a door the Relay broke; permanent | EXIT bars with a diagonal bar | `OUT OF SERVICE · DOES NOT CLOSE` | The building logs the damage. True. Over a run, a map of dead doors. |
-| M5 | **ALARM ROUTE** (pressure) | Commits as the chase wave passes the cell (Chase only; Q3) | Doubled chevrons to a door, doubled bars at it | `ALARM`, and `KEEP CLOSED` on the door bars | A door you can shut between you and the origin. True about the door only. |
-| M6 | **ROLL STAMP** (GROUND) | Any charged dead cell off route | Faint even glow, no direction | Register crosshairs + `LEVEL 0 · SHEET A-3 · ROLL 0417 · PRINTED 03/90 · OCCUPANTS 1` | Substrate. It carries the narrative escalation. |
-| M7 | **LOGGED** (EAR bloom, P2) | The dark cells round a noise the Relay accepted | The ground glow swells over 1.5 s | Nothing new | It was heard here. Leave quietly. |
-| M8 | **THIS WAY ON** (FLOW, T2 variant) | Any FLOW from T2 | Unchanged | `THIS WAY ON`; the stamp reads `SHEET A-1114` | The plan has stopped pretending there is an outside. An Exit 8-style changed sign. |
-| M9 | **SCRATCH-THROUGH** (GROUND, T3) | Rare (about 1 per 4 chunks): dead cells by doors | Brighter scratchy patches | Hand-scratched tallies and initials (`R.M. 6/90`, `IT ONLY GOES IN`). Never arrows | Other people were here. No gameplay meaning. |
-| M10 | **FORGERY** (forged FLOW, T4+, if Q4) | Under a **working** lamp at an unmarked branch mouth, pointing in | Chevrons glowing in full light, the far tell | Hand-drawn imitation of `THIS WAY OUT`: uneven letters, one S reversed. The stamp reads `OCCUPANTS 2` | Not the building's. It leads into a NO EXIT pocket. |
+## 13. Not done / limits
+- **No Figma research frame yet.** It needs real media first (§14.2, approval pending).
+- **Unverified:**
+  - the Haunted Mansion's original portrait mechanism;
+  - the 1990-edition NFPA wording;
+  - glow-star dates (one source);
+  - "earth stopping" (not on the fetched page, so it isn't used);
+  - "hunt country" as a term (used as flavour only).
+- **The egress underprint (A) and the glow ground (C) are invented products.** No claim is made that they existed.
+- **A WebFetch call auto-cached one state PDF** (about 145 KB) in the session's tool-results folder. It was deleted unread, and nothing reached the project.
 
----
+## 14. Sources
 
-## 6. Run arc: escalation
+### 14.1 Ledger (fetched 2026-10-03)
+- **Gilman:**
+  - https://www.gutenberg.org/cache/epub/1952/pg1952-images.html
+  - https://www.gutenberg.org/cache/epub/1952/pg1952.txt
+  - https://en.wikipedia.org/wiki/The_Yellow_Wallpaper
+- **Kane:**
+  - https://en.wikipedia.org/wiki/Backrooms_(web_series)
+  - https://openlibrary.org/isbn/9780415263573
+  - ep 13: https://youtu.be/a7ckzgIgx_o (linked from https://www.youtube.com/watch?v=ywVxpZ4XUBM)
+  - ep 24: https://www.youtube.com/watch?v=ZbPaWvqAEq4
+- **The Exit 8:**
+  - https://en.wikipedia.org/wiki/The_Exit_8
+  - https://automaton-media.com/en/interviews/interview-the-exit-8-developer-kotake-create-on-the-perks-of-being-a-solo-dev-and-how-platform-8-came-to-be/
+  - https://www.youtube.com/watch?v=pDTFOTTlw7I
+- **Haunted Mansion:**
+  - https://en.wikipedia.org/wiki/The_Haunted_Mansion
+  - https://wdwnt.com/2019/01/video-lightning-strike-changing-portrait-scene-gets-an-upgrade-in-the-haunted-mansion-at-the-magic-kingdom/
+  - https://wdwnt.com/?p=1045810
+- **Phosphors:**
+  - https://en.wikipedia.org/wiki/Phosphor
+  - https://en.wikipedia.org/wiki/Zinc_sulfide
+  - https://en.wikipedia.org/wiki/Phosphorescence
+  - https://www.mphotoluminescent.com/ms-series-sulfide-based-msgg-4d.html
+  - https://en.wikipedia.org/wiki/Strontium_aluminate
+  - https://www.nemoto.co.jp/?p=437
+  - https://en.wikipedia.org/wiki/Super-LumiNova
+  - https://en.wikipedia.org/wiki/Luminous_paint
+- **Radium:**
+  - https://en.wikipedia.org/wiki/Undark
+  - https://en.wikipedia.org/wiki/Radium_Girls
+  - https://en.wikipedia.org/wiki/Radium_dial
+- **Egress:**
+  - https://en.wikipedia.org/wiki/Air_Canada_Flight_797
+  - https://www.law.cornell.edu/cfr/text/14/25.812
+  - https://www.govinfo.gov/content/pkg/FR-1999-06-23/html/99-15928.htm
+  - https://rosap.ntl.bts.gov/view/dot/12801
+  - https://en.wikipedia.org/wiki/MS_Scandinavian_Star
+  - https://trid.trb.org/View/444262
+  - https://iadclexicon.org/low-location-lighting-lll/
+  - https://en.wikipedia.org/wiki/Tritium_radioluminescence
+  - https://orau.org/health-physics-museum/collection/radioluminescent/tritium-exit-sign.html
+  - https://idighardware.com/2009/11/not-an-exit/
+  - https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.37
+  - https://meyerfire.com/daily/corridor-with-a-non-exit-door-at-end-a-dead-end
+  - https://www.mphotoluminescent.com/ul-924-photoluminescent-exit-sign.html
+  - https://iaeimagazine.org/magazine/2003/september2003/photoluminescent-exit-signs/
+  - https://www.dinmedia.de/en/standard/din-67510/2003509
+  - https://www.inspectpoint.com/resources/articles/emergency-lighting-and-exit-sign-testing-requirements
+- **Period objects:**
+  - https://en.wikipedia.org/wiki/Hypercolor
+  - https://www.mentalfloss.com/culture/fashion-beauty/hypercolor-clothing-fad
+  - https://en.wikipedia.org/wiki/Fluorescence
+  - https://en.wikipedia.org/wiki/Blacklight_poster
+  - https://en.wikipedia.org/wiki/DayGlo
+  - https://en.wikipedia.org/wiki/Magic_Eye
+  - https://en.wikipedia.org/wiki/Autostereogram
+  - https://thehustle.co/originals/youngest-female-inventor
+  - https://en.wikipedia.org/wiki/Glo_Friends
+  - https://en.wikipedia.org/wiki/Glo_Worm
+  - https://en.wikipedia.org/wiki/Laser_tag
+  - https://en.wikipedia.org/wiki/Laser_Quest
+- **Marking and hunting:**
+  - https://en.wikipedia.org/wiki/Hobo
+  - https://en.wikipedia.org/wiki/Trail_blazing
+  - https://en.wikipedia.org/wiki/Maze-solving_algorithm
+  - https://en.wikipedia.org/wiki/Drag_hunting
+  - https://en.wikipedia.org/wiki/Fox_hunting
+- **Project:**
+  - `20_level_design_phosphor.md`
+  - `10_synthesis.md`
+  - `research/hunter/03_gameplay_tech.md` §6
+  - `Tools/print/patterns/hard_edge.py`
 
-The mechanics stay as LD §6 (physics, grammar and truth never change before T4). The narrative escalates only through the type and substance layers, selected by tier (§9).
+### 14.2 Media to capture (needs Red's approval; sizes are estimates)
 
-| Tier (LD) | Substance and type | What the player realises |
-|---|---|---|
-| T0 | M1–M3, M6 with `PRINTED 03/90 · OCCUPANTS 1` | It's a safety system: where the light dies, the paper points |
-| T1 | + M4 OUT OF SERVICE; the first self-test sag; the first alarm route | It knows the building: pockets, doors, damage. It doesn't know the monster |
-| T2 | M8: `THIS WAY ON`, impossible sheet numbers | Every exit leads in |
-| T3 | M9 scratch-throughs | Others followed it before me |
-| T4+ | `OCCUPANTS 2`; M10 forgeries (if Q4); optional GROUND layer of small creeping figures, tiled per roll, seen only during a self-test sag from ≥ 6 m. This is Gilman's "great many women" and the Brewster/Magic Eye hidden figure, and needs Red's tone check | Someone else writes in it, and wants me to stay |
-
-**Across runs** (LD §5):
-- Run 1 learns the grammar.
-- Run 2 learns the physics (starved = blank; Office = blind tenant space) and the alarm.
-- Run 3 learns that the ink can lure you into the Relay, and starts choosing against it.
-- Only after that do the late-tier words and forgeries pay off.
-
-**Optional Caught line** (map chat's HUD; Q1-adjacent): `OCCUPANT ACCOUNTED FOR` under CAUGHT. It is fire-drill roll-call language: you are "out", as Gilman's narrator was.
-
----
-
-## 7. How it connects to the moving visible print
-
-| Visible print event (`10_synthesis.md` §5, LD §8) | Fiction |
-|---|---|
-| Discrete jumps while unseen | The building re-papers, and the plan underneath is redrawn with it. One act, two layers |
-| Strip slips in a lamp's gasp (Haunted Mansion) | The paper moves at night, as Gilman's front pattern does. The plan holds still where it is speaking (no slips under messages, LD R11) |
-| Slow crawl at scripted beats (GROUND only) | The paper settling during a self-test |
-| Chase wave reprint | The alarm redraws the plan from the zone of origin: reprint, lamp dip and alarm route in lockstep |
-| Relay wake reprint | Facilities follows it: the building re-papers where it walked. *The print shows where it walked; the ink shows where to go* (LD Q12) |
-| Subliminal drift | The building breathing. Messages and type are world-fixed and don't drift |
-
----
-
-## 8. What the player learns, and when
-
-| When | Beat | Lesson |
-|---|---|---|
-| 5–45 s | First dark (M1) | Green appears where light dies, and it points |
-| 20–60 s | Chevrons end at a door, `ZONE 02` | Green leads to new ground |
-| ≤ 2 min | First NO EXIT (M3) | Bars mean a pocket |
-| 75–120 s | First self-test sag | The whole neighbourhood's plan, for 4 s |
-| First chase | Alarm route (M5) | Under alarm, it points at a door you can shut, which buys time and not safety |
-| Run 2 | A starved cluster, Office blindness | No light in, no light out; the tenant space has no plan |
-| ~T2 | M8 | The exits only go in |
-| T3 | M9 | Others were here |
-| T4+ | M10, `OCCUPANTS 2` | Check the light. Paper never outshines its lamp |
-
----
-
-## 9. Coordination with the wallpaper-print chat (2026-10-03)
-
-Its answers to my asks are adopted here:
-- **Pipeline correction.** The print's B channel is one substance per slice for the whole world, so it can't carry per-message text. Its proposed amendment to LD §11 / R11 still needs the visual chat's agreement:
-  - `_FR_InkType`: a sign-type Texture2DArray in glyph-local space, one layer per message, variant, tier or forged state;
-  - `_FR_InkSubstance`: BC4, roll-tiled, one GROUND layer per tier;
-  - both fetched only where the glow mask is non-zero;
-  - the print's B goes back to unused, so substance follows the tier and not the print jumps.
-
-  Fallback: the print's A channel, which gives only two families, GO and STOP.
-- Micro-type field 1.0 / type 0.55: yes. Mean coverage stays ≥ 0.84.
-- The T2 variant: yes. Forged type layer: yes, keyed on bit 6, and conditional on Q4.
-- Placard instead of the stream-room legend: yes. It is a prop, legend lit-gated by InkShape. The print chat withdraws its title-stream exception, pending Red.
-- Flash line: "WHERE THE LIGHT DIES, THE PAPER POINTS".
-- Wording: "into a compartment you haven't been in", because the target is a zone, through a door or a window.
-- EAR is local (source cell plus open neighbours) and P2.
-- The visible paper is a crisp 1990 contract print (WP05), not an ikat.
-
-**Asks:**
-- **Visual chat:** the two layers above; the type layers (M1–M10); the placard prop; a lookdev check that the green reads as print, not as Kane-style cracks.
-- **Map chat:** the placard placement, the Flash line on the hint card (`FrontRooms3DGame.cs:1546`), and the optional Caught line.
-- **Sound chat:** keep the ink and alarm silent; the relay-click idea is optional.
-
----
-
-## 10. Open questions for Red
-
-1. Direction: EGRESS (recommended), or B, C or D?
-2. Forgeries (LD Q4): on? If so, the forger is the other occupant (recommended), the Relay, or left unexplained.
-3. The T4+ creeping-figure layer: is it the right tone, or too overtly supernatural?
-4. The placard on the map side of the start door, replacing LD's legend room (Q10): yes or no?
-5. Flash fallback "WHERE THE LIGHT DIES, THE PAPER POINTS": OK? It is used only if playtest needs it.
-6. `OCCUPANT ACCOUNTED FOR` on the Caught screen?
-7. Micro-type in English inside the glyphs, legible within 1.5 m: OK?
-8. Scratch-through wording: Red writes it, or I draft about 12 lines (initials and dates ≤ 1990, no real names)?
-9. Media capture for the research frame (needs approval; see §12.2).
-
----
-
-## 11. Not done / limits
-- No Figma research frame yet. Red's rule says it must lead with real media, and that needs the downloads in §12.2 approved first.
-- Haunted Mansion's original mechanism, "Sidot's blende" as a name, 1990-edition NFPA wording, and glow-star dates (one source) are **unverified**.
-- The WebFetch tool auto-cached one state PDF (MN Health, about 145 KB) in the session's tool-results folder. It was deleted unread, and nothing reached the project.
-
-## 12. Sources
-
-### 12.1 Ledger (all fetched 2026-10-03 unless marked)
-- Gilman text: https://www.gutenberg.org/cache/epub/1952/pg1952-images.html · publication: https://en.wikipedia.org/wiki/The_Yellow_Wallpaper
-- Kane series table (eps 1, 13, 16, 24): https://en.wikipedia.org/wiki/Backrooms_(web_series) · ISBN record: https://openlibrary.org/isbn/9780415263573 · ep 13: https://youtu.be/a7ckzgIgx_o (unlisted; linked from https://www.youtube.com/watch?v=ywVxpZ4XUBM) · ep 24: https://www.youtube.com/watch?v=ZbPaWvqAEq4
-- The Exit 8: https://en.wikipedia.org/wiki/The_Exit_8 · interview: https://automaton-media.com/en/interviews/interview-the-exit-8-developer-kotake-create-on-the-perks-of-being-a-solo-dev-and-how-platform-8-came-to-be/ · trailer (IGN): https://www.youtube.com/watch?v=pDTFOTTlw7I
-- Haunted Mansion: https://en.wikipedia.org/wiki/The_Haunted_Mansion · https://wdwnt.com/2019/01/video-lightning-strike-changing-portrait-scene-gets-an-upgrade-in-the-haunted-mansion-at-the-magic-kingdom/ · https://wdwnt.com/?p=1045810
-- ZnS:Cu: https://en.wikipedia.org/wiki/Phosphor · https://en.wikipedia.org/wiki/Zinc_sulfide · https://en.wikipedia.org/wiki/Phosphorescence · decay data: https://www.mphotoluminescent.com/ms-series-sulfide-based-msgg-4d.html
-- Strontium aluminate: https://en.wikipedia.org/wiki/Strontium_aluminate · https://www.nemoto.co.jp/?p=437 · https://en.wikipedia.org/wiki/Super-LumiNova
-- Radium paint: https://en.wikipedia.org/wiki/Undark · https://en.wikipedia.org/wiki/Radium_Girls
-- Egress:
-  - Air Canada 797: https://en.wikipedia.org/wiki/Air_Canada_Flight_797
-  - 14 CFR 25.812: https://www.law.cornell.edu/cfr/text/14/25.812
-  - Retrofit rule: https://www.govinfo.gov/content/pkg/FR-1999-06-23/html/99-15928.htm
-  - FAA AC 25.812-2 (1997): https://rosap.ntl.bts.gov/view/dot/12801
-  - *Scandinavian Star*: https://en.wikipedia.org/wiki/MS_Scandinavian_Star · https://trid.trb.org/View/444262
-  - Low-location lighting: https://iadclexicon.org/low-location-lighting-lll/
-  - Tritium: https://en.wikipedia.org/wiki/Tritium_radioluminescence · https://orau.org/health-physics-museum/collection/radioluminescent/tritium-exit-sign.html
-  - NO EXIT: https://idighardware.com/2009/11/not-an-exit/ · https://www.osha.gov/laws-regs/regulations/standardnumber/1910/1910.37
-  - Dead ends: https://meyerfire.com/daily/corridor-with-a-non-exit-door-at-end-a-dead-end
-  - Charging: https://www.mphotoluminescent.com/ul-924-photoluminescent-exit-sign.html · https://iaeimagazine.org/magazine/2003/september2003/photoluminescent-exit-signs/
-  - DIN 67510: https://www.dinmedia.de/en/standard/din-67510/2003509
-  - Tests: https://www.inspectpoint.com/resources/articles/emergency-lighting-and-exit-sign-testing-requirements
-- Period objects:
-  - Hypercolor: https://en.wikipedia.org/wiki/Hypercolor · https://www.mentalfloss.com/culture/fashion-beauty/hypercolor-clothing-fad
-  - Fluorescence and blacklight: https://en.wikipedia.org/wiki/Fluorescence · https://en.wikipedia.org/wiki/Blacklight_poster · https://en.wikipedia.org/wiki/DayGlo
-  - Magic Eye: https://en.wikipedia.org/wiki/Magic_Eye · https://en.wikipedia.org/wiki/Autostereogram
-  - Glow stars: https://thehustle.co/originals/youngest-female-inventor
-  - Glo Friends: https://en.wikipedia.org/wiki/Glo_Friends · https://en.wikipedia.org/wiki/Glo_Worm
-  - Laser tag: https://en.wikipedia.org/wiki/Laser_tag · https://en.wikipedia.org/wiki/Laser_Quest
-- Other: https://en.wikipedia.org/wiki/Hobo · https://en.wikipedia.org/wiki/Trail_blazing · https://en.wikipedia.org/wiki/Maze-solving_algorithm · https://en.wikipedia.org/wiki/Drag_hunting
-
-### 12.2 Media to capture (needs Red's approval; sizes are estimates)
-
-| Proposed file (`Research/week02/phosphor-narrative/`) | Source | Est. size |
-|---|---|---|
-| `kane_ep24_stretched_wallpaper.mp4` (5–8 s excerpt) | YouTube ZbPaWvqAEq4 | 3–6 MB |
-| `kane_ep13_title_still.png` | YouTube a7ckzgIgx_o | ~0.3 MB |
-| `kane_ep16_green_cracks.mp4` (5 s) | Ep 16 (URL to look up) | 3–5 MB |
-| `exit8_rules_sign.mp4` (5 s) | YouTube pDTFOTTlw7I | 3–5 MB |
-| `haunted_mansion_portraits.mp4` (5 s) | WDWNT 2019 article's video | 3–5 MB |
-| `gilman_1892_nem_page.jpg` | Wikimedia Commons scan (URL to look up; public domain) | ~1 MB |
-| `tritium_exit_sign.jpg` | ORAU museum page | ~0.2 MB |
+| Proposed file (`Research/week02/phosphor-narrative/`) | Source | Est. size | Supports |
+|---|---|---|---|
+| `kane_ep24_stretched_wallpaper.mp4` (5–8 s) | YouTube ZbPaWvqAEq4 | 3–6 MB | all |
+| `kane_ep13_title_still.png` | YouTube a7ckzgIgx_o | ~0.3 MB | all (Gilman link) |
+| `kane_ep16_green_cracks.mp4` (5 s) | Ep 16 (URL to look up) | 3–5 MB | the "not cracks" rule |
+| `exit8_rules_sign.mp4` (5 s) | YouTube pDTFOTTlw7I | 3–5 MB | legend, tells |
+| `haunted_mansion_portraits.mp4` (5 s) | WDWNT 2019 article video | 3–5 MB | lamp-gasp changes |
+| `gilman_1892_nem_page.jpg` | Wikimedia Commons scan (URL to look up; public domain) | ~1 MB | B, all |
+| `tritium_exit_sign.jpg` | ORAU museum page | ~0.2 MB | A |
+| `hobo_signs_chart.jpg` | Wikimedia Commons (URL to look up) | ~0.5 MB | C |
+| `radium_dial_clock.jpg` | Wikimedia Commons (URL to look up) | ~0.5 MB | C forger |
+| `drag_hunt_photo.jpg` | Wikimedia Commons (URL to look up) | ~0.5 MB | D |

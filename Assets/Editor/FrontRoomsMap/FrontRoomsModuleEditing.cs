@@ -6,14 +6,15 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Edits to a room module asset, shared by the Inspector, the Level Designer
-/// window, the Scene view tools and the batch tests, so every way of placing
-/// a kit places it the same way. Each edit is recorded for Undo on the asset
+/// Edits to a room module asset (its props and gameplay markers), shared by
+/// the Inspector, the Level Designer window, the Scene view tools and the
+/// batch tests, so every way of placing a kit places it the same way. Each
+/// edit is recorded for Undo on the asset
 /// and raises FrontRoomsRoomModule.Changed, which rebuilds the preview.
 /// </summary>
 public static class FrontRoomsModuleEditing
 {
-    /// <summary>Props snap to this in the plan, the palette and the Scene view (LEVEL_MODULE_SPEC §9).</summary>
+    /// <summary>Props and markers snap to this in the plan, the palette and the Scene view (LEVEL_MODULE_SPEC §9).</summary>
     public const float Grid = .05f;
     /// <summary>DragAndDrop generic-data key of a kit dragged from the palette (its name).</summary>
     public const string DragKey = "FrontRoomsKit";
@@ -315,5 +316,94 @@ public static class FrontRoomsModuleEditing
         module.data.props = list.ToArray();
         Changed(module);
         return to;
+    }
+
+    // ---------- Gameplay markers ----------
+    // Adds and removes replace the markers array, moves and edits assign in
+    // place, as for props: the plan's selection follows its marker by that.
+
+    public static string MarkerName(ModuleMarkerKind kind) => kind == ModuleMarkerKind.KeySpot ? "key spot" : "Relay entry";
+
+    /// <summary>
+    /// The top of the highest prop over a module point, as the checks see it:
+    /// the prop's "top" support where the point is over it (a desk, a
+    /// cabinet), else the top of its footprint box. Null over bare floor.
+    /// A key put there lies on the prop instead of inside it.
+    /// </summary>
+    public static float? TopUnder(RoomModuleData m, Vector2 at)
+    {
+        float? best = null;
+        foreach (var p in m.props)
+        {
+            var f = string.IsNullOrEmpty(p.kit) ? null : FrontRoomsMapWorld.KitFootprint(p.kit);
+            if (f == null) continue;
+            // The same box the checks use (RoomModuleData.ValidateMarkers).
+            RoomModuleData.Bounds(p, f, out var x0, out var z0, out var x1, out var z1);
+            if (at.x <= x0 || at.x >= x1 || at.y <= z0 || at.y >= z1) continue;
+            var top = OnTop(p, at, out var surface) ? surface : p.y + f[4];
+            if (best == null || top > best.Value) best = top;
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// The marker a click makes at a point: snapped to 0.05 m inside the room;
+    /// a key spot over a prop lies on its top, a Relay entry stands on the floor.
+    /// </summary>
+    public static ModuleMarker NewMarker(RoomModuleData m, ModuleMarkerKind kind, Vector2 at)
+    {
+        at = new Vector2(Mathf.Clamp(Snap(at.x), 0f, m.WidthMetres), Mathf.Clamp(Snap(at.y), 0f, m.DepthMetres));
+        var mk = new ModuleMarker { kind = kind, x = at.x, z = at.y, tag = "", host = "" };
+        if (kind == ModuleMarkerKind.KeySpot) mk.y = TopUnder(m, at) ?? 0f;
+        return mk;
+    }
+
+    /// <summary>Add a marker where the designer put it (a click with a marker armed, the plan's right-click menu). Returns its index.</summary>
+    public static int AddMarker(FrontRoomsRoomModule module, ModuleMarkerKind kind, Vector2 at)
+    {
+        var m = module.data;
+        m.Normalize();
+        Record(module, "Add " + MarkerName(kind));
+        m.markers = m.markers.Append(NewMarker(m, kind, at)).ToArray();
+        Changed(module);
+        return m.markers.Length - 1;
+    }
+
+    /// <summary>Move a marker to a module point (0.05 m snap, inside the room); its height stays.</summary>
+    public static void MoveMarker(FrontRoomsRoomModule module, int index, Vector2 to)
+    {
+        var m = module.data;
+        Record(module, "Move marker");
+        var mk = m.markers[index];
+        mk.x = Mathf.Clamp(Snap(to.x), 0f, m.WidthMetres);
+        mk.z = Mathf.Clamp(Snap(to.y), 0f, m.DepthMetres);
+        m.markers[index] = mk;
+        Changed(module);
+    }
+
+    public static void TurnMarker(FrontRoomsRoomModule module, int index)
+    {
+        Record(module, "Turn marker");
+        var mk = module.data.markers[index];
+        mk.yaw = Mathf.Repeat(mk.yaw + 90f, 360f);
+        module.data.markers[index] = mk;
+        Changed(module);
+    }
+
+    /// <summary>Replace a marker's fields (the marker fields' buttons: on the prop under it, a tag preset, the host).</summary>
+    public static void SetMarker(FrontRoomsRoomModule module, int index, ModuleMarker marker, string label = "Edit marker")
+    {
+        Record(module, label);
+        module.data.markers[index] = marker;
+        Changed(module);
+    }
+
+    public static void RemoveMarkers(FrontRoomsRoomModule module, IEnumerable<int> indices)
+    {
+        var gone = new HashSet<int>(indices);
+        if (gone.Count == 0) return;
+        Record(module, gone.Count == 1 ? "Remove marker" : "Remove markers");
+        module.data.markers = module.data.markers.Where((mk, k) => !gone.Contains(k)).ToArray();
+        Changed(module);
     }
 }

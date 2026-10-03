@@ -52,7 +52,8 @@ public sealed class FrontRoomsMapHunter
     const float WanderPace = .8f;
     // Searching a room: up to this many spots, a pause to listen at each, at this share of hunt speed.
     const int SweepSpots = 3;
-    const float LookSeconds = 1.1f, SearchPace = .7f, MaxSearchSeconds = 15f;
+    // The listening pause and the give-up time are tuning (searchLookSeconds, searchMaxSeconds), so tiers can stretch them.
+    const float SearchPace = .7f;
     // The long-range relay only once it has neither seen nor heard the player for this long.
     const float LeashQuietSeconds = 45f;
 
@@ -67,6 +68,9 @@ public sealed class FrontRoomsMapHunter
     readonly Dictionary<GridCoord, int> depth = new Dictionary<GridCoord, int>();
     readonly Queue<GridCoord> frontier = new Queue<GridCoord>();
     readonly List<GridCoord> candidates = new List<GridCoord>();
+    // Arrive's scratch: the map's Relay entries (module markers), and the ones that pass, behind the player or anywhere.
+    readonly List<(Vector3 pos, string tag)> entries = new List<(Vector3, string)>();
+    readonly List<int> entriesBehind = new List<int>(), entriesAny = new List<int>();
     readonly RaycastHit[] hits = new RaycastHit[16];
     readonly RaycastHit[] bodyHits = new RaycastHit[64];
     readonly Collider[] overlaps = new Collider[16];
@@ -124,7 +128,11 @@ public sealed class FrontRoomsMapHunter
     /// <summary>The blow DoorBlow is raised for, 0-based; the last (BlowCount - 1) is the break-through, 0.1 s before the door gives.</summary>
     public int BlowIndex { get; private set; } = -1;
     /// <summary>Blows per door: one every 0.5 s of breakDoorSeconds (5 at 2.5 s), the last brought forward 0.1 s.</summary>
-    public int BlowCount => Mathf.Max(1, Mathf.RoundToInt(tuning.breakDoorSeconds / BlowInterval));
+    public int BlowCount => Mathf.Max(1, Mathf.RoundToInt(BreakSeconds / BlowInterval));
+
+    // A break keeps the length it started with, so a tier or tuning change mid-break never skips the last blow.
+    float breakSeconds = -1f;
+    float BreakSeconds => State == HunterState.BreakDoor && breakSeconds > 0f ? breakSeconds : tuning.breakDoorSeconds;
     /// <summary>0..1 while its body is in an open or broken door's opening (1 on the door line, 0 from 0.6 m out); 0 elsewhere. For the rig's squeeze pose.</summary>
     public float DoorSqueeze { get; private set; }
     public int Relays { get; private set; }
@@ -141,6 +149,8 @@ public sealed class FrontRoomsMapHunter
     public event Action<HunterState> StateChanged;
     public event Action<Vector3> DoorBlow;
     public event Action Caught;
+    /// <summary>It appeared (released, or relayed): its feet, and the Relay entry's tag ("vent", "doorway", ...) or null for an unmarked cell.</summary>
+    public event Action<Vector3, string> Arrived;
 
     public FrontRoomsMapHunter(FrontRoomsMapWorld world, FrontRoomsHunterTuning tuning, Collider playerCollider, Transform rig, int seed)
     {
@@ -311,7 +321,7 @@ public sealed class FrontRoomsMapHunter
         sweep.Clear();
         sweepIndex = 0;
         sweepPlanned = -1;
-        lookTimer = LookSeconds;
+        lookTimer = tuning.searchLookSeconds;
         searchTime = 0f;
         candidates.Clear();
         if (!RoomCells(around, candidates))
@@ -338,7 +348,7 @@ public sealed class FrontRoomsMapHunter
             lookTimer -= dt;
             return;
         }
-        if (sweepIndex >= sweep.Count || searchTime > MaxSearchSeconds)
+        if (sweepIndex >= sweep.Count || searchTime > tuning.searchMaxSeconds)
         {
             // Nothing found: it gives up and wanders on.
             SetState(HunterState.Listen);
@@ -352,7 +362,7 @@ public sealed class FrontRoomsMapHunter
         if (Follow(tuning.huntSpeed * SearchPace, dt) || Stalled(dt))
         {
             sweepIndex++;
-            lookTimer = LookSeconds;
+            lookTimer = tuning.searchLookSeconds;
             ResetSteering();
         }
     }
@@ -383,14 +393,29 @@ public sealed class FrontRoomsMapHunter
     }
 
     /// <summary>
-    /// Arrive in a built cell 9–15 cells of walking away from the player that
-    /// the player cannot see, preferring cells behind them. Used for the first
-    /// release and for every relay.
+    /// Arrive 9–15 cells of walking away from the player, where its body fits
+    /// and the player cannot see it, preferring spots behind them: a designer's
+    /// Relay entry behind the player, else a cell behind them, else an entry
+    /// anywhere, else the nearest cell. Used for the first release and for
+    /// every relay; raises Arrived.
     /// </summary>
     bool Arrive(Vector3 playerFeet, Vector3 playerEye, Vector3 playerForward)
     {
         var start = world.CellOf(playerFeet);
         Search(start, SpawnMaxCells, true);
+        // The entries are tested on the same walking distances (no other search in between).
+        world.RelayEntries(entries);
+        entriesBehind.Clear();
+        entriesAny.Clear();
+        for (var k = 0; k < entries.Count; k++)
+        {
+            var cell = world.CellOf(entries[k].pos);
+            if (!depth.TryGetValue(cell, out var d) || d < SpawnMinCells || d > SpawnMaxCells || !world.IsBuilt(cell)) continue;
+            var feet = EntryFeet(k, cell);
+            if (!BodyFits(feet) || Visible(playerEye, feet + Vector3.up * EyeHeight) || Visible(playerEye, feet + Vector3.up * ProbeTop)) continue;
+            entriesAny.Add(k);
+            if (Vector3.Dot(Flat(feet - playerFeet), Flat(playerForward)) < 0f) entriesBehind.Add(k);
+        }
         candidates.Clear();
         GridCoord fallback = start;
         var haveFallback = false;
@@ -403,17 +428,41 @@ public sealed class FrontRoomsMapHunter
             if (!haveFallback) { fallback = pair.Key; haveFallback = true; }
             if (Vector3.Dot(Flat(center - playerFeet), Flat(playerForward)) < 0f) candidates.Add(pair.Key);
         }
-        GridCoord chosen;
-        if (candidates.Count > 0) chosen = candidates[(int)(Next() % (uint)candidates.Count)];
-        else if (haveFallback) chosen = fallback;
-        else return false;
-        position = world.CellCenter(chosen);
+        // One random draw at most, as before, so the rest of the run keeps its sequence.
+        if (entriesBehind.Count > 0) return Appear(entriesBehind[(int)(Next() % (uint)entriesBehind.Count)]);
+        if (candidates.Count > 0) return Appear(world.CellCenter(candidates[(int)(Next() % (uint)candidates.Count)]), null);
+        if (entriesAny.Count > 0)
+        {
+            // The nearest by walking distance.
+            var best = entriesAny[0];
+            for (var i = 1; i < entriesAny.Count; i++)
+                if (depth[world.CellOf(entries[entriesAny[i]].pos)] < depth[world.CellOf(entries[best].pos)]) best = entriesAny[i];
+            return Appear(best);
+        }
+        if (haveFallback) return Appear(world.CellCenter(fallback), null);
+        return false;
+    }
+
+    /// <summary>An entry's feet: its point on the map's floor (the marker's own height is not used).</summary>
+    Vector3 EntryFeet(int k, GridCoord cell)
+    {
+        var feet = entries[k].pos;
+        feet.y = world.CellCenter(cell).y;
+        return feet;
+    }
+
+    bool Appear(int entry) => Appear(EntryFeet(entry, world.CellOf(entries[entry].pos)), entries[entry].tag);
+
+    bool Appear(Vector3 feet, string tag)
+    {
+        position = feet;
         ResetSteering();
         path.Clear();
         pathIndex = 0;
         breakingDoor = null;
         ListenPoint = null;
         Relays++;
+        Arrived?.Invoke(position, tag);
         return true;
     }
 
@@ -527,6 +576,7 @@ public sealed class FrontRoomsMapHunter
                 breakingDoor = door;
                 blowsStruck = 0;
                 BlowIndex = -1;
+                breakSeconds = Mathf.Max(.05f, tuning.breakDoorSeconds);
                 resumeState = State;
                 SetState(HunterState.BreakDoor);
             }
@@ -886,20 +936,20 @@ public sealed class FrontRoomsMapHunter
         // Blows every 0.5 s from 0.5 s in (0, 1, ... BlowCount - 2); the last one
         // (BlowCount - 1) a beat before the door gives at breakDoorSeconds.
         var final = BlowCount - 1;
-        var due = StateTime + TimeSlack >= tuning.breakDoorSeconds - FinalBlowLead ? final : Mathf.Min(final - 1, Mathf.FloorToInt((StateTime + TimeSlack) / BlowInterval) - 1);
+        var due = StateTime + TimeSlack >= BreakSeconds - FinalBlowLead ? final : Mathf.Min(final - 1, Mathf.FloorToInt((StateTime + TimeSlack) / BlowInterval) - 1);
         while (breakingDoor != null && blowsStruck <= due)
         {
             BlowIndex = blowsStruck++;
             DoorBlow?.Invoke(breakingDoor.position);
         }
-        if (StateTime + TimeSlack < tuning.breakDoorSeconds) return;
+        if (StateTime + TimeSlack < BreakSeconds) return;
         if (breakingDoor != null)
         {
             world.BreakDoor(breakingDoor, position);
             DoorsBroken++;
             breakingDoor = null;
         }
-        if (StateTime + TimeSlack < tuning.breakDoorSeconds + DoorFallSeconds) return;
+        if (StateTime + TimeSlack < BreakSeconds + DoorFallSeconds) return;
         SetState(resumeState == HunterState.Chase ? HunterState.Chase : HunterState.Hunt);
     }
 

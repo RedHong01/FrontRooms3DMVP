@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: L0_WaitingRoom_4x3
   m_EditorClassIdentifier: Assembly-CSharp::FrontRoomsRoomModule
   notes: 'Level 0: a waiting room cut in two by a partition with a doorway. Chairs
-    face nobody.'
+    face nobody. The key lies on the side table.'
   data:
     width: 4
     depth: 3
@@ -65,6 +65,14 @@ MonoBehaviour:
       yaw: 90
       y: 0
       noCollider: 0
+    markers:
+    - kind: 0
+      x: 3.2
+      z: 8.66
+      y: 0.66
+      yaw: 20
+      tag: 
+      host: 
     lamps: 000000000004000000000003
     weight: 1
     allowRotate: 1

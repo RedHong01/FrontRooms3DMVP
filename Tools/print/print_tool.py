@@ -12,6 +12,7 @@ Slice encoding (linear, not sRGB), same as the static _PrintTex frame 0:
 
 Commands (run with a Python that has numpy + Pillow, e.g. /usr/bin/python3 on this Mac):
   gen-test <frames_dir>              8 test keyframes derived from the CC0 chevron
+  gen-keys <K00.png> <frames_dir>    the same 8 keyframes derived from a pattern's frame 0
   validate <frames_dir> [--art]      seam check every frame (left/right, top/bottom)
   pack <frames_dir> <out.png> [--art] [--cols 4]
                                      resample to 1024x1536, pack a flipbook sheet and
@@ -116,11 +117,20 @@ def chevron_base():
 
 
 def gen_test(out):
+    """The eight keyframes built from the CC0 chevron (the original test set)."""
+    make_keys(chevron_base(), out)
+
+
+def gen_keys(base, out):
+    """The eight keyframes built from any encoded frame 0, e.g. a pattern's K00.png."""
+    make_keys(resample_periodic(load_frame(base, False), SLICE_W, SLICE_H), out)
+
+
+def make_keys(k0, out):
     """Eight keyframes in a deliberate order: each step is one more thing wrong with
     the paper, and K07 blends back to K00, so the sequence loops. Every operation keeps
     the tile periodic (whole-tile mirrors, half-drops, integer repeats, tone curves)."""
     os.makedirs(out, exist_ok=True)
-    k0 = chevron_base()
     H = k0.shape[0]
 
     def tone(f, g):
@@ -206,6 +216,8 @@ def main(argv):
     pos = [a for i, a in enumerate(args) if not a.startswith("--") and (i == 0 or args[i - 1] != "--cols")]
     if cmd == "gen-test":
         gen_test(pos[0])
+    elif cmd == "gen-keys":
+        gen_keys(pos[0], pos[1])
     elif cmd == "validate":
         sys.exit(1 if validate(frame_files(pos[0]), art) else 0)
     elif cmd == "pack":

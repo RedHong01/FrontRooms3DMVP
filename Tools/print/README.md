@@ -39,6 +39,21 @@ Use a Python with numpy and Pillow; on this Mac that is `/usr/bin/python3`.
 
 **Keyframe order matters**: the order is the story. The driver blends only to the adjacent slice (K07 blends back to K00). Jumping to a non-adjacent slice is a hard cut, and it is only allowed while the change is masked (unseen, or during a lamp dropout).
 
+## Chosen pattern: Hard edge (Red, 2026-10-03)
+
+Red picked the precise vector redesign **Hard edge** (Figma section 2407:852, frame WP03 2407:884, master component 2407:2209). Its generator `patterns/hard_edge.py` writes both the SVG and `patterns/out/hard_edge/K00.png`, the static frame 0 the visual chat imports as `_PrintTex`.
+
+```bash
+/usr/bin/python3 Tools/print/print_tool.py gen-keys Tools/print/patterns/out/hard_edge/K00.png Tools/print/frames/hard_edge
+/usr/bin/python3 Tools/print/print_tool.py pack Tools/print/frames/hard_edge Tools/print/out/FR_Print_HardEdge.png
+```
+
+- The 8 keyframes use the same operations as the test set below.
+- Every frame passes the seam check.
+- Slice 0 is byte-identical to `patterns/out/hard_edge/K00.png`.
+- Preview: `out/hard_edge_preview.png`.
+- The other directions (faithful_teeth, stepped_grid, hybrid) stay in `patterns/` for reference.
+
 ## Test content: `frames/chevron_test`
 
 Eight keyframes built from today's chevron ink, with the same formula as `gen_surfaces.py`. Each step adds one more thing wrong with the paper:
@@ -61,7 +76,7 @@ Every frame passes the seam check. The packed sheet is 4096×3072 (4 × 2 slices
 - **`Assets/Scripts/Rendering/FrontRoomsPrintDriver.cs`** writes the three globals above.
   - **Motion:** a `HoldAndJump` module by default (45–90 s holds, 1.2 s smoothstep blends to the next keyframe), an always-on subliminal drift, and `Crawl` beats through `Play(...)`.
   - **Game API:** `JumpNext()`, `CutTo(slice)` (masked only), `Frozen` (Caught, pause) and the persisted `ReduceMotion` accessibility switch, which freezes everything.
-  - **Startup:** it boots itself once `Resources/Print/FR_Print_ChevronTest` exists, so no scene edit is needed. With no driver, the globals stay 0 and the walls show the static frame 0.
+  - **Startup:** it boots itself once `Resources/Print/FR_Print_HardEdge` exists, so no scene edit is needed. With no driver, the globals stay 0 and the walls show the static frame 0.
 - **`Assets/Editor/Print/FrontRoomsPrintImporter.cs`** imports `Assets/Resources/Print/*.png` as a Texture2DArray.
   - It reads `columns`/`rows` from the matching `.print.json`.
   - Import settings: linear, mips, Repeat, trilinear, aniso 16, CompressedHQ, max 8192.
@@ -80,5 +95,20 @@ Every frame passes the seam check. The packed sheet is 4096×3072 (4 × 2 slices
 Do this only after the visual chat promotes P0 and Red agrees, while no other chat is compiling.
 
 1. Copy `unity_staging/Assets/Scripts/Rendering/FrontRoomsPrintDriver.cs` and `unity_staging/Assets/Editor/Print/` into `Assets/`.
-2. Create `Assets/Resources/Print/`. Copy `out/FR_Print_ChevronTest.print.json` first, then the `.png`, so the importer finds the sidecar on the first import.
+2. Create `Assets/Resources/Print/`. Copy `out/FR_Print_HardEdge.print.json` first, then the `.png`, so the importer finds the sidecar on the first import.
 3. In Play mode, check that the `FrontRooms Print` object appears and the walls show frame 0, then a blend about every minute.
+
+## Planned: glow-ink textures (spec v1, agreed in principle with the visual chat, 2026-10-03)
+
+The phosphor ink's close-up content does not live in the print's B channel. B is one substance per slice for the whole world, so B stays reserved and 0. The content goes in two global arrays instead. Both are fetched only inside the shader's glow-mask branch, and both are made here once Red picks the narrative direction (`Documentation/research/wallpaper_motion/30_narrative_phosphor.md`).
+
+| Global | Size, format | UV | Layers | Memory |
+|---|---|---|---|---|
+| `_FR_InkType` | 1024×1024, BC4, linear, mips, Repeat, aniso 16 | Glyph-local: u = metres along the wall / 0.75; v = (height − 0.8 m) / 0.75 | 0 FLOW, 1 FLOW T2+, 2 HERE door, 3 HERE window, 4 STOP, 5 BREACH, 6 pressure chevron, 7 pressure door, 8 forged FLOW, 9–15 reserved | ≈ 10.7 MB |
+| `_FR_InkSubstance` | 1024×1536, BC4, linear, mips, Repeat, aniso 16 | The print UV (warped), one roll tile | 0–4 = run tiers 1–5 | ≈ 5.2 MB |
+
+**Values:** 1.0 is the solid ink field and about 0.55 is knocked-out type. Texture-style content must keep a mean of at least 0.6 in any 100 mm square inside strokes. The stroke outline itself is the shader's procedural `InkShape`.
+
+**Layer selection:** a global `float4 _FR_InkTypeLayer[4]` lookup table, filled by the CPU, so narrative can remap layers without shader edits.
+
+**WebGL:** substance only, at 512×768 (≈ 1.3 MB), or the B/A two-family fallback. The visual chat chooses.

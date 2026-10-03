@@ -51,6 +51,31 @@ namespace FrontRooms.Map
         public bool large;
     }
 
+    /// <summary>What a gameplay marker marks. Values are only ever appended.</summary>
+    public enum ModuleMarkerKind : byte
+    {
+        /// <summary>Where the zone key lies when it falls in this room (the first one is used).</summary>
+        KeySpot,
+        /// <summary>Where the Relay may appear when it is released or relays (on the floor).</summary>
+        RelayEntry,
+    }
+
+    /// <summary>
+    /// A gameplay marker at (x, z) metres from the module's south-west cell
+    /// lines, turned with the module like a prop. Height y above the floor
+    /// (a key on a desk); yaw in degrees, 0 = +Z.
+    /// </summary>
+    [Serializable]
+    public struct ModuleMarker
+    {
+        public ModuleMarkerKind kind;
+        public float x, z, y, yaw;
+        /// <summary>Relay entry: what it is ("vent", "doorway", or anything), passed to the sound layer with the arrival. Empty for none.</summary>
+        public string tag;
+        /// <summary>Key spot: the kit asset the key hangs on or lies on (the visual chat's key hosts). Empty: the default.</summary>
+        public string host;
+    }
+
     /// <summary>
     /// A room authored by a level designer: its footprint in 3 m cells, ceiling
     /// height, theme, what every edge is, columns, props, lamps and where the
@@ -80,6 +105,8 @@ namespace FrontRooms.Map
         public ModuleColumn[] customColumns = new ModuleColumn[0];
         public ModuleFill fill = ModuleFill.Auto;
         public ModuleProp[] props = new ModuleProp[0];
+        // Gameplay markers (P4): key spot, Relay entries.
+        public ModuleMarker[] markers = new ModuleMarker[0];
         // Per cell, i + j*width.
         public ModuleLamp[] lamps = new ModuleLamp[0];
 
@@ -139,6 +166,7 @@ namespace FrontRooms.Map
             lamps = Resize(lamps, width * depth, ModuleLamp.Auto);
             customColumns = customColumns ?? new ModuleColumn[0];
             props = props ?? new ModuleProp[0];
+            markers = markers ?? new ModuleMarker[0];
             // NaN and negative weights mean never; a huge one is capped so totals stay finite.
             weight = weight > 0f ? Math.Min(weight, 1000f) : 0f;
             minTier = Clamp(minTier, 0, 9);
@@ -166,6 +194,7 @@ namespace FrontRooms.Map
             c.innerNorth = (ModuleEdge[])innerNorth?.Clone();
             c.customColumns = (ModuleColumn[])customColumns?.Clone();
             c.props = (ModuleProp[])props?.Clone();
+            c.markers = (ModuleMarker[])markers?.Clone();
             c.lamps = (ModuleLamp[])lamps?.Clone();
             return c;
         }
@@ -236,6 +265,11 @@ namespace FrontRooms.Map
             {
                 var c = r.customColumns[k];
                 r.customColumns[k] = new ModuleColumn { x = c.y, y = width - c.x, large = c.large };
+            }
+            for (var k = 0; k < r.markers.Length; k++)
+            {
+                var mk = r.markers[k];
+                r.markers[k] = new ModuleMarker { kind = mk.kind, x = mk.z, z = w - mk.x, y = mk.y, yaw = (mk.yaw + 90f) % 360f, tag = mk.tag, host = mk.host };
             }
             return r;
         }
@@ -348,7 +382,81 @@ namespace FrontRooms.Map
             }
 
             // Can the player get from every opening to every other, and into every cell, past the props and inner walls?
-            if (errors.Count == 0 && openings > 0 && !Walkable(footprint, out var problem)) errors.Add(problem);
+            WalkGrid walked = null;
+            if (errors.Count == 0 && openings > 0)
+            {
+                if (!Walk(footprint, out var problem, out walked)) errors.Add(problem);
+                else if (walked.seen == null) walked = null;
+            }
+            ValidateMarkers(errors, warnings, footprint, columnAt, ceiling, walked);
+        }
+
+        /// <summary>
+        /// The markers' checks. Errors: outside the room or in a wall, an inner
+        /// wall, a column or (Relay entry) a prop; a key inside a prop rather than
+        /// on it; a key above the ceiling; a marker nobody can reach from the
+        /// openings. Warnings: a second key spot (only the first is used), a
+        /// Relay entry with a height (it stands on the floor), a marker where an
+        /// Auto column may stand, a key spot above 1.8 m (over the eye line).
+        /// </summary>
+        void ValidateMarkers(List<string> errors, List<string> warnings, Func<string, float[]> footprint, List<(int i, int j, float size, string what)> columnAt, float ceiling, WalkGrid walked)
+        {
+            var keys = 0;
+            for (var k = 0; k < markers.Length; k++)
+            {
+                var mk = markers[k];
+                var relay = mk.kind == ModuleMarkerKind.RelayEntry;
+                var label = "Marker " + (k + 1) + " (" + (relay ? "Relay entry" : "key spot") + ")";
+                // The Relay's body must fit there; a key only has to be off the wall.
+                var margin = relay ? ModuleUnits.RelayRadius : .05f;
+                var lo = ModuleUnits.WallHalf + margin;
+                if (mk.x < lo - .001f || mk.z < lo - .001f || mk.x > WidthMetres - lo + .001f || mk.z > DepthMetres - lo + .001f)
+                {
+                    errors.Add(label + ": stands in or beyond a wall (keep " + lo.ToString("0.00") + " m from the cell lines).");
+                    continue;
+                }
+                foreach (var w in InnerStrips())
+                    if (w[4] > 0f && mk.x > w[0] - margin && mk.x < w[2] + margin && mk.z > w[1] - margin && mk.z < w[3] + margin)
+                    { errors.Add(label + ": stands in an inner wall."); break; }
+                foreach (var c in columnAt)
+                {
+                    float cx = c.i * MapGrid.CellSize, cz = c.j * MapGrid.CellSize, r = c.size * .5f + margin;
+                    if (Math.Abs(mk.x - cx) >= r || Math.Abs(mk.z - cz) >= r) continue;
+                    if (columns == ModuleColumns.Custom) errors.Add(label + ": stands in a column (corner " + c.i + ", " + c.j + ").");
+                    else warnings.Add(label + ": stands where " + c.what + " (corner " + c.i + ", " + c.j + ").");
+                    break;
+                }
+                for (var q = 0; q < props.Length; q++)
+                {
+                    var pr = props[q];
+                    var f = string.IsNullOrEmpty(pr.kit) ? null : footprint?.Invoke(pr.kit);
+                    if (f == null) continue;
+                    Bounds(pr, f, out var x0, out var z0, out var x1, out var z1);
+                    if (relay)
+                    {
+                        if (pr.noCollider || pr.y > ModuleUnits.RelayHeight) continue;
+                        if (mk.x > x0 - margin && mk.x < x1 + margin && mk.z > z0 - margin && mk.z < z1 + margin)
+                        { errors.Add(label + ": stands in prop " + (q + 1) + " (" + pr.kit + "): the Relay's 0.3 m body must fit."); break; }
+                    }
+                    else if (mk.x > x0 && mk.x < x1 && mk.z > z0 && mk.z < z1 && mk.y < pr.y + f[4] - .02f && mk.y + .02f > pr.y)
+                    { errors.Add(label + ": is inside prop " + (q + 1) + " (" + pr.kit + "); put it on top (height " + (pr.y + f[4]).ToString("0.00") + " m)."); break; }
+                }
+                if (relay)
+                {
+                    if (Math.Abs(mk.y) > .001f) warnings.Add(label + ": a Relay entry stands on the floor; its height is ignored.");
+                    if (walked != null && !walked.NearestFreeReached(mk.x, mk.z, walked.step * 1.5f))
+                        errors.Add(label + ": the Relay could not walk out of it (props or inner walls shut it in).");
+                }
+                else
+                {
+                    if (++keys == 2) warnings.Add(label + ": only the first key spot is used.");
+                    if (mk.y > ceiling - .1f) errors.Add(label + ": is " + mk.y.ToString("0.00") + " m up, at or above the " + ceiling.ToString("0.0") + " m ceiling.");
+                    else if (mk.y > 1.8f) warnings.Add(label + ": is " + mk.y.ToString("0.00") + " m up, above the player's eye line (they may not see it).");
+                    // A key is taken from up to 0.9 m away (FrontRoomsMapWorld), at any height.
+                    if (walked != null && !walked.ReachedNear(mk.x, mk.z, .85f))
+                        errors.Add(label + ": nobody can get within 0.9 m of it to take the key.");
+                }
+            }
         }
 
         /// <summary>
@@ -414,14 +522,59 @@ namespace FrontRooms.Map
         /// cut off. Inner doorways count as open along their whole edge (where
         /// the map puts the gap varies), so this is a lower bound on trouble.
         /// </summary>
-        public bool Walkable(Func<string, float[]> footprint, out string problem)
+        public bool Walkable(Func<string, float[]> footprint, out string problem) => Walk(footprint, out problem, out _);
+
+        /// <summary>The walk test's grid: 0.25 m nodes, blocked for the 0.3 m body, and those reached from the first opening.</summary>
+        sealed class WalkGrid
+        {
+            public bool[] blocked, seen;
+            public int nx, nz;
+            public float step;
+
+            /// <summary>
+            /// Whether the free node nearest (x, z), within <paramref name="radius"/>, was reached. A point
+            /// the clearance checks passed can sit up to about a step and a half from its nearest free node
+            /// at a wall, prop or corner margin.
+            /// </summary>
+            public bool NearestFreeReached(float x, float z, float radius)
+            {
+                if (seen == null) return false;
+                var best = -1;
+                var bestD = radius * radius;
+                for (var k = 0; k < blocked.Length; k++)
+                {
+                    if (blocked[k]) continue;
+                    float dx = (k % nx + .5f) * step - x, dz = (k / nx + .5f) * step - z;
+                    var d2 = dx * dx + dz * dz;
+                    if (d2 <= bestD) { bestD = d2; best = k; }
+                }
+                return best >= 0 && seen[best];
+            }
+
+            /// <summary>A reached node within <paramref name="radius"/> of (x, z).</summary>
+            public bool ReachedNear(float x, float z, float radius)
+            {
+                if (seen == null) return false;
+                for (var k = 0; k < seen.Length; k++)
+                {
+                    if (!seen[k]) continue;
+                    float nx0 = (k % nx + .5f) * step - x, nz0 = (k / nx + .5f) * step - z;
+                    if (nx0 * nx0 + nz0 * nz0 <= radius * radius) return true;
+                }
+                return false;
+            }
+        }
+
+        bool Walk(Func<string, float[]> footprint, out string problem, out WalkGrid grid)
         {
             problem = null;
+            grid = null;
             const float step = .25f;
             var cs = MapGrid.CellSize;
             var body = ModuleUnits.PlayerRadius;
             int nx = (int)Math.Round(WidthMetres / step), nz = (int)Math.Round(DepthMetres / step);
             var blocked = new bool[nx * nz];
+            grid = new WalkGrid { blocked = blocked, nx = nx, nz = nz, step = step };
             var rects = new List<float[]>();
             foreach (var p in props)
             {
@@ -478,6 +631,7 @@ namespace FrontRooms.Map
             if (seeds.Count == 0) return true;
 
             var seen = new bool[blocked.Length];
+            grid.seen = seen;
             var queue = new Queue<int>();
             queue.Enqueue(seeds[0]);
             seen[seeds[0]] = true;

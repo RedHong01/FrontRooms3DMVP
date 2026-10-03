@@ -37,8 +37,21 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     int buildRadius, chunksPerFrame;
     float shiftAfterSeconds, lightRadius, shadowRadius, pileChance;
     bool doorsNeedKeys, dressOffices;
+    // The profile's tier table itself (not a copy): edits to it reach chunks built afterwards.
+    FrontRoomsTierRules tierRules;
 
     public FrontRoomsMapCache Cache { get; private set; }
+
+    /// <summary>
+    /// The run's difficulty tier given to chunks generated from now on (1 = base):
+    /// their module tier and Auto lamp odds. Chunks already generated keep theirs,
+    /// so a rebuild is identical; a revisit shift takes the tier of its time.
+    /// </summary>
+    public int GenerationTier
+    {
+        get => Cache != null ? Cache.Tier : 1;
+        set { if (Cache != null) Cache.Tier = Mathf.Max(1, value); }
+    }
     public Transform Player => player;
     public int ShiftedChunks { get; private set; }
     public int KeysHeld => keysHeld.Count;
@@ -139,7 +152,10 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         public readonly List<Fixture> fixtures = new List<Fixture>();
         public readonly List<Door> doors = new List<Door>();
         public readonly List<Window> windows = new List<Window>();
-        public readonly List<(GameObject go, GridCoord zone)> keys = new List<(GameObject, GridCoord)>();
+        // Keys: a key on a module's key spot lies still; the others spin.
+        public readonly List<(GameObject go, GridCoord zone, bool spin)> keys = new List<(GameObject, GridCoord, bool)>();
+        // Module Relay entries in this chunk: world position on the floor, and the marker's tag.
+        public readonly List<(Vector3 pos, string tag)> relayEntries = new List<(Vector3, string)>();
     }
 
     sealed class MeshBuilder
@@ -249,6 +265,71 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     }
     readonly Queue<DressJob> dressQueue = new Queue<DressJob>();
 
+    void OnEnable() => FrontRoomsLevelProfile.Changed += OnProfileChanged;
+
+    void OnDisable() => FrontRoomsLevelProfile.Changed -= OnProfileChanged;
+
+    void OnProfileChanged(FrontRoomsLevelProfile changed)
+    {
+        if (Application.isPlaying && begun && changed != null && changed == profile) ApplyLive(changed);
+    }
+
+    /// <summary>Raised after ApplyLive, so the game can move its camera's far plane with the build radius.</summary>
+    public event Action LiveApplied;
+
+    /// <summary>
+    /// Take a profile's live numbers into the running map: build radius and
+    /// chunks per frame (the next stream follows), the shift delay, the light
+    /// and shadow radii, keys, Office dressing and the pile chance (rooms
+    /// furnished from now on), and the tier table. The generation numbers and
+    /// the module library stay as the map was made with: changing them under a
+    /// running map would move what the player has seen.
+    /// </summary>
+    public void ApplyLive(FrontRoomsLevelProfile source)
+    {
+        if (source == null) return;
+        buildRadius = Mathf.Max(1, source.buildRadius);
+        chunksPerFrame = Mathf.Max(1, source.chunksPerFrame);
+        shiftAfterSeconds = source.shiftAfterSeconds;
+        lightRadius = source.lightRadius;
+        shadowRadius = Mathf.Min(source.shadowRadius, source.lightRadius);
+        doorsNeedKeys = source.doorsNeedKeys;
+        dressOffices = source.dressOffices;
+        pileChance = source.pileChance;
+        tierRules = source.tiers ?? tierRules;
+        var walker = player != null ? player.GetComponent<FrontRoomsMapWalker>() : null;
+        if (walker != null) walker.RefreshView();
+        LiveApplied?.Invoke();
+    }
+
+    /// <summary>
+    /// Put a different module in a chunk's hand placement (the Level Designer
+    /// preview in Play) and rebuild that chunk at once. Its borders are the
+    /// chunk's own, so the neighbours stay as they are.
+    /// </summary>
+    public void ReplaceModule(GridCoord chunk, RoomModuleData module, int x, int y)
+    {
+        placedModules.RemoveAll(p => p.chunk == chunk);
+        placedModules.Add((module, chunk, x, y));
+        Cache?.ReplacePlacements(chunk, module, x, y);
+        RebuildChunk(chunk);
+    }
+
+    /// <summary>Throw a built chunk away and build it again now (furnished), without counting it as dropped: no revisit shift.</summary>
+    public void RebuildChunk(GridCoord coord)
+    {
+        if (built.TryGetValue(coord, out var old))
+        {
+            // Its colliders go this frame (a deferred Destroy would leave them for the walker to hit).
+            if (old.root != null) old.root.SetActive(false);
+            Unregister(old);
+            built.Remove(coord);
+        }
+        failedChunks.Remove(coord);
+        Build(coord);
+        while (DressNext()) { }
+    }
+
     void Awake()
     {
         if (settings == null)
@@ -301,6 +382,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         doorsNeedKeys = source.doorsNeedKeys;
         dressOffices = source.dressOffices;
         pileChance = source.pileChance;
+        tierRules = source.tiers ?? new FrontRoomsTierRules();
     }
 
     /// <summary>
@@ -768,7 +850,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
                 BuildColumn(style, new Vector3(i * cs, 0f, j * cs), height, zone.theme, theme, b, Get, Solid, origin);
             }
 
-            if (!reserved) BuildFixture(chunk, cell, cellCenter, height, theme, data.lamp[index]);
+            if (!reserved) BuildFixture(chunk, cell, cellCenter, height, theme, data.lamp[index], data.tier);
         }
 
         for (var b = 0; b < builders.Length; b++)
@@ -790,17 +872,13 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         chunk.meshes.Add(shell.sharedMesh);
         shellColliders.Add(shell);
 
-        if (data.hasKey && !keysHeld.Contains(data.ownZone.id) && !InStartArea(data.keyCell))
+        if (data.hasKey && !keysHeld.Contains(data.ownZone.id))
         {
-            var key = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            key.name = "Key · zone " + data.ownZone.id;
-            Kill(key.GetComponent<Collider>());
-            key.transform.SetParent(chunk.root.transform, false);
-            key.transform.localPosition = new Vector3((data.keyCell.x + .5f) * cs, 1.05f, (data.keyCell.y + .5f) * cs) - origin;
-            key.transform.localScale = new Vector3(.32f, .12f, .12f);
-            key.GetComponent<Renderer>().sharedMaterial = keyGlow;
-            chunk.keys.Add((key, data.ownZone.id));
+            // A key spot in a room the start area cuts (not furnished, maybe under the stream rooms): back to the site cell.
+            var atSpot = data.keySpot && !KeyRoomInStartArea(data);
+            if (!InStartArea(atSpot ? data.keyCell : data.keySiteCell)) SpawnKey(chunk, data, atSpot);
         }
+        RegisterRelayEntries(chunk, data);
         AddZoneGrades(chunk, data);
         Furnish(chunk, data);
         built[coord] = chunk;
@@ -1092,7 +1170,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
     // ---------- Fixtures: each lamp keeps its own state ----------
 
-    void BuildFixture(BuiltChunk chunk, GridCoord cell, Vector3 localCenter, float height, ThemeMaterials theme, ModuleLamp lamp)
+    void BuildFixture(BuiltChunk chunk, GridCoord cell, Vector3 localCenter, float height, ThemeMaterials theme, ModuleLamp lamp, int tier)
     {
         // A module can take a lamp out altogether.
         if (lamp == ModuleLamp.Off) return;
@@ -1139,7 +1217,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         // Lamp temperament, rolled once per lamp from the seed and its cell:
         // 0 steady, 1 stutters now and then, 2 failing, 3 dead with rare blinks, 4 dim.
         var roll = Rand(ref fixture.rng);
-        fixture.mode = roll < .62f ? 0 : roll < .82f ? 1 : roll < .92f ? 2 : roll < .97f ? 3 : 4;
+        // The odds come from the tier the chunk was generated at (tier 1: 62 % steady, 20 stutter, 10 failing, 5 dead, 3 dim).
+        fixture.mode = (tierRules ?? new FrontRoomsTierRules()).At(tier).LampMode(roll);
         // A module's lamp: Steady..Dim map onto modes 0..4.
         if (lamp != ModuleLamp.Auto) fixture.mode = (int)lamp - 1;
         fixture.phase = Rand(ref fixture.rng) * 50f;
@@ -1441,6 +1520,21 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var obstacles = new List<Rect>(columns);
             if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module, clear, doorway, columns));
             var worked = obstacles.Count > columns.Count || (module?.props != null && module.props.Length > 0);
+            // The fill keeps off the zone key (a metre round it) and the Relay's entries (its body and a margin).
+            if (data.hasKey && room.Contains(data.keyCell.x - o.x, data.keyCell.y - o.y))
+            {
+                var kx = data.keySpot ? data.keyX : (data.keyCell.x - o.x + .5f) * cs;
+                var kz = data.keySpot ? data.keyZ : (data.keyCell.y - o.y + .5f) * cs;
+                // A raised key needs no floor kept for it only when a module prop that was placed holds it up
+                // (a prop over an opening or in a column is left out, and a raised spot may have nothing under it).
+                var k = new Vector2(kx, kz);
+                var onPlacedProp = data.keySpot && data.keyY >= .05f && obstacles.GetRange(columns.Count, obstacles.Count - columns.Count).Exists(f => f.Contains(k));
+                if (!onPlacedProp) clear.Add(new Rect(kx - .5f, kz - .5f, 1f, 1f));
+            }
+            if (module != null && module.markers != null)
+                foreach (var mk in module.markers)
+                    if (mk.kind == ModuleMarkerKind.RelayEntry)
+                        clear.Add(new Rect(room.x * cs + mk.x - .4f, room.y * cs + mk.z - .4f, .8f, .8f));
             if (module != null)
             {
                 // The fill sees the module's inner walls (their 0.16 m bands) as obstacles and keeps its inner doorways clear.
@@ -1848,15 +1942,82 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// The zone key of a chunk: at its module key spot (lying still, turned as
+    /// the marker says), or spinning 1.05 m above its cell's centre. The one
+    /// place a key is made, so the key model and its host plug in here.
+    /// </summary>
+    void SpawnKey(BuiltChunk chunk, MapChunk data, bool atSpot)
+    {
+        var cs = MapGrid.CellSize;
+        var key = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        key.name = "Key · zone " + data.ownZone.id;
+        // Out of the physics scene at once: a deferred Destroy would leave it for this frame's queries.
+        var keyCollider = key.GetComponent<Collider>();
+        keyCollider.enabled = false;
+        Kill(keyCollider);
+        key.transform.SetParent(chunk.root.transform, false);
+        key.transform.localScale = new Vector3(.32f, .12f, .12f);
+        if (atSpot)
+        {
+            // Resting on what is under it (the floor, or the top of the prop the marker sits on).
+            key.transform.localPosition = new Vector3(data.keyX, data.keyY + .06f, data.keyZ);
+            key.transform.localRotation = Quaternion.Euler(0f, data.keyYaw, 0f);
+        }
+        else
+        {
+            var origin = new Vector3(data.coord.x * MapGrid.ChunkSize, 0f, data.coord.y * MapGrid.ChunkSize);
+            key.transform.localPosition = new Vector3((data.keySiteCell.x + .5f) * cs, 1.05f, (data.keySiteCell.y + .5f) * cs) - origin;
+        }
+        key.GetComponent<Renderer>().sharedMaterial = keyGlow;
+        chunk.keys.Add((key, data.ownZone.id, !atSpot));
+    }
+
+    /// <summary>True when the room the key spot came from (the topmost room on the key's site cell) overlaps the start area.</summary>
+    bool KeyRoomInStartArea(MapChunk data)
+    {
+        if (!hasStartArea) return false;
+        var o = data.Origin;
+        int si = data.keySiteCell.x - o.x, sj = data.keySiteCell.y - o.y;
+        for (var r = data.rooms.Length - 1; r >= 0; r--)
+            if (data.rooms[r].Contains(si, sj)) return RoomInStartArea(data, data.rooms[r]);
+        return false;
+    }
+
+    /// <summary>The Relay entries of the chunk's intact module rooms (outside the start area), on the floor, in world space.</summary>
+    void RegisterRelayEntries(BuiltChunk chunk, MapChunk data)
+    {
+        var cs = MapGrid.CellSize;
+        for (var r = 0; r < data.rooms.Length; r++)
+        {
+            var module = data.ModuleOf(r);
+            if (module == null || module.markers == null || !data.RoomIntact(r) || RoomInStartArea(data, data.rooms[r])) continue;
+            var room = data.rooms[r];
+            foreach (var mk in module.markers)
+            {
+                if (mk.kind != ModuleMarkerKind.RelayEntry) continue;
+                var local = new Vector3(room.x * cs + mk.x, 0f, room.y * cs + mk.z);
+                chunk.relayEntries.Add((chunk.root.transform.TransformPoint(local), string.IsNullOrEmpty(mk.tag) ? null : mk.tag));
+            }
+        }
+    }
+
+    /// <summary>Every Relay entry of the built map (module markers), with its tag (null for none). The Relay prefers them when it appears.</summary>
+    public void RelayEntries(List<(Vector3 pos, string tag)> into)
+    {
+        into.Clear();
+        foreach (var chunk in built.Values) into.AddRange(chunk.relayEntries);
+    }
+
     void CollectKeys()
     {
         var p = player.position;
         foreach (var chunk in built.Values)
             for (var i = chunk.keys.Count - 1; i >= 0; i--)
             {
-                var (go, zone) = chunk.keys[i];
+                var (go, zone, spin) = chunk.keys[i];
                 if (go == null) { chunk.keys.RemoveAt(i); continue; }
-                go.transform.Rotate(0f, 90f * Time.deltaTime, 0f, Space.World);
+                if (spin) go.transform.Rotate(0f, 90f * Time.deltaTime, 0f, Space.World);
                 var d = go.transform.position - p;
                 if (new Vector2(d.x, d.z).sqrMagnitude > .9f * .9f) continue;
                 keysHeld.Add(zone);

@@ -81,6 +81,7 @@ public sealed class FrontRoomsMetalGlassRTController : MonoBehaviour
         {
             nativeAvailable = FrontRoomsMetalGlassRTNative.DeviceSupportsRaytracing() == 1;
             ready = nativeAvailable;
+            Debug.Log($"[FrontRoomsMetalGlassRT] Native Metal ray-tracing capability: {nativeAvailable}");
         }
         catch (DllNotFoundException)
         {
@@ -210,8 +211,10 @@ public sealed class FrontRoomsMetalGlassRTController : MonoBehaviour
             }
 
             if (instances.Count == 0) { ready = false; return; }
-            FrontRoomsMetalGlassRTNative.SetMaterials(materials.ToArray(), materials.Count);
-            FrontRoomsMetalGlassRTNative.BuildInstances(instances.ToArray(), instances.Count);
+            if (FrontRoomsMetalGlassRTNative.SetMaterials(materials.ToArray(), materials.Count) != 0)
+                throw new InvalidOperationException(FrontRoomsMetalGlassRTNative.LastError());
+            if (FrontRoomsMetalGlassRTNative.BuildInstances(instances.ToArray(), instances.Count) != 0)
+                throw new InvalidOperationException(FrontRoomsMetalGlassRTNative.LastError());
             reset = true;
             ready = true;
         }
@@ -309,7 +312,6 @@ internal static class FrontRoomsMetalGlassRTNative
     public struct MaterialDesc
     {
         public Vector4 baseColor;
-        public Vector4 emission;
         public float metallic;
         public float smoothness;
         public uint flags;
@@ -318,11 +320,9 @@ internal static class FrontRoomsMetalGlassRTNative
         public static MaterialDesc From(Material material, bool glass)
         {
             var c = material != null && material.HasProperty("_BaseColor") ? material.GetColor("_BaseColor") : Color.white;
-            var emission = material != null && material.IsKeywordEnabled("_EMISSION") && material.HasProperty("_EmissionColor") ? material.GetColor("_EmissionColor") : Color.black;
             return new MaterialDesc
             {
                 baseColor = c.linear,
-                emission = emission.linear,
                 metallic = material != null && material.HasProperty("_Metallic") ? material.GetFloat("_Metallic") : 0f,
                 smoothness = material != null && material.HasProperty("_Smoothness") ? material.GetFloat("_Smoothness") : .5f,
                 flags = glass ? 1u : 0u
@@ -347,6 +347,7 @@ internal static class FrontRoomsMetalGlassRTNative
     [DllImport(Plugin)] static extern int FRGlassRT_AddMesh(IntPtr vertexBuffer, uint vertexStride, uint positionOffset, IntPtr indexBuffer, uint indexSize, uint indexByteOffset, uint triangleCount);
     [DllImport(Plugin)] static extern int FRGlassRT_SetMaterials([In] MaterialDesc[] materials, int count);
     [DllImport(Plugin)] static extern int FRGlassRT_BuildInstances([In] InstanceDesc[] instances, int count);
+    [DllImport(Plugin)] static extern IntPtr FRGlassRT_LastError();
     [DllImport(Plugin)] static extern void FRGlassRT_SetOutput(IntPtr texture);
     [DllImport(Plugin)] static extern IntPtr FRGlassRT_GetRenderEventFunc();
     [DllImport(Plugin)] static extern int FRGlassRT_RenderEventId();
@@ -354,8 +355,13 @@ internal static class FrontRoomsMetalGlassRTNative
     public static int DeviceSupportsRaytracing() => FRGlassRT_DeviceSupportsRaytracing();
     public static void Reset() => FRGlassRT_Reset();
     public static int AddMesh(IntPtr vb, uint stride, uint posOffset, IntPtr ib, uint indexSize, uint indexByteOffset, uint triangleCount) => FRGlassRT_AddMesh(vb, stride, posOffset, ib, indexSize, indexByteOffset, triangleCount);
-    public static void SetMaterials(MaterialDesc[] value, int count) => FRGlassRT_SetMaterials(value, count);
-    public static void BuildInstances(InstanceDesc[] value, int count) => FRGlassRT_BuildInstances(value, count);
+    public static int SetMaterials(MaterialDesc[] value, int count) => FRGlassRT_SetMaterials(value, count);
+    public static int BuildInstances(InstanceDesc[] value, int count) => FRGlassRT_BuildInstances(value, count);
+    public static string LastError()
+    {
+        var ptr = FRGlassRT_LastError();
+        return ptr == IntPtr.Zero ? "unknown native error" : Marshal.PtrToStringAnsi(ptr);
+    }
     public static void SetOutput(IntPtr texture) => FRGlassRT_SetOutput(texture);
     public static IntPtr GetRenderEventFunc() => FRGlassRT_GetRenderEventFunc();
     public static int RenderEventId => FRGlassRT_RenderEventId();

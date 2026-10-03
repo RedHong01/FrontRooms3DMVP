@@ -4,8 +4,8 @@ using UnityEngine;
 
 /// <summary>
 /// The Inspector of a room module: a plan of the room (north up) where clicks
-/// edit it, the props and their placement, the module's settings, and its
-/// checks. The Level Designer window (FrontRooms → Level Designer → Window)
+/// edit it, the props and their placement, the gameplay markers, the
+/// module's settings, and its checks. The Level Designer window (FrontRooms → Level Designer → Window)
 /// draws the same plan and sections (FrontRoomsModulePlanView,
 /// FrontRoomsModuleGUI) beside its module list and kit palette; the preview
 /// scene rebuilds after every edit made in either.
@@ -62,7 +62,7 @@ public sealed class FrontRoomsRoomModuleEditor : Editor
         EditorGUILayout.Space(6);
         EditorGUILayout.LabelField("Plan (north up)", EditorStyles.boldLabel);
         plan.Draw(module, EditorGUIUtility.currentViewWidth - 40f);
-        EditorGUILayout.LabelField("Click a prop to select (again: the one under it), drag to move, R turns, Delete removes, Esc deselects. Click an edge: wall → arch → open. Right-click a cell: lamp.", EditorStyles.wordWrappedMiniLabel);
+        EditorGUILayout.LabelField(plan.Help, EditorStyles.wordWrappedMiniLabel);
 
         // ---------- Props ----------
         EditorGUILayout.Space(6);
@@ -76,6 +76,11 @@ public sealed class FrontRoomsRoomModuleEditor : Editor
                     plan.Select(FrontRoomsModuleEditing.AddKit(module, names[addKit], new Vector2(m.WidthMetres * .5f, m.DepthMetres * .5f)));
         }
         FrontRoomsModuleGUI.SelectedProp(module, plan);
+
+        // ---------- Markers ----------
+        EditorGUILayout.Space(6);
+        EditorGUILayout.LabelField("Markers (" + m.markers.Length + ")", EditorStyles.boldLabel);
+        FrontRoomsModuleGUI.Markers(module, plan);
 
         // ---------- Generator ----------
         EditorGUILayout.Space(6);

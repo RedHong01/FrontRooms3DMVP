@@ -28,8 +28,32 @@ public sealed class FrontRoomsHunterTuning
     public float catchDistance = .7f;
     public float sprintNoiseRadius = 26f;
     public float doorNoiseRadius = 14f;
-    [Range(.5f, 3f), Tooltip("How far it hears, as a multiple of every noise radius (sprint, door, glass). 1.4: sprint 36 m, door 20 m, glass 56 m. The planned tiers raise it.")]
+    [Range(.5f, 3f), Tooltip("How far it hears, as a multiple of every noise radius (sprint, door, glass). 1.4: sprint 36 m, door 20 m, glass 56 m. The level profile's tiers raise it.")]
     public float hearing = 1.4f;
+    [Tooltip("Searching a room (the map Relay): seconds it stands and listens at each spot.")]
+    public float searchLookSeconds = 1.1f;
+    [Tooltip("Searching a room (the map Relay): it gives up after this long.")]
+    public float searchMaxSeconds = 15f;
+
+    /// <summary>Copy every number from another tuning, in place (the running Relay keeps its one tuning object).</summary>
+    public void CopyFrom(FrontRoomsHunterTuning o)
+    {
+        releaseDelaySeconds = o.releaseDelaySeconds;
+        trailRooms = o.trailRooms;
+        listenSeconds = o.listenSeconds;
+        searchSeconds = o.searchSeconds;
+        breakDoorSeconds = o.breakDoorSeconds;
+        huntSpeed = o.huntSpeed;
+        chaseSpeed = o.chaseSpeed;
+        sightRange = o.sightRange;
+        lostSightSeconds = o.lostSightSeconds;
+        catchDistance = o.catchDistance;
+        sprintNoiseRadius = o.sprintNoiseRadius;
+        doorNoiseRadius = o.doorNoiseRadius;
+        hearing = o.hearing;
+        searchLookSeconds = o.searchLookSeconds;
+        searchMaxSeconds = o.searchMaxSeconds;
+    }
 }
 
 /// <summary>

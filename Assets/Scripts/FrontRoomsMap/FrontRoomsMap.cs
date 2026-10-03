@@ -121,6 +121,8 @@ namespace FrontRooms.Map
         // replaced by one, chosen by weight. The modules come from the level
         // profile; see FrontRoomsMapGenerator.Modules.
         public float moduleChance = .3f;
+        // The base module tier: a chunk generated while the run is at tier t
+        // takes the modules whose tier range holds moduleTier + t - 1.
         public int moduleTier = 0;
 
         public MapSettings Clone() => (MapSettings)MemberwiseClone();
@@ -151,6 +153,9 @@ namespace FrontRooms.Map
     {
         public GridCoord coord;
         public int revision;
+        // The run's difficulty tier when this chunk was generated (1 = base). Kept with the
+        // chunk, so a rebuild is identical; a revisit shift takes the tier of its time.
+        public int tier = 1;
         public GridCoord[] zone = new GridCoord[MapGrid.CellsPerChunk];
         public ZoneHeight[] height = new ZoneHeight[MapGrid.CellsPerChunk];
         public EdgeKind[] east = new EdgeKind[MapGrid.CellsPerChunk];
@@ -170,6 +175,13 @@ namespace FrontRooms.Map
         // through windows and carry no key.
         public bool hasKey;
         public GridCoord keyCell;
+        // The cell nearest the zone's site (PlaceKey); keyCell differs only when a module's key spot takes the key.
+        public GridCoord keySiteCell;
+        // A module's key spot (PlaceKeySpot): the key lies there instead of at its cell's centre.
+        // Chunk-local metres from the chunk's south-west corner; y above the floor; yaw in degrees.
+        public bool keySpot;
+        public float keyX, keyZ, keyY, keyYaw;
+        public string keyHost;
         public ZoneInfo ownZone;
         // Rooms carved on top of the maze, in carving order. A later room can
         // overlap an earlier one.
@@ -412,6 +424,8 @@ namespace FrontRooms.Map
             if (modules.Count == 0 || settings.moduleChance <= 0f) return;
             var seed = settings.seed;
             var generated = chunk.rooms.Length;
+            // The base module tier, raised with the run's tier when this chunk was generated.
+            var moduleTier = settings.moduleTier + chunk.tier - 1;
             var fits = new List<(RoomModuleData m, float w)>();
             for (var r = 0; r < generated; r++)
             {
@@ -426,7 +440,7 @@ namespace FrontRooms.Map
                 foreach (var turns in modules)
                 {
                     var m = turns[0];
-                    if (m.height != zone.height || m.theme != zone.theme || settings.moduleTier < m.minTier || settings.moduleTier > m.maxTier) continue;
+                    if (m.height != zone.height || m.theme != zone.theme || moduleTier < m.minTier || moduleTier > m.maxTier) continue;
                     // Every allowed turn that fits counts once; the module's weight is shared between them.
                     var count = 0;
                     foreach (var turned in turns) if (turned != null && turned.width <= rect.w && turned.depth <= rect.h) count++;
@@ -537,12 +551,15 @@ namespace FrontRooms.Map
             }
         }
 
-        /// <summary>Build one chunk. Revision 0 is the first build; a higher revision reshuffles only the interior.</summary>
-        public MapChunk Generate(GridCoord coord, int revision = 0)
+        /// <summary>
+        /// Build one chunk. Revision 0 is the first build; a higher revision reshuffles only the interior.
+        /// <paramref name="tier"/> (1 = base) only changes the interior too: which modules may come.
+        /// </summary>
+        public MapChunk Generate(GridCoord coord, int revision = 0, int tier = 1)
         {
             const int n = MapGrid.ChunkCells;
             var seed = settings.seed;
-            var chunk = new MapChunk { coord = coord, revision = revision, ownZone = Zone(coord) };
+            var chunk = new MapChunk { coord = coord, revision = revision, tier = Math.Max(1, tier), ownZone = Zone(coord) };
             for (var j = 0; j < n; j++)
             for (var i = 0; i < n; i++)
             {
@@ -646,7 +663,55 @@ namespace FrontRooms.Map
                 if (d >= best) continue;
                 best = d;
                 chunk.keyCell = cell;
+                chunk.keySiteCell = cell;
                 chunk.hasKey = true;
+            }
+            PlaceKeySpot(chunk);
+        }
+
+        /// <summary>
+        /// A module's key spot takes the zone key: when the key's site cell lies in an
+        /// intact module room whose module has a key spot (the first) in a cell of the
+        /// chunk's own zone, the key moves to that spot and cell. Runs again after
+        /// every stamp (the cache's hand placements), so it is a function of the chunk
+        /// as built; on a revisit shift the key may move within its room.
+        /// </summary>
+        public void PlaceKeySpot(MapChunk chunk)
+        {
+            chunk.keySpot = false;
+            chunk.keyHost = null;
+            if (!chunk.hasKey) return;
+            chunk.keyCell = chunk.keySiteCell;
+            var cs = MapGrid.CellSize;
+            var site = chunk.keySiteCell;
+            int si = site.x - chunk.Origin.x, sj = site.y - chunk.Origin.y;
+            // Later rooms are on top: look from the last.
+            for (var r = chunk.rooms.Length - 1; r >= 0; r--)
+            {
+                var module = chunk.ModuleOf(r);
+                var room = chunk.rooms[r];
+                if (!room.Contains(si, sj)) continue;
+                if (module == null || !chunk.RoomIntact(r)) return;
+                foreach (var mk in module.markers ?? new ModuleMarker[0])
+                {
+                    if (mk.kind != ModuleMarkerKind.KeySpot) continue;
+                    // A spot in or beyond a wall (a module shrunk under its marker, an ignored check): the key stays at its site cell.
+                    var lo = ModuleUnits.WallHalf + .05f;
+                    if (!(mk.x >= lo && mk.z >= lo && mk.x <= module.WidthMetres - lo && mk.z <= module.DepthMetres - lo)) return;
+                    int ci = room.x + Math.Min(module.width - 1, Math.Max(0, (int)Math.Floor(mk.x / cs)));
+                    int cj = room.y + Math.Min(module.depth - 1, Math.Max(0, (int)Math.Floor(mk.z / cs)));
+                    var cell = chunk.Cell(ci, cj);
+                    if (ZoneOf(cell).id != chunk.ownZone.id) return;
+                    chunk.keyCell = cell;
+                    chunk.keySpot = true;
+                    chunk.keyX = room.x * cs + mk.x;
+                    chunk.keyZ = room.y * cs + mk.z;
+                    chunk.keyY = mk.y;
+                    chunk.keyYaw = mk.yaw;
+                    chunk.keyHost = string.IsNullOrEmpty(mk.host) ? null : mk.host;
+                    return;
+                }
+                return;
             }
         }
 
@@ -672,6 +737,9 @@ namespace FrontRooms.Map
 
         public FrontRoomsMapGenerator Generator { get; }
         public int Count => chunks.Count;
+
+        /// <summary>The run's difficulty tier (1 = base) given to chunks generated from now on. Chunks already generated keep theirs.</summary>
+        public int Tier { get; set; } = 1;
         public IEnumerable<MapChunk> Built => chunks.Values;
 
         // Modules placed by hand (the Level Designer preview), per chunk.
@@ -681,9 +749,13 @@ namespace FrontRooms.Map
         {
             if (chunks.TryGetValue(coord, out var chunk)) return chunk;
             revisions.TryGetValue(coord, out var revision);
-            chunk = Generator.Generate(coord, revision);
+            chunk = Generator.Generate(coord, revision, Tier);
             if (placements.TryGetValue(coord, out var list))
+            {
                 foreach (var p in list) RoomModuleStamp.Apply(Generator, chunk, p.module, p.x, p.y);
+                // A hand-placed module can take the key.
+                Generator.PlaceKeySpot(chunk);
+            }
             chunks[coord] = chunk;
             return chunk;
         }
@@ -696,6 +768,13 @@ namespace FrontRooms.Map
         {
             if (!placements.TryGetValue(chunk, out var list)) placements[chunk] = list = new List<(RoomModuleData, int, int)>();
             list.Add((module, x, y));
+            chunks.Remove(chunk);
+        }
+
+        /// <summary>Replace a chunk's hand placements with one module (the Level Designer preview in Play) and drop the chunk, so its next Get stamps that.</summary>
+        public void ReplacePlacements(GridCoord chunk, RoomModuleData module, int x, int y)
+        {
+            placements[chunk] = new List<(RoomModuleData, int, int)> { (module, x, y) };
             chunks.Remove(chunk);
         }
 

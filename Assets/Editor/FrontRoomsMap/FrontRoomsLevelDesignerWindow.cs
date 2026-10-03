@@ -7,8 +7,8 @@ using UnityEngine;
 /// <summary>
 /// The Level Designer's panel (P2), docked beside the Inspector with the
 /// Scene or Game view on the left: the room modules, the selected one's plan,
-/// a palette of kit assets, its props and settings, the preview's seed and
-/// turn, and whether the generator may use it. Kits are placed by clicking
+/// a palette of kit assets, its props, gameplay markers and settings, the
+/// preview's seed and turn, and whether the generator may use it. Kits are placed by clicking
 /// one to arm it and then clicking in the plan, or by dragging one into the
 /// plan or onto the floor in the Scene view (FrontRoomsDesignerSceneTools).
 /// FrontRooms → Level Designer → Window, or Open.
@@ -24,7 +24,7 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
     [SerializeField] string paletteSearch = "";
     [SerializeField] int paletteFilter;
     [SerializeField] Vector2 scroll, listScroll, propsScroll;
-    [SerializeField] bool showRoom = true, showPalette = true, showProps = true, showPreview = true, showGenerator = true, showChecks = true;
+    [SerializeField] bool showRoom = true, showPalette = true, showProps = true, showMarkers = true, showPreview = true, showGenerator = true, showChecks = true;
 
     static FrontRoomsLevelDesignerWindow open;
     static GUIStyle tileLabel, rowNote;
@@ -128,7 +128,8 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
         module = target;
         modules = null;
         renaming = null;
-        plan.Select(-1, false);
+        // Nothing of the old module stays selected: neither a prop nor a marker (Follow would find a like one in the new module).
+        plan.Forget();
         var preview = FrontRoomsDesignerSceneTools.ScenePreview();
         if (preview == null || target == null || preview.module == target) return;
         // The selected props belong to the module that is leaving.
@@ -153,7 +154,17 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
 
         scroll = EditorGUILayout.BeginScrollView(scroll);
         if (EditorApplication.isPlayingOrWillChangePlaymode)
-            EditorGUILayout.HelpBox("Play mode: the Scene view tools and the preview controls are off. Edits go to the module and show in the preview when Play ends.", MessageType.Info);
+        {
+            // ScenePreview() is null in Play: look for the running preview itself.
+            var running = Object.FindFirstObjectByType<FrontRoomsModulePreview>();
+            if (running != null && running.isActiveAndEnabled && running.module == module)
+                EditorGUILayout.HelpBox("Play mode: an edit rebuilds only the room's chunk of the running map and you stay where you stand (back at the entrance only if the edit put something where you stood). "
+                    + "A new size, height or theme rebuilds the whole map and starts you at the entrance. The Scene view tools and the preview controls are off.", MessageType.Info);
+            else
+                EditorGUILayout.HelpBox("Play mode: edits are saved to the module but do not reach the running map"
+                    + (running != null && running.isActiveAndEnabled ? " (its preview shows " + (running.module != null ? running.module.name : "no module") + ")" : "")
+                    + ". The Scene view tools and the preview controls are off.", MessageType.Info);
+        }
         else if (preview == null || preview.module != module)
         {
             EditorGUILayout.HelpBox(preview == null ? "The designer scene is not open: the Scene view tools and the preview controls need it." : "The preview shows another module.", MessageType.Info);
@@ -175,9 +186,7 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
         EditorGUILayout.Space(4);
         EditorGUILayout.LabelField("Plan (north up)", EditorStyles.boldLabel);
         plan.Draw(module, position.width - 40f);
-        EditorGUILayout.LabelField(plan.ArmedKit != null
-            ? "Click to place " + plan.ArmedKit + " (Shift: keep placing). Esc stops."
-            : "Click a prop to select (again: the one under it), drag to move, R turns, Delete removes, Esc deselects. Click an edge: wall → arch → open. Right-click a cell: lamp.", EditorStyles.wordWrappedMiniLabel);
+        EditorGUILayout.LabelField(plan.Help, EditorStyles.wordWrappedMiniLabel);
 
         showPalette = Section(showPalette, "Palette");
         if (showPalette) Palette();
@@ -188,6 +197,9 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
             PropList();
             FrontRoomsModuleGUI.SelectedProp(module, plan);
         }
+
+        showMarkers = Section(showMarkers, "Markers (" + module.data.markers.Length + ")");
+        if (showMarkers) FrontRoomsModuleGUI.Markers(module, plan);
 
         showPreview = Section(showPreview, "Preview");
         if (showPreview) PreviewControls(preview);
@@ -440,7 +452,7 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
         var g = profile.generation;
         EditorGUI.BeginChangeCheck();
         var chance = EditorGUILayout.Slider(new GUIContent("Module chance (level)", "The chance that a carved room some module fits is replaced by one"), g.moduleChance, 0f, 1f);
-        var tier = EditorGUILayout.IntSlider(new GUIContent("Module tier (level)", "Modules whose tier range holds it may be used"), g.moduleTier, 0, 9);
+        var tier = EditorGUILayout.IntSlider(new GUIContent("Module tier (level)", "The module tier at run tier 1; each run tier above it adds one (module tier + run tier − 1). Modules whose tier range holds it may be used"), g.moduleTier, 0, 9);
         if (EditorGUI.EndChangeCheck()) FrontRoomsLevelDesigner.SetModuleGeneration(profile, chance, tier);
 
         EditorGUILayout.Space(2);
@@ -448,8 +460,14 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
         FrontRoomsModuleGUI.GeneratorFields(module);
         FrontRoomsModuleGUI.Fit(module, profile);
         var m = module.data;
-        if (used && (g.moduleTier < m.minTier || g.moduleTier > m.maxTier))
-            EditorGUILayout.HelpBox("The level's module tier (" + g.moduleTier + ") is outside this module's range (" + m.minTier + "–" + m.maxTier + "): the generator will not use it.", MessageType.Warning);
+        // Over a run the module tier climbs with the run tier (1 to the profile's last tier).
+        var runTiers = profile.tiers != null ? profile.tiers.MaxTier : 1;
+        var comes = FrontRoomsModuleGUI.RunTiers(m, g.moduleTier, runTiers, out var first, out var last);
+        if (used && !comes)
+            EditorGUILayout.HelpBox("Over a run the level's module tier goes " + g.moduleTier + "–" + (g.moduleTier + runTiers - 1) + " (run tiers 1–" + runTiers + "), outside this module's range ("
+                + m.minTier + "–" + m.maxTier + "): the generator will not use it.", MessageType.Warning);
+        else if (used && (first > 1 || last < runTiers))
+            EditorGUILayout.LabelField("Comes only at run tiers " + first + "–" + last + " of " + runTiers + ".", EditorStyles.miniLabel);
         if (used && m.weight <= 0f) EditorGUILayout.HelpBox("Weight 0: the generator will never pick it.", MessageType.Warning);
     }
 }

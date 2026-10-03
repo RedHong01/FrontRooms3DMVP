@@ -1,0 +1,22 @@
+{
+  "columns": 4,
+  "rows": 2,
+  "slices": 8,
+  "sliceWidth": 1024,
+  "sliceHeight": 1536,
+  "tileMetres": [
+    0.75,
+    1.125
+  ],
+  "encoding": "R density, G cream, B glow, linear",
+  "frames": [
+    "K00_original.png",
+    "K01_mirrored.png",
+    "K02_half_drop.png",
+    "K03_double_repeat.png",
+    "K04_starved_ink.png",
+    "K05_flooded_ink.png",
+    "K06_negative.png",
+    "K07_turned.png"
+  ]
+}

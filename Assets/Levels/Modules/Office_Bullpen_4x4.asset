@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Office_Bullpen_4x4
   m_EditorClassIdentifier: Assembly-CSharp::FrontRoomsRoomModule
   notes: 'Level 4: an open-plan office. The Office kit lays out the pods; the copier,
-    cooler and files are fixed.'
+    cooler and files are fixed. The Relay may come out of a vent on the east wall.'
   data:
     width: 4
     depth: 4
@@ -53,6 +53,14 @@ MonoBehaviour:
       yaw: 180
       y: 0
       noCollider: 0
+    markers:
+    - kind: 1
+      x: 11.45
+      z: 7.6
+      y: 0
+      yaw: 270
+      tag: vent
+      host: 
     lamps: 00000000000000000000000005000000
     weight: 1
     allowRotate: 1

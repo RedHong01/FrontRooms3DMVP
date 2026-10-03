@@ -154,7 +154,8 @@ Built (`RoomModuleData`, `FrontRoomsRoomModule` assets in `Assets/Levels/Modules
 - **edges**: perimeter and inner, each Wall / Arch / Open. An arch is §3's arch. Doors and windows are not authored: where the room meets another height, or the chunk border, the map's rule stands (§3), and the map may reopen one of the module's walls to keep the chunk connected (generated walls first, then the module's perimeter, its inside last);
 - **columns**: Auto (§3's rule on the world 6 m grid; never on a corner where an inner wall or arch meets), None, or Custom (inner corners, 0.6 or 0.9 m);
 - **props** by kit asset name at (x, z) metres from the room's south-west corner, snapped to 0.05 m, any yaw (the plan turns in 90° steps; the Scene view keeps whole degrees), a height for wall pieces, and *no collider* for clutter. Placement comes from the kit's sidecar: `footprint`, `placement` (Floor / Wall / DeskTop / Ceiling), the `top` support and the `hang` anchor;
-- **fill** None / Auto (as a generated room) / Office (the kit fills round the props) / Pile; **lamps** per cell (Auto rolls them as the map does).
+- **fill** None / Auto (as a generated room) / Office (the kit fills round the props) / Pile; **lamps** per cell (Auto rolls them as the map does, with the odds of the chunk's tier);
+- **markers** (P4): a **key spot** (x, z, height, yaw, optional host kit) where the zone key lies when it falls in this room, and **Relay entries** (x, z, tag) where the Relay prefers to appear. A key spot keeps 0.05 m off walls and may sit on a prop's top; a Relay entry keeps the Relay's 0.3 m body clear of walls, columns and collider props, and stands on the floor.
 
 **Checks** (`Validate`). These are errors:
 - no way in;
@@ -162,14 +163,16 @@ Built (`RoomModuleData`, `FrontRoomsRoomModule` assets in `Assets/Levels/Modules
 - a prop in a wall or above the ceiling less §4's 0.05 m;
 - a prop with a collider in an opening's 1.0 m clear strip (§6; the map leaves it out of the build);
 - a prop that blocks a walk between openings (0.25 m grid, player radius 0.3 m).
+- a marker in a wall, an inner wall or a custom column; a Relay entry in a collider prop; a key spot inside a prop rather than on it, or at the ceiling; a Relay entry the Relay could not walk out of; a key spot nobody can get within 0.9 m of.
 
 These are warnings:
 - a *No collider* prop in an opening's clear strip, or any prop at an inner doorway;
 - a prop where a column stands or may stand in any turn the generator can use;
 - a side of 7–8 cells (it meets the chunk border);
 - Office, Pile or Auto fill with inner walls (the fill furnishes the room as one space).
+- a second key spot (only the first is used); a Relay entry with a height (it stands on the floor); a marker where an Auto column may stand.
 
-**Placement by the generator** (P3): each intact uniform carved room rolls `moduleChance` (0.3). A module of the room's height and theme whose tier range holds `moduleTier`, and that fits in an allowed quarter turn, is picked by `weight` (capped at 1000; it is shared between the module's fitting turns). The spot is hashed, kept off the chunk border when the room allows. An Auto-column module lands on the 6 m grid phase of its turned footprint centred in a chunk, which is what the Level Designer preview shows for that turn. With an odd side, the columns move to the other corners in odd turns. The same seed gives the same modules; a revisit shift may give others. When it builds the room, the map leaves out (with a console warning) a module prop that would stand across a real opening or in a column, and any raised item standing on a prop left out. A fill (Office kit, pile) treats the module's inner walls as obstacles and keeps its inner doorways clear.
+**Placement by the generator** (P3): each intact uniform carved room rolls `moduleChance` (0.3). A module of the room's height and theme whose tier range holds `moduleTier + tier − 1` (the run's tier when the chunk was generated), and that fits in an allowed quarter turn, is picked by `weight` (capped at 1000; it is shared between the module's fitting turns). The spot is hashed, kept off the chunk border when the room allows. An Auto-column module lands on the 6 m grid phase of its turned footprint centred in a chunk, which is what the Level Designer preview shows for that turn. With an odd side, the columns move to the other corners in odd turns. The same seed gives the same modules; a revisit shift may give others. When it builds the room, the map leaves out (with a console warning) a module prop that would stand across a real opening or in a column, and any raised item standing on a prop left out. A fill (Office kit, pile) treats the module's inner walls as obstacles and keeps its inner doorways clear.
 
 ## 10. Ownership and changes## 10. Ownership and changes
 

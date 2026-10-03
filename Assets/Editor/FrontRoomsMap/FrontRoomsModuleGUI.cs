@@ -5,20 +5,27 @@ using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// The room module panel's sections (notes, room, the selected prop, where
-/// the generator may use it, checks), drawn the same in the module's
-/// Inspector and in the Level Designer window. Edits go through
+/// The room module panel's sections (notes, room, the selected prop, the
+/// gameplay markers, where the generator may use it, checks), drawn the
+/// same in the module's Inspector and in the Level Designer window. Edits go through
 /// FrontRoomsModuleEditing, so they are undoable and rebuild the preview.
 /// </summary>
 public static class FrontRoomsModuleGUI
 {
-    // A slider is held: its module rebuilds the preview when it is let go, as after a plan drag.
+    // A slider is held or a field typed in: its module rebuilds the preview when it is let go, as after a plan drag.
     static FrontRoomsRoomModule held;
 
-    /// <summary>After a field edit: let the preview follow now, or once the slider being dragged is let go.</summary>
+    /// <summary>
+    /// A slider is held, or a text or number field has the keyboard. The
+    /// focus counts too: a field that is no longer drawn (another marker was
+    /// picked) can leave editingTextField set, and the click took the focus.
+    /// </summary>
+    static bool Holding => GUIUtility.hotControl != 0 || (EditorGUIUtility.editingTextField && GUIUtility.keyboardControl != 0);
+
+    /// <summary>After a field edit: let the preview follow now, or once the slider is let go or the typing is done.</summary>
     static void Edited(FrontRoomsRoomModule module)
     {
-        if (GUIUtility.hotControl == 0)
+        if (!Holding)
         {
             FrontRoomsModuleEditing.Changed(module);
             return;
@@ -28,13 +35,14 @@ public static class FrontRoomsModuleGUI
     }
 
     /// <summary>
-    /// Once the held slider is let go, rebuild the preview. Each panel calls
-    /// it at the end of its GUI pass, and with <paramref name="force"/> when
-    /// it closes, so a slider drag cut short still reaches the preview.
+    /// Once the held slider is let go or the field typed in loses the
+    /// keyboard, rebuild the preview. Each panel calls it at the end of its
+    /// GUI pass, and with <paramref name="force"/> when it closes, so a drag
+    /// or typing cut short still reaches the preview.
     /// </summary>
     public static void Release(bool force = false)
     {
-        if (held == null || (!force && GUIUtility.hotControl != 0)) return;
+        if (held == null || (!force && Holding)) return;
         var module = held;
         held = null;
         FrontRoomsRoomModule.NotifyChanged(module);
@@ -142,6 +150,179 @@ public static class FrontRoomsModuleGUI
                 if (GUILayout.Button("Remove")) plan.RemoveSelected();
             }
         }
+    }
+
+    // ---------- Gameplay markers ----------
+
+    static readonly Color RowSelected = new Color(.24f, .48f, .90f, .45f);
+    static readonly string[] TagPresets = { "vent", "doorway" };
+
+    /// <summary>One line for a marker: its letter and kind, where it is, its height, tag or host.</summary>
+    public static string MarkerLine(ModuleMarker mk)
+    {
+        var key = mk.kind == ModuleMarkerKind.KeySpot;
+        var line = (key ? "K  key spot" : "R  Relay entry") + "   (" + mk.x.ToString("0.00") + ", " + mk.z.ToString("0.00") + ")";
+        if (key && mk.y > 0f) line += " ↑" + mk.y.ToString("0.00");
+        line += "  " + mk.yaw.ToString("0") + "°";
+        if (key && !string.IsNullOrEmpty(mk.host)) line += "  on " + FrontRoomsModuleEditing.Short(mk.host);
+        if (!key && !string.IsNullOrEmpty(mk.tag)) line += "  \"" + mk.tag + "\"";
+        return line;
+    }
+
+    /// <summary>
+    /// The module's gameplay markers: buttons that arm a key spot or a Relay
+    /// entry for the plan, one row per marker (click selects it in the plan,
+    /// ✕ removes it), and the selected marker's fields.
+    /// </summary>
+    public static void Markers(FrontRoomsRoomModule module, FrontRoomsModulePlanView plan)
+    {
+        var m = module.data;
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            EditorGUILayout.LabelField("Place", GUILayout.Width(40f));
+            foreach (ModuleMarkerKind kind in System.Enum.GetValues(typeof(ModuleMarkerKind)))
+            {
+                var armed = plan.ArmedMarker == kind;
+                var label = kind == ModuleMarkerKind.KeySpot ? new GUIContent("Key spot", "Where the zone key lies when it falls in this room (only the first key spot is used). Then click in the plan; Shift keeps placing.")
+                    : new GUIContent("Relay entry", "Where the Relay may appear when it is released or relays, on the floor; its tag goes to the sound with the arrival. Then click in the plan; Shift keeps placing.");
+                if (GUILayout.Toggle(armed, label, kind == ModuleMarkerKind.KeySpot ? EditorStyles.miniButtonLeft : EditorStyles.miniButtonRight) != armed)
+                {
+                    // Out of any field, so Esc in the plan reaches the armed marker.
+                    GUIUtility.keyboardControl = 0;
+                    plan.ArmedMarker = armed ? (ModuleMarkerKind?)null : kind;
+                }
+            }
+        }
+        if (m.markers.Length == 0) EditorGUILayout.LabelField("No markers: the key lies where the map puts it, the Relay appears out of sight.", EditorStyles.wordWrappedMiniLabel);
+        for (var k = 0; k < m.markers.Length; k++)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                var r = GUILayoutUtility.GetRect(GUIContent.none, EditorStyles.label, GUILayout.ExpandWidth(true));
+                var e = Event.current;
+                if (e.type == EventType.Repaint && k == plan.SelectedMarker) EditorGUI.DrawRect(r, RowSelected);
+                GUI.Label(r, (k + 1) + "  " + MarkerLine(m.markers[k]));
+                if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
+                {
+                    GUIUtility.keyboardControl = 0;
+                    plan.SelectMarker(k);
+                    e.Use();
+                }
+                if (GUILayout.Button("✕", EditorStyles.miniButton, GUILayout.Width(22f)))
+                {
+                    var selected = plan.SelectedMarker;
+                    FrontRoomsModuleEditing.RemoveMarkers(module, new[] { k });
+                    // The selection stays on the same marker; the removed one leaves none.
+                    plan.SelectMarker(selected == k ? -1 : selected > k ? selected - 1 : selected);
+                    break;
+                }
+            }
+        }
+        SelectedMarker(module, plan);
+    }
+
+    /// <summary>
+    /// The plan's selected marker: kind, place, yaw; a key spot's height (with
+    /// a button that lays it on the prop under it) and host kit; a Relay
+    /// entry's tag. Turn 90° and Remove.
+    /// </summary>
+    public static void SelectedMarker(FrontRoomsRoomModule module, FrontRoomsModulePlanView plan)
+    {
+        var m = module.data;
+        var selected = plan.SelectedMarker;
+        if (selected < 0 || selected >= m.markers.Length) return;
+        var mk = m.markers[selected];
+        var key = mk.kind == ModuleMarkerKind.KeySpot;
+        using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+        {
+            EditorGUI.BeginChangeCheck();
+            var kind = (ModuleMarkerKind)EditorGUILayout.EnumPopup(new GUIContent("Kind", "Key spot: where the zone key lies. Relay entry: where the Relay may appear."), mk.kind);
+            var x = EditorGUILayout.Slider("X (m from west wall line)", mk.x, 0f, m.WidthMetres);
+            var z = EditorGUILayout.Slider("Z (m from south wall line)", mk.z, 0f, m.DepthMetres);
+            var y = key ? EditorGUILayout.Slider(new GUIContent("Height above floor", "A key on a desk, a cabinet; 0 on the floor"), mk.y, 0f, MapGrid.CeilingHeight(m.height)) : mk.y;
+            var yaw = EditorGUILayout.Slider(new GUIContent("Yaw (0 = north)", key ? "How the key lies" : "The way the Relay faces when it appears"), mk.yaw, 0f, 359f);
+            var tag = mk.tag ?? "";
+            var host = mk.host ?? "";
+            if (key)
+            {
+                // A host not in the list keeps its own entry, so editing other fields never swaps it.
+                var names = FrontRoomsModuleEditing.Kits();
+                var known = System.Array.IndexOf(names, host);
+                var missing = !string.IsNullOrEmpty(host) && known < 0;
+                var options = new[] { "(default)" }.Concat(missing ? new[] { "(missing) " + host } : new string[0]).Concat(names).ToArray();
+                var index = string.IsNullOrEmpty(host) ? 0 : missing ? 1 : known + 1;
+                var picked = EditorGUILayout.Popup(new GUIContent("Host", "The kit the key hangs on or lies in; (default): the key as it is"), index, options);
+                if (picked != index) host = picked == 0 ? "" : options[picked];
+            }
+            else
+            {
+                // Written as it is typed, to the marker the field shows; the preview rebuilds once the typing is done (Edited, Release).
+                tag = EditorGUILayout.TextField(new GUIContent("Tag", "What the Relay comes out of (\"vent\", \"doorway\", anything): the sound hears it with the arrival. Empty for none."), tag);
+            }
+            if (EditorGUI.EndChangeCheck())
+            {
+                FrontRoomsModuleEditing.Record(module, "Edit marker");
+                // Only a field that changed snaps (an untouched slider hands back the stored value).
+                float Snapped(float v, float was) => v != was ? FrontRoomsModuleEditing.Snap(v) : was;
+                // Kept as typed (a trailing space while typing a second word); the map and the sound take it as it is.
+                var edited = new ModuleMarker { kind = kind, x = Snapped(x, mk.x), z = Snapped(z, mk.z), y = Snapped(y, mk.y), yaw = Mathf.Repeat(yaw, 360f), tag = tag, host = host };
+                // A Relay entry stands on the floor and hangs on nothing; a key spot has no tag.
+                if (kind == ModuleMarkerKind.RelayEntry) { edited.y = 0f; edited.host = ""; }
+                else edited.tag = "";
+                m.markers[selected] = edited;
+                Edited(module);
+            }
+            if (!key)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUILayout.PrefixLabel(" ");
+                    foreach (var preset in TagPresets)
+                        if (GUILayout.Toggle(mk.tag == preset, preset, EditorStyles.miniButton) && mk.tag != preset)
+                        {
+                            // Out of the tag field first, so its text cannot write over the preset later.
+                            GUIUtility.keyboardControl = 0;
+                            var q = mk;
+                            q.tag = preset;
+                            FrontRoomsModuleEditing.SetMarker(module, selected, q, "Marker tag");
+                        }
+                }
+            }
+            else
+            {
+                var top = FrontRoomsModuleEditing.TopUnder(m, new Vector2(mk.x, mk.z));
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUILayout.PrefixLabel(" ");
+                    if (GUILayout.Button(new GUIContent(top != null ? "On the prop under it (" + top.Value.ToString("0.00") + " m)" : "On the floor",
+                        "Lay the key on the top of the prop under it (its top surface, or the top of its footprint box), or on the floor if there is none")))
+                    {
+                        var q = mk;
+                        q.y = top ?? 0f;
+                        FrontRoomsModuleEditing.SetMarker(module, selected, q, "Key on the prop under it");
+                    }
+                }
+            }
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Turn 90°")) FrontRoomsModuleEditing.TurnMarker(module, selected);
+                if (GUILayout.Button("Remove")) plan.RemoveSelectedMarker();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The run tiers, <paramref name="first"/> to <paramref name="last"/> of
+    /// 1..<paramref name="runTiers"/>, at which the generator may use a module:
+    /// at run tier t it takes the modules whose tier range holds the level's
+    /// module tier + t - 1 (FrontRoomsMapGenerator). False if at none.
+    /// </summary>
+    public static bool RunTiers(RoomModuleData m, int moduleTier, int runTiers, out int first, out int last)
+    {
+        int lo = moduleTier, hi = moduleTier + Mathf.Max(1, runTiers) - 1;
+        first = Mathf.Max(lo, m.minTier) - lo + 1;
+        last = Mathf.Min(hi, m.maxTier) - lo + 1;
+        return first <= last;
     }
 
     /// <summary>Weight, may rotate and tier range: where the generator may use the module. They do not change the room, so the preview is left alone.</summary>

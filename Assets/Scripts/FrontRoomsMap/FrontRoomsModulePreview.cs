@@ -6,8 +6,9 @@ using UnityEngine;
 /// The Level Designer's live preview (Assets/Scenes/FrontRoomsLevelDesigner.unity):
 /// it builds the real game map around one room module, with the same
 /// builder, lamps, kits and look as the game, and rebuilds whenever the
-/// module changes (not in Play, where the walker spawns inside the room
-/// and a rebuild would send it back to the entrance).
+/// module changes. In Play only the room's chunk is rebuilt and the walker
+/// stays where it stands (RebuildLive); a new size, height, theme or seed
+/// rebuilds everything and starts it at the entrance again.
 ///
 /// The module is stamped into chunk (0, 0), centred, in a maze whose zones
 /// all take the module's height and theme, so the map's own rules (columns,
@@ -119,21 +120,40 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
     void OnEnable()
     {
         FrontRoomsRoomModule.Changed += OnModuleChanged;
+        FrontRoomsLevelProfile.Changed += OnProfileChanged;
         MarkDirty();
     }
 
     void OnDisable()
     {
         FrontRoomsRoomModule.Changed -= OnModuleChanged;
+        FrontRoomsLevelProfile.Changed -= OnProfileChanged;
         Clear();
+    }
+
+    // Play: the running preview map takes the profile's live numbers. Its world runs on a clone
+    // (previewProfile), so the world's own check never sees the asset; the preview keeps its own
+    // build radius (1) and its zone and module overrides (ApplyLive does not read the generation).
+    void OnProfileChanged(FrontRoomsLevelProfile changed)
+    {
+        if (!Application.isPlaying || world == null || previewProfile == null || changed == null || changed != profile) return;
+        previewProfile.chunksPerFrame = changed.chunksPerFrame;
+        previewProfile.shiftAfterSeconds = changed.shiftAfterSeconds;
+        previewProfile.lightRadius = changed.lightRadius;
+        previewProfile.shadowRadius = changed.shadowRadius;
+        previewProfile.doorsNeedKeys = changed.doorsNeedKeys;
+        previewProfile.dressOffices = changed.dressOffices;
+        previewProfile.pileChance = changed.pileChance;
+        previewProfile.tiers = changed.tiers;
+        world.ApplyLive(previewProfile);
     }
 
     void OnValidate() => MarkDirty();
 
     void OnModuleChanged(FrontRoomsRoomModule changed)
     {
-        // In Play a rebuild would put the walker back at the entrance: edits show when Play ends.
-        if (changed == module && !Application.isPlaying) MarkDirty();
+        // In Play only the module's chunk is rebuilt and the walker stays where it stands (RebuildLive).
+        if (changed == module) MarkDirty();
     }
 
     /// <summary>Rebuild on the next editor tick (edits come in bursts while dragging).</summary>
@@ -158,7 +178,73 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
     {
         if (this == null || !dirty || !isActiveAndEnabled) return;
         dirty = false;
+        if (Application.isPlaying && RebuildLive()) return;
         Rebuild();
+    }
+
+    // The seed and profile the current map was built with: either is a new maze or look, so a full rebuild.
+    int builtSeed;
+    FrontRoomsLevelProfile builtProfile;
+
+    /// <summary>
+    /// Play: stamp the edited module into the running map's chunk (0, 0) and
+    /// rebuild only that chunk, keeping the walker where it stands (back at the
+    /// entrance if the edit put something where it stood). False when the turned
+    /// room's size, height or theme, or the seed or profile, changed: that needs a full rebuild.
+    /// </summary>
+    bool RebuildLive()
+    {
+        if (world == null || Stamped == null || module == null || module.data == null || seed != builtSeed || profile != builtProfile) return false;
+        var data = module.data.Rotated(rotation);
+        data.Normalize();
+        if (data.width != Stamped.width || data.depth != Stamped.depth || data.height != Stamped.height || data.theme != Stamped.theme) return false;
+        Rebuilding?.Invoke(this);
+        Placement(data, out var x0, out var y0);
+        world.ReplaceModule(new GridCoord(0, 0), data, x0, y0);
+        Stamped = data;
+        KeepWalker(data, x0, y0);
+        Rebuilt?.Invoke(this);
+        return true;
+    }
+
+    /// <summary>After a live rebuild: if the walker's body now overlaps something (a moved prop, a new inner wall), it goes back to the entrance.</summary>
+    void KeepWalker(RoomModuleData data, int x0, int y0)
+    {
+        var walker = world.Player;
+        if (walker == null) return;
+        Physics.SyncTransforms();
+        var r = ModuleUnits.PlayerRadius;
+        var feet = walker.position;
+        var blocked = false;
+        foreach (var c in Physics.OverlapCapsule(feet + Vector3.up * (r + .05f), feet + Vector3.up * (ModuleUnits.PlayerHeight - r), r, ~0, QueryTriggerInteraction.Ignore))
+            if (!c.transform.IsChildOf(walker)) { blocked = true; break; }
+        if (!blocked && world.Cache != null)
+        {
+            // The shell is one non-convex mesh: an overlap only meets its faces, so a body wholly inside a new column is caught here.
+            var chunk = world.Cache.Get(new GridCoord(0, 0));
+            var local = world.transform.InverseTransformPoint(feet);
+            const int n = MapGrid.ChunkCells;
+            for (var j = 0; j <= n && !blocked; j++)
+            for (var i = 0; i <= n && !blocked; i++)
+            {
+                var k = i + j * (n + 1);
+                if (!chunk.pillar[k]) continue;
+                var reach = ((chunk.pillarStyle[k] & MapChunk.ColumnLarge) != 0 ? ModuleUnits.ColumnLarge : ModuleUnits.ColumnSmall) * .5f + r;
+                blocked = Mathf.Abs(local.x - i * MapGrid.CellSize) < reach && Mathf.Abs(local.z - j * MapGrid.CellSize) < reach;
+            }
+        }
+        if (!blocked) return;
+        Entrance(data, x0, y0, out var spawn, out var look);
+        var position = world.transform.TransformPoint(spawn);
+        var heading = world.transform.TransformDirection(look - spawn);
+        var yaw = heading.sqrMagnitude > 1e-6f ? Mathf.Atan2(heading.x, heading.z) * Mathf.Rad2Deg : walker.eulerAngles.y;
+        // The walker keeps its own yaw and look: tell it, or it turns back on the next frame.
+        var mover = walker.GetComponent<FrontRoomsMapWalker>();
+        if (mover != null) { mover.Teleport(position, yaw); return; }
+        var body = walker.GetComponent<CharacterController>();
+        if (body != null) body.enabled = false;
+        walker.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
+        if (body != null) body.enabled = true;
     }
 
     /// <summary>Throw the old map away and build the module's again.</summary>
@@ -195,6 +281,8 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
         Placement(data, out var x0, out var y0);
         world.PlaceModule(data, new GridCoord(0, 0), x0, y0);
         Stamped = data;
+        builtSeed = seed;
+        builtProfile = profile;
         Entrance(data, x0, y0, out var spawn, out var look);
         var heading = look - spawn;
         world.OverrideSpawn(spawn, Mathf.Atan2(heading.x, heading.z) * Mathf.Rad2Deg);

@@ -22,6 +22,13 @@ using Object = UnityEngine.Object;
 /// a field typed in), drop, duplicate and delete with Undo, the plan
 /// selection following its prop, the generator toggle with Undo and how
 /// often the generator's rooms fit a module, and the module's own checks.
+/// Gameplay markers (P4): the conversions against RoomModuleData.Rotated for
+/// every turn, the checks' errors and warnings for markers (in a wall, an
+/// inner wall, a prop, a column, shut in; a key on a prop top passes), the
+/// edits with Undo and the plan's marker selection, the window letting go of
+/// the old module's selection when it switches, the sample modules (code and
+/// assets) with no errors or warnings, the preview's live rebuild (the one
+/// Play uses) run in edit mode, and the run tiers a module comes at.
 /// Writes Verification/level-designer-tests.json and throws if anything failed.
 /// The Scene view's own events (DragPerform, the Delete and Duplicate
 /// commands, handles) need a Scene view and are not run here.
@@ -79,6 +86,13 @@ public static class FrontRoomsLevelDesignerTests
             var made = Placement(module);
             var preview = Conversions(module, out root);
             SceneTools(preview, made);
+            MarkerConversions(preview);
+            MarkerChecks();
+            MarkerEdits(module, made);
+            Samples();
+            PanelSwitch(module);
+            FieldTyping(module);
+            LiveRebuild(preview, made);
             Generator(profile, module);
             var errors = new List<string>();
             var warnings = new List<string>();
@@ -509,6 +523,440 @@ public static class FrontRoomsLevelDesignerTests
         preview.Rebuild();
     }
 
+    // ---------- Gameplay markers ----------
+
+    /// <summary>For every turn, each marker where ModuleToWorld puts it is where the turned module (RoomModuleData.Rotated) has it on the stamped cells, and back.</summary>
+    static void MarkerConversions(FrontRoomsModulePreview preview)
+    {
+        var m = preview.module.data;
+        var saved = m.markers;
+        m.markers = new[]
+        {
+            new ModuleMarker { kind = ModuleMarkerKind.KeySpot, x = 1.3f, z = 2.7f, y = .74f, yaw = 0f, tag = "", host = "Kit_OfficeDesk" },
+            new ModuleMarker { kind = ModuleMarkerKind.RelayEntry, x = 7.45f, z = 8.05f, yaw = 37f, tag = "vent", host = "" },
+            new ModuleMarker { kind = ModuleMarkerKind.RelayEntry, x = m.WidthMetres - .4f, z = .4f, yaw = 271.5f, tag = "doorway", host = "" },
+        };
+        var cs = MapGrid.CellSize;
+        try
+        {
+            for (var turn = 0; turn < 4; turn++)
+            {
+                preview.rotation = turn;
+                preview.Rebuild();
+                var turned = m.Rotated(turn);
+                FrontRoomsModulePreview.Placement(turned, out var cx, out var cy);
+                var bad = new List<string>();
+                for (var k = 0; k < m.markers.Length; k++)
+                {
+                    var mk = m.markers[k];
+                    var t = turned.markers[k];
+                    var world = preview.ModuleToWorld(new Vector2(mk.x, mk.z), mk.y);
+                    var expected = preview.transform.TransformPoint(new Vector3(cx * cs + t.x, t.y, cy * cs + t.z));
+                    var rotation = preview.ModuleToWorldRotation(mk.yaw);
+                    if ((world - expected).magnitude > Near || Quaternion.Angle(rotation, preview.transform.rotation * Quaternion.Euler(0f, t.yaw, 0f)) > .05f
+                        || (preview.WorldToModule(world) - new Vector2(mk.x, mk.z)).magnitude > Near || !CloseYaw(preview.WorldToModuleYaw(rotation), mk.yaw)
+                        || t.kind != mk.kind || t.tag != mk.tag || t.host != mk.host)
+                        bad.Add((k + 1) + " at " + (world - expected).magnitude.ToString("0.0000") + " m");
+                }
+                Check("turn " + turn + ": markers: ModuleToWorld and its rotation match RoomModuleData.Rotated on the stamped cells, and back", bad.Count == 0, string.Join(", ", bad));
+                // What the built map registered for the Relay, against where the conversions put each entry (on the floor), with its tag.
+                var entries = new List<(Vector3 pos, string tag)>();
+                preview.World.RelayEntries(entries);
+                var relays = m.markers.Where(q => q.kind == ModuleMarkerKind.RelayEntry).ToArray();
+                Check("turn " + turn + ": the built map registers each Relay entry where ModuleToWorld puts it, with its tag",
+                    entries.Count == relays.Length && relays.All(mk => entries.Any(x => x.tag == mk.tag && (x.pos - preview.ModuleToWorld(new Vector2(mk.x, mk.z))).magnitude <= Near)),
+                    entries.Count + " registered: " + string.Join(", ", entries.Select(x => (x.tag ?? "-") + " " + x.pos.ToString("F3"))));
+            }
+            // One quarter turn at a time (Rotated(4) is the no-turn copy).
+            var round = m.Rotated(1).Rotated(1).Rotated(1).Rotated(1).markers;
+            Check("markers: four quarter turns, one at a time, put every marker back", round.Select((q, k) => Close(q.x, m.markers[k].x) && Close(q.z, m.markers[k].z) && Close(q.y, m.markers[k].y)
+                && CloseYaw(q.yaw, m.markers[k].yaw) && q.kind == m.markers[k].kind && q.tag == m.markers[k].tag && q.host == m.markers[k].host).All(ok => ok));
+        }
+        finally
+        {
+            m.markers = saved;
+            preview.rotation = 1;
+            preview.Rebuild();
+        }
+    }
+
+    /// <summary>A 9 x 9 m room, a doorway south, no columns, no props: markers are checked in it.</summary>
+    static RoomModuleData MarkerRoom(params ModuleMarker[] markers)
+    {
+        var d = new RoomModuleData { width = 3, depth = 3, height = ZoneHeight.Standard, theme = ZoneTheme.Level0, fill = ModuleFill.None, columns = ModuleColumns.None };
+        d.Normalize();
+        d.south[1] = ModuleEdge.Arch;
+        d.markers = markers;
+        return d;
+    }
+
+    static ModuleMarker KeyAt(float x, float z, float y = 0f) => new ModuleMarker { kind = ModuleMarkerKind.KeySpot, x = x, z = z, y = y, tag = "", host = "" };
+
+    static ModuleMarker RelayAt(float x, float z) => new ModuleMarker { kind = ModuleMarkerKind.RelayEntry, x = x, z = z, tag = "", host = "" };
+
+    static ModuleProp Crate(float x, float z, float yaw = 0f) => new ModuleProp { kit = "Kit_Crate", x = x, z = z, yaw = yaw };
+
+    /// <summary>The checks of a room, with the kit library's real footprints.</summary>
+    static (List<string> errors, List<string> warnings) Validate(RoomModuleData d)
+    {
+        var errors = new List<string>();
+        var warnings = new List<string>();
+        d.Validate(errors, warnings, FrontRoomsMapWorld.KitFootprint);
+        return (errors, warnings);
+    }
+
+    /// <summary>Whether a list has a message about marker <paramref name="number"/> that contains <paramref name="text"/>.</summary>
+    static bool Says(List<string> messages, int number, string text) => messages.Any(x => x.StartsWith("Marker " + number + " (") && x.Contains(text));
+
+    static string Messages((List<string> errors, List<string> warnings) r) => r.errors.Count + " error(s), " + r.warnings.Count + " warning(s): " + string.Join(" | ", r.errors.Concat(r.warnings));
+
+    /// <summary>The markers' errors and warnings (RoomModuleData.ValidateMarkers), each against a room that is otherwise fine.</summary>
+    static void MarkerChecks()
+    {
+        if (FrontRoomsMapWorld.KitFootprint("Kit_Crate") == null)
+        {
+            Check("marker checks: the crate kit is in the library", false);
+            return;
+        }
+        var r = Validate(MarkerRoom(KeyAt(4.5f, 4.5f), RelayAt(2.1f, 2.1f)));
+        Check("marker checks: a key spot and a Relay entry on open floor pass", r.errors.Count == 0 && r.warnings.Count == 0, Messages(r));
+
+        r = Validate(MarkerRoom(KeyAt(.1f, 4.5f), RelayAt(.3f, 4.5f)));
+        Check("marker checks: a key spot and a Relay entry in the west wall are errors", Says(r.errors, 1, "in or beyond a wall") && Says(r.errors, 2, "in or beyond a wall"), Messages(r));
+
+        var d = MarkerRoom(RelayAt(3.1f, 4.5f));
+        d.innerEast[0 + 1 * (d.width - 1)] = ModuleEdge.Wall;
+        r = Validate(d);
+        Check("marker checks: a Relay entry in an inner wall is an error", Says(r.errors, 1, "in an inner wall"), Messages(r));
+
+        d = MarkerRoom(RelayAt(4.5f, 4.5f), KeyAt(4.5f, 4.5f, .3f));
+        d.props = new[] { Crate(4.5f, 4.5f) };
+        r = Validate(d);
+        Check("marker checks: a Relay entry in a prop, and a key inside one, are errors", Says(r.errors, 1, "stands in prop 1 (Kit_Crate)") && Says(r.errors, 2, "is inside prop 1 (Kit_Crate)"), Messages(r));
+
+        // On the crate's lid, near its south edge so it can be taken from the floor.
+        d = MarkerRoom();
+        d.props = new[] { Crate(4.5f, 4.5f) };
+        var top = FrontRoomsModuleEditing.TopUnder(d, new Vector2(4.5f, 4.2f));
+        var placed = FrontRoomsModuleEditing.NewMarker(d, ModuleMarkerKind.KeySpot, new Vector2(4.52f, 4.19f));
+        d.markers = new[] { placed };
+        r = Validate(d);
+        Check("marker checks: a key spot put on a prop lies on its top (0.75 m) and passes", top.HasValue && Close(top.Value, .75f) && Close(placed.y, .75f) && r.errors.Count == 0 && r.warnings.Count == 0,
+            "top " + (top?.ToString("0.000") ?? "none") + ", key y " + placed.y.ToString("0.000") + "; " + Messages(r));
+        var floorKey = FrontRoomsModuleEditing.NewMarker(d, ModuleMarkerKind.KeySpot, new Vector2(7f, 7f));
+        var floorRelay = FrontRoomsModuleEditing.NewMarker(d, ModuleMarkerKind.RelayEntry, new Vector2(4.5f, 4.5f));
+        Check("marker checks: a key spot on bare floor lies on it, a Relay entry over a prop still stands on the floor", floorKey.y == 0f && floorRelay.y == 0f);
+
+        d = MarkerRoom(KeyAt(3.1f, 3.1f));
+        d.columns = ModuleColumns.Custom;
+        d.customColumns = new[] { new ModuleColumn { x = 1, y = 1 } };
+        r = Validate(d);
+        Check("marker checks: a key spot in a custom column is an error", Says(r.errors, 1, "stands in a column (corner 1, 1)"), Messages(r));
+        d.columns = ModuleColumns.Auto;
+        d.markers = new[] { KeyAt(6f, 6f) };
+        r = Validate(d);
+        Check("marker checks: where an Auto column may stand is a warning, not an error", r.errors.Count == 0 && Says(r.warnings, 1, "an Auto column may stand"), Messages(r));
+
+        // Four crates box a spot in; every cell can still be reached round them.
+        d = MarkerRoom(RelayAt(4.5f, 4.5f), KeyAt(4.5f, 4.5f));
+        d.props = new[] { Crate(4.5f, 3.6f), Crate(4.5f, 5.4f), Crate(3.6f, 4.5f, 90f), Crate(5.4f, 4.5f, 90f) };
+        r = Validate(d);
+        Check("marker checks: shut in by props, a Relay entry and a key spot are errors (and nothing else is)",
+            Says(r.errors, 1, "could not walk out of it") && Says(r.errors, 2, "nobody can get within 0.9 m") && r.errors.Count == 2, Messages(r));
+
+        d = MarkerRoom(KeyAt(4.5f, 4.5f), KeyAt(7f, 7f), RelayAt(2.1f, 2.1f));
+        d.markers[2].y = .5f;
+        r = Validate(d);
+        Check("marker checks: a second key spot and a raised Relay entry are warnings", r.errors.Count == 0 && Says(r.warnings, 2, "only the first key spot is used") && Says(r.warnings, 3, "height is ignored"), Messages(r));
+
+        r = Validate(MarkerRoom(KeyAt(4.5f, 4.5f, 1.9f)));
+        Check("marker checks: a key spot above 1.8 m is a warning (over the eye line), not an error", r.errors.Count == 0 && Says(r.warnings, 1, "above the player's eye line"), Messages(r));
+        r = Validate(MarkerRoom(KeyAt(4.5f, 4.5f, MapGrid.CeilingHeight(ZoneHeight.Standard))));
+        Check("marker checks: a key spot at the ceiling is an error, and not also the eye-line warning", Says(r.errors, 1, "ceiling") && !Says(r.warnings, 1, "eye line"), Messages(r));
+    }
+
+    /// <summary>Add, move, turn, edit and remove markers on the module asset, each one Undo; the plan's marker selection follows its marker and never sits with a prop's.</summary>
+    static void MarkerEdits(FrontRoomsRoomModule module, Made made)
+    {
+        var m = module.data;
+        var before = m.markers.ToArray();
+        var plan = new FrontRoomsModulePlanView(() => { });
+
+        Undo.IncrementCurrentGroup();
+        var relay = FrontRoomsModuleEditing.AddMarker(module, ModuleMarkerKind.RelayEntry, new Vector2(8.03f, 2.02f));
+        var r0 = m.markers[relay];
+        Check("marker edits: a Relay entry is added at the point (0.05 m), on the floor", m.markers.Length == before.Length + 1 && r0.kind == ModuleMarkerKind.RelayEntry && Close(r0.x, 8.05f) && Close(r0.z, 2f) && r0.y == 0f, M(r0));
+        Undo.FlushUndoRecordObjects();
+        Undo.IncrementCurrentGroup();
+        var desk = m.props[made.deskIndex];
+        var key = FrontRoomsModuleEditing.AddMarker(module, ModuleMarkerKind.KeySpot, new Vector2(desk.x, desk.z));
+        var k0 = m.markers[key];
+        var deskTop = FrontRoomsModuleEditing.TopHeight(desk) ?? -1f;
+        Check("marker edits: a key spot put on the desk lies on its top", key == relay + 1 && Close(k0.y, deskTop), M(k0) + ", desk top " + deskTop.ToString("0.000"));
+        Undo.FlushUndoRecordObjects();
+
+        plan.SelectMarker(key);
+        plan.Follow(m);
+        plan.Select(made.floorIndex, false);
+        var propClears = plan.SelectedMarker == -1 && plan.Selected == made.floorIndex;
+        plan.SelectMarker(key);
+        plan.Follow(m);
+        Check("marker edits: selecting a prop lets the marker go, and the other way round", propClears && plan.Selected == -1 && plan.SelectedMarker == key, "prop " + plan.Selected + ", marker " + plan.SelectedMarker);
+
+        Undo.IncrementCurrentGroup();
+        FrontRoomsModuleEditing.MoveMarker(module, key, new Vector2(desk.x + .33f, desk.z + .21f));
+        var moved = m.markers[key];
+        plan.Follow(m);
+        Check("marker edits: a move snaps to 0.05 m and keeps the height", Close(moved.x, FrontRoomsModuleEditing.Snap(desk.x + .33f)) && Close(moved.z, FrontRoomsModuleEditing.Snap(desk.z + .21f)) && moved.y == k0.y, M(moved));
+        Undo.FlushUndoRecordObjects();
+        Undo.PerformUndo();
+        plan.Follow(m);
+        Check("marker edits: Undo puts the move back, the plan keeps the marker", m.markers[key].Equals(k0) && plan.SelectedMarker == key, M(m.markers[key]) + ", plan " + plan.SelectedMarker);
+
+        Undo.IncrementCurrentGroup();
+        FrontRoomsModuleEditing.TurnMarker(module, key);
+        FrontRoomsModuleEditing.TurnMarker(module, key);
+        FrontRoomsModuleEditing.TurnMarker(module, key);
+        FrontRoomsModuleEditing.TurnMarker(module, key);
+        var full = m.markers[key].yaw;
+        FrontRoomsModuleEditing.TurnMarker(module, key);
+        Check("marker edits: turns add 90° and wrap at 360°", CloseYaw(full, k0.yaw) && full < 360f && CloseYaw(m.markers[key].yaw, k0.yaw + 90f), "yaw " + m.markers[key].yaw);
+        Undo.FlushUndoRecordObjects();
+        Undo.PerformUndo();
+        Check("marker edits: one Undo puts the turns back", m.markers[key].Equals(k0), M(m.markers[key]));
+
+        Undo.IncrementCurrentGroup();
+        var tagged = m.markers[relay];
+        tagged.tag = "vent";
+        FrontRoomsModuleEditing.SetMarker(module, relay, tagged);
+        var set = m.markers[relay].tag == "vent";
+        Undo.FlushUndoRecordObjects();
+        Undo.PerformUndo();
+        Check("marker edits: a tag is set, and Undo clears it", set && m.markers[relay].Equals(r0), M(m.markers[relay]));
+
+        // The Relay entry goes from in front of the selected key: the plan's selection stays on the key, one down.
+        plan.SelectMarker(key);
+        plan.Follow(m);
+        Undo.IncrementCurrentGroup();
+        FrontRoomsModuleEditing.RemoveMarkers(module, new[] { relay });
+        plan.Follow(m);
+        Check("marker edits: removing the marker in front keeps the plan on its marker, one down", m.markers.Length == before.Length + 1 && plan.SelectedMarker == key - 1 && m.markers[plan.SelectedMarker].Equals(k0), "plan " + plan.SelectedMarker);
+        Undo.FlushUndoRecordObjects();
+        Undo.PerformUndo();
+        plan.Follow(m);
+        Check("marker edits: Undo brings it back, the plan is on its marker again", m.markers.Length == before.Length + 2 && m.markers[relay].Equals(r0) && plan.SelectedMarker == key, "plan " + plan.SelectedMarker);
+        Undo.IncrementCurrentGroup();
+        FrontRoomsModuleEditing.RemoveMarkers(module, new[] { key });
+        plan.Follow(m);
+        Check("marker edits: a removed marker leaves nothing selected", plan.SelectedMarker == -1 && m.markers.Length == before.Length + 1);
+        Undo.FlushUndoRecordObjects();
+        Undo.PerformUndo();
+
+        Undo.PerformUndo();
+        Undo.PerformUndo();
+        Check("marker edits: Undo of both adds leaves the markers as they were", m.markers.SequenceEqual(before), m.markers.Length + " marker(s)");
+    }
+
+    static string M(ModuleMarker mk) => mk.kind + " x " + mk.x.ToString("0.000") + " z " + mk.z.ToString("0.000") + " y " + mk.y.ToString("0.000") + " yaw " + mk.yaw.ToString("0.0") + (string.IsNullOrEmpty(mk.tag) ? "" : " tag " + mk.tag);
+
+    /// <summary>The sample modules as the code ships them and as their assets are: no errors, no warnings, and their markers.</summary>
+    static void Samples()
+    {
+        var kinds = new HashSet<string>();
+        foreach (var (name, _, data) in FrontRoomsLevelDesigner.Samples())
+        {
+            var r = Validate(data);
+            Check("sample " + name + " (code): no errors or warnings", r.errors.Count == 0 && r.warnings.Count == 0 && data.markers.Length > 0, data.markers.Length + " marker(s); " + Messages(r));
+            foreach (var mk in data.markers) kinds.Add(mk.kind == ModuleMarkerKind.KeySpot ? "key" : mk.tag);
+            var asset = AssetDatabase.LoadAssetAtPath<FrontRoomsRoomModule>(FrontRoomsRoomModule.Folder + "/" + name + ".asset");
+            if (asset == null)
+            {
+                Check("sample " + name + " (asset): exists", false);
+                continue;
+            }
+            r = Validate(asset.data.Clone());
+            Check("sample " + name + " (asset): no errors or warnings", r.errors.Count == 0 && r.warnings.Count == 0, asset.data.markers.Length + " marker(s); " + Messages(r));
+        }
+        Check("samples: a key spot, a \"vent\" and a \"doorway\" Relay entry among them", kinds.Contains("key") && kinds.Contains("vent") && kinds.Contains("doorway"), string.Join(", ", kinds));
+    }
+
+    // ---------- Panels ----------
+
+    /// <summary>
+    /// The window switching module: nothing of the old one stays selected. A
+    /// marker selection would otherwise be found again by Follow in a module
+    /// with a like marker (a duplicate).
+    /// </summary>
+    static void PanelSwitch(FrontRoomsRoomModule module)
+    {
+        var window = ScriptableObject.CreateInstance<FrontRoomsLevelDesignerWindow>();
+        var a = ScriptableObject.CreateInstance<FrontRoomsRoomModule>();
+        var b = ScriptableObject.CreateInstance<FrontRoomsRoomModule>();
+        try
+        {
+            a.hideFlags = b.hideFlags = HideFlags.DontSave;
+            a.data = module.data.Clone();
+            a.data.markers = new[] { KeyAt(4.5f, 4.5f), RelayAt(2.1f, 2.1f) };
+            b.data = a.data.Clone();
+            var plan = (FrontRoomsModulePlanView)typeof(FrontRoomsLevelDesignerWindow).GetField("plan", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(window);
+            var setModule = typeof(FrontRoomsLevelDesignerWindow).GetMethod("SetModule", BindingFlags.NonPublic | BindingFlags.Instance);
+            setModule.Invoke(window, new object[] { a });
+            plan.SelectMarker(1);
+            plan.Follow(a.data);
+            setModule.Invoke(window, new object[] { b });
+            plan.Follow(b.data);
+            var marker = plan.SelectedMarker;
+            setModule.Invoke(window, new object[] { a });
+            plan.Select(0, false);
+            plan.Follow(a.data);
+            setModule.Invoke(window, new object[] { b });
+            plan.Follow(b.data);
+            Check("window: switching module leaves no marker or prop of the old one selected", marker == -1 && plan.Selected == -1 && plan.SelectedMarker == -1, "marker " + marker + ", prop " + plan.Selected);
+        }
+        finally
+        {
+            Object.DestroyImmediate(window);
+            Object.DestroyImmediate(a);
+            Object.DestroyImmediate(b);
+        }
+    }
+
+    /// <summary>
+    /// A field typed in (a Relay entry's tag, a number) writes the module at
+    /// once but rebuilds the preview only when the field lets go of the
+    /// keyboard, and also when the focus has gone while editingTextField
+    /// stays set (the field is no longer drawn: another marker was picked).
+    /// </summary>
+    static void FieldTyping(FrontRoomsRoomModule module)
+    {
+        var gui = typeof(FrontRoomsModuleGUI);
+        var edited = gui.GetMethod("Edited", BindingFlags.NonPublic | BindingFlags.Static);
+        var changes = 0;
+        Action<FrontRoomsRoomModule> onChanged = c => { if (c == module) changes++; };
+        FrontRoomsRoomModule.Changed += onChanged;
+        try
+        {
+            EditorGUIUtility.editingTextField = true;
+            GUIUtility.keyboardControl = 4242;
+            edited.Invoke(null, new object[] { module });
+            FrontRoomsModuleGUI.Release();
+            var whileTyping = changes;
+            GUIUtility.keyboardControl = 0;
+            FrontRoomsModuleGUI.Release();
+            Check("fields: typing holds the preview back; it rebuilds once the field has lost the keyboard (even with editingTextField left set)", whileTyping == 0 && changes == 1,
+                whileTyping + " rebuild(s) while typing, " + changes + " after");
+        }
+        finally
+        {
+            FrontRoomsRoomModule.Changed -= onChanged;
+            EditorGUIUtility.editingTextField = false;
+            GUIUtility.keyboardControl = 0;
+            FrontRoomsModuleGUI.Release(true);
+        }
+    }
+
+    // ---------- Live rebuild ----------
+
+    /// <summary>
+    /// FrontRoomsModulePreview.RebuildLive, which Play uses for every edit,
+    /// run in edit mode (the walker is then the map's plain eye transform): an
+    /// edit away from the walker rebuilds the room's chunk in the same map
+    /// and leaves the walker where it stands; a prop or a column put where it
+    /// stands sends it to the entrance; a new size, seed or profile asks for
+    /// a full rebuild. The module is put back afterwards.
+    /// </summary>
+    static void LiveRebuild(FrontRoomsModulePreview preview, Made made)
+    {
+        var live = typeof(FrontRoomsModulePreview).GetMethod("RebuildLive", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (live == null)
+        {
+            Check("live rebuild: FrontRoomsModulePreview.RebuildLive exists", false);
+            return;
+        }
+        var module = preview.module;
+        var m = module.data;
+        var saved = JsonUtility.ToJson(m);
+        var savedSeed = preview.seed;
+        var savedProfile = preview.profile;
+        bool Live() => (bool)live.Invoke(preview, null);
+        try
+        {
+            preview.rotation = 0;
+            preview.Rebuild();
+            var world = preview.World;
+            var eye = world != null ? world.Player : null;
+            if (eye == null)
+            {
+                Check("live rebuild: the preview's map has a walker", false);
+                return;
+            }
+            // The walker stands on free floor in the east half of the room.
+            var standing = preview.ModuleToWorld(new Vector2(9f, 4.5f), .05f);
+            eye.position = standing;
+
+            // (a) A prop moved and a Relay entry added away from the walker.
+            var crate = m.props[made.floorIndex];
+            crate.z += .5f;
+            m.props[made.floorIndex] = crate;
+            m.markers = m.markers.Append(RelayAt(10.5f, 1.5f)).ToArray();
+            var ok = Live();
+            var rebuilt = preview.World.GetComponentsInChildren<FrontRoomsModulePropTag>(true).FirstOrDefault(t => t.index == made.floorIndex && t.gameObject.activeInHierarchy);
+            var entries = new List<(Vector3 pos, string tag)>();
+            preview.World.RelayEntries(entries);
+            Check("live rebuild: an edit away from the walker rebuilds the room in the same map, the walker stays where it stands",
+                ok && preview.World == world && world.Player == eye && (eye.position - standing).magnitude < 1e-4f,
+                "live " + ok + ", same map " + (preview.World == world) + ", walker moved " + (eye.position - standing).magnitude.ToString("0.000") + " m");
+            Check("live rebuild: the moved prop and the new Relay entry are in the rebuilt chunk",
+                rebuilt != null && (rebuilt.transform.position - preview.ModuleToWorld(new Vector2(crate.x, crate.z), crate.y)).magnitude < Near
+                && entries.Count == 1 && (entries[0].pos - preview.ModuleToWorld(new Vector2(10.5f, 1.5f))).magnitude < Near,
+                (rebuilt != null ? "prop off by " + (rebuilt.transform.position - preview.ModuleToWorld(new Vector2(crate.x, crate.z), crate.y)).magnitude.ToString("0.000") + " m" : "prop not found") + ", " + entries.Count + " entry(ies)");
+
+            // Where the walker goes when something now stands where it stood.
+            FrontRoomsModulePreview.Placement(preview.Stamped, out var x0, out var y0);
+            FrontRoomsModulePreview.Entrance(preview.Stamped, x0, y0, out var spawn, out _);
+            var entrance = world.transform.TransformPoint(spawn);
+
+            // (b) A crate put where the walker stands.
+            m.props = m.props.Append(Crate(9f, 4.5f)).ToArray();
+            ok = Live();
+            Check("live rebuild: a prop put where the walker stands sends it to the entrance", ok && preview.World == world && (eye.position - entrance).magnitude < 1e-3f,
+                "live " + ok + ", walker " + (eye.position - entrance).magnitude.ToString("0.000") + " m from the entrance");
+            m.props = m.props.Take(m.props.Length - 1).ToArray();
+
+            // (b) A column put on the corner where the walker stands (inner corner (3, 1), at 9, 3 m).
+            standing = preview.ModuleToWorld(new Vector2(9f, 3f), .05f);
+            eye.position = standing;
+            ok = Live();
+            var stayed = ok && (eye.position - standing).magnitude < 1e-4f;
+            m.columns = ModuleColumns.Custom;
+            m.customColumns = new[] { new ModuleColumn { x = 3, y = 1 } };
+            ok = Live();
+            Check("live rebuild: a column put where the walker stands sends it to the entrance", stayed && ok && (eye.position - entrance).magnitude < 1e-3f,
+                "stood still before " + stayed + ", live " + ok + ", walker " + (eye.position - entrance).magnitude.ToString("0.000") + " m from the entrance");
+
+            // (c) What needs the whole map again.
+            m.Resize(m.width - 1, m.depth);
+            var resized = Live();
+            JsonUtility.FromJsonOverwrite(saved, m);
+            preview.seed = savedSeed + 1;
+            var reseeded = Live();
+            preview.seed = savedSeed;
+            preview.profile = savedProfile != null ? null : FrontRoomsLevelProfiles.Resolve();
+            var reprofiled = Live();
+            preview.profile = savedProfile;
+            Check("live rebuild: a new size, seed or profile asks for a full rebuild", !resized && !reseeded && !reprofiled && preview.World == world,
+                "size " + resized + ", seed " + reseeded + ", profile " + reprofiled);
+        }
+        finally
+        {
+            JsonUtility.FromJsonOverwrite(saved, m);
+            preview.seed = savedSeed;
+            preview.profile = savedProfile;
+            preview.rotation = 1;
+            preview.Rebuild();
+        }
+    }
+
     // ---------- Generator ----------
 
     static void Generator(FrontRoomsLevelProfile profile, FrontRoomsRoomModule module)
@@ -562,5 +1010,16 @@ public static class FrontRoomsLevelDesignerTests
         Check("generator fit: room sizes clamp to the chunk (8 x 8 fits only an 8 x 8 room)", Close(FrontRoomsModuleGUI.FitShare(m, g, out _, out var max), 1f / 49f) && max == MapGrid.ChunkCells);
         m.height = ZoneHeight.Tall;
         Check("generator fit: a height that carves no rooms never places it", FrontRoomsModuleGUI.FitShare(m, g, out _, out _) < 0f);
+
+        // Over a run the module tier is the level's module tier + run tier - 1.
+        m.minTier = 2;
+        m.maxTier = 3;
+        var from = FrontRoomsModuleGUI.RunTiers(m, 0, 5, out var first, out var last);
+        Check("generator tiers: module tiers 2-3 at module tier 0 come at run tiers 3-4 of 5", from && first == 3 && last == 4, first + "-" + last);
+        Check("generator tiers: at module tier 4 the run (4-8) is past the module (2-3): never", !FrontRoomsModuleGUI.RunTiers(m, 4, 5, out first, out last), first + "-" + last);
+        Check("generator tiers: one run tier at module tier 0 never reaches 2-3", !FrontRoomsModuleGUI.RunTiers(m, 0, 1, out first, out last), first + "-" + last);
+        m.minTier = 0;
+        m.maxTier = 9;
+        Check("generator tiers: a module of every tier comes at every run tier", FrontRoomsModuleGUI.RunTiers(m, 1, 5, out first, out last) && first == 1 && last == 5, first + "-" + last);
     }
 }

@@ -22,7 +22,14 @@ using UnityEngine;
 /// - module props on a column are left out of the build;
 /// - the Office kit filling a module keeps off its inner walls and inner doorways;
 /// - a chunk whose build throws is undone, logged, not retried while in range,
-///   and counts as done for ReadyAround / Settled.
+///   and counts as done for ReadyAround / Settled;
+/// - P4 tiers: the Relay's effective tuning per tier, blows 5 → 3, a break keeps
+///   its length when the tier changes mid-break, zones → tier, chunks keep the
+///   tier they were generated at (until a shift), module tier ranges, lamp odds;
+/// - P4 markers: a module key spot takes the zone key; the Relay appears at a
+///   module Relay entry behind the player and raises Arrived with its tag;
+/// - P4 live tuning: ApplyLive moves the build radius; ReplaceModule rebuilds
+///   only the module's chunk.
 /// Writes Verification/map-interaction-tests.json.
 /// Headless: -executeMethod FrontRoomsMapInteractionTests.RunBatch -quit (throws on FAIL).
 /// </summary>
@@ -73,7 +80,12 @@ public static class FrontRoomsMapInteractionTests
             Keys(roots, profiles, 0f);
             Columns(roots, profiles);
             InnerWalls(roots, profiles);
+            FillKeepsClear(roots, profiles);
             BuildGuard(roots);
+            Tiers(roots, profiles);
+            KeySpot(roots, profiles);
+            RelayEntry(roots, profiles);
+            Live(roots, profiles);
         }
         catch (Exception e)
         {
@@ -306,6 +318,320 @@ public static class FrontRoomsMapInteractionTests
             Check(d.open && count == 0, "keys off: the door opens and DoorUnlocked is never raised");
         }
         else Check(false, "keys off: no closed door near the spawn");
+    }
+
+    // ---------- P4: tiers ----------
+
+    static void Tiers(List<GameObject> roots, List<FrontRoomsLevelProfile> profiles)
+    {
+        var rules = new FrontRoomsTierRules();
+        var baseTuning = new FrontRoomsHunterTuning();
+        var counts = new List<int>();
+        for (var t = 1; t <= 5; t++)
+        {
+            var e = new FrontRoomsHunterTuning();
+            e.CopyFrom(baseTuning);
+            rules.At(t).ApplyTo(e);
+            counts.Add(Mathf.Max(1, Mathf.RoundToInt(e.breakDoorSeconds / .5f)));
+            if (t == 5)
+                Check(Mathf.Abs(e.chaseSpeed - 4.2f * 1.29f) < .01f && Mathf.Abs(e.hearing - 1.4f * 1.6f) < .01f && Mathf.Abs(e.breakDoorSeconds - 1.3f) < .01f && Mathf.Abs(e.searchMaxSeconds - 24f) < .01f,
+                    "tiers: tier 5 is chase " + e.chaseSpeed.ToString("0.00") + " m/s, hearing " + e.hearing.ToString("0.00") + ", break " + e.breakDoorSeconds.ToString("0.00") + " s, search " + e.searchMaxSeconds.ToString("0.0") + " s");
+        }
+        Check(string.Join(",", counts) == "5,4,4,3,3", "tiers: blows per door by tier " + string.Join(",", counts) + " (expected 5,4,4,3,3)");
+        Check(baseTuning.chaseSpeed == 4.2f && baseTuning.breakDoorSeconds == 2.5f, "tiers: the base tuning is never changed");
+        Check(rules.TierForZones(1) == 1 && rules.TierForZones(4) == 1 && rules.TierForZones(5) == 2 && rules.TierForZones(16) == 4 && rules.TierForZones(40) == 5,
+            "tiers: zones 1-4 tier 1, 5 tier 2, 16 tier 4, 40 capped at 5");
+        var t1 = rules.At(1);
+        Check(t1.LampMode(.61f) == 0 && t1.LampMode(.63f) == 1 && t1.LampMode(.83f) == 2 && t1.LampMode(.93f) == 3 && t1.LampMode(.98f) == 4,
+            "tiers: tier 1 lamp odds are the old 62 / 20 / 10 / 5 / 3");
+
+        // A break keeps the length it started with when the tuning changes mid-break.
+        var world = World(roots, FrontRoomsLevelProfiles.Resolve(), -34f, "MAP INTERACTION TEST / tier break");
+        world.BuildForCapture();
+        if (FindDoor(world, out var a, out var b, out var c))
+        {
+            var player = new GameObject("test player").transform;
+            player.SetParent(world.transform, false);
+            var body = player.gameObject.AddComponent<CapsuleCollider>();
+            body.height = ModuleUnits.PlayerHeight;
+            body.radius = ModuleUnits.PlayerRadius;
+            body.center = Vector3.up * (ModuleUnits.PlayerHeight * .5f);
+            var tuning = new FrontRoomsHunterTuning { sightRange = 0f };
+            var hunter = new FrontRoomsMapHunter(world, tuning, body, null, 5);
+            var target = world.CellCenter(b);
+            player.position = target;
+            Physics.SyncTransforms();
+            hunter.DebugPlace(world.CellCenter(c));
+            hunter.Noise(target, 1000f);
+            var blows = new List<(int index, int count)>();
+            hunter.DoorBlow += _ => blows.Add((hunter.BlowIndex, hunter.BlowCount));
+            var door = world.DoorBetween(a, b);
+            var changed = false;
+            for (var t = 0f; t < 30f && !door.broken; t += Dt)
+            {
+                hunter.Tick(Dt, target, target + Vector3.up * ModuleUnits.PlayerEye, Vector3.forward);
+                world.TickDoorsForTools(Dt);
+                Physics.SyncTransforms();
+                // At 1.2 s into the break, the tier drops the break time to 1.3 s.
+                if (!changed && hunter.State == HunterState.BreakDoor && hunter.StateTime >= 1.2f) { tuning.breakDoorSeconds = 1.3f; changed = true; }
+            }
+            Check(changed && door.broken && blows.Count == 5 && blows.All(x => x.count == 5) && blows[blows.Count - 1].index == 4,
+                "tiers: a break that started at 2.5 s keeps 5 blows when the break time drops mid-break (" + string.Join(" ", blows.Select(x => x.index + "/" + x.count)) + ")");
+            // Once the leaf has fallen and it walks on, the next break takes the new time.
+            for (var t = 0f; t < 2f && hunter.State == HunterState.BreakDoor; t += Dt)
+            {
+                hunter.Tick(Dt, target, target + Vector3.up * ModuleUnits.PlayerEye, Vector3.forward);
+                world.TickDoorsForTools(Dt);
+            }
+            Check(hunter.State != HunterState.BreakDoor && hunter.BlowCount == 3, "tiers: after the break, BlowCount follows the new time (" + hunter.BlowCount + ")");
+            // A real second break, on the same hunter behind another closed door, takes the new 1.3 s.
+            if (FindDoor(world, out var a2, out var b2, out var c2))
+            {
+                var target2 = world.CellCenter(b2);
+                var door2 = world.DoorBetween(a2, b2);
+                player.position = target2;
+                Physics.SyncTransforms();
+                hunter.DebugPlace(world.CellCenter(c2));
+                hunter.Noise(target2, 1000f);
+                blows.Clear();
+                float t2 = 0f, start2 = -1f, gave2 = -1f;
+                world.DoorBroken += _ => { if (start2 >= 0f && gave2 < 0f) gave2 = t2 - start2; };
+                for (; t2 < 30f && !door2.broken; t2 += Dt)
+                {
+                    hunter.Tick(Dt, target2, target2 + Vector3.up * ModuleUnits.PlayerEye, Vector3.forward);
+                    world.TickDoorsForTools(Dt);
+                    Physics.SyncTransforms();
+                    if (hunter.State == HunterState.BreakDoor && start2 < 0f) start2 = t2 - hunter.StateTime;
+                }
+                Check(door2.broken && blows.Count == 3 && blows.All(x => x.count == 3) && blows.Select(x => x.index).SequenceEqual(new[] { 0, 1, 2 }) && Mathf.Abs(gave2 - 1.3f) <= Dt * .6f,
+                    "tiers: the next break takes the new time (" + string.Join(" ", blows.Select(x => x.index + "/" + x.count)) + ", gives at " + gave2.ToString("0.000") + " s; expected 0/3 1/3 2/3 at 1.3 s)");
+            }
+            else Check(false, "tiers: no second closed door near the spawn for the next break");
+        }
+        else Check(false, "tiers: no closed door near the spawn");
+
+        // Generation: chunks keep the tier they were generated at; a shift takes the tier of its time.
+        var cache = new FrontRoomsMapCache(FrontRoomsLevelProfiles.Resolve().Generation(4242));
+        var first = cache.Get(new GridCoord(0, 0));
+        cache.Tier = 3;
+        var again = cache.Get(new GridCoord(0, 0));
+        var fresh = cache.Get(new GridCoord(5, 0));
+        cache.Shift(new GridCoord(0, 0));
+        var shifted = cache.Get(new GridCoord(0, 0));
+        Check(first.tier == 1 && ReferenceEquals(first, again) && fresh.tier == 3 && shifted.tier == 3,
+            "tiers: a generated chunk keeps tier 1 after the run reaches tier 3; a new chunk and a shifted one take 3");
+        // Module tier: a module for tiers 2+ never comes at tier 1, and does at tier 3.
+        var m = Room(3, 3, ZoneTheme.Level0);
+        m.minTier = 1; m.maxTier = 9; m.weight = 1f; m.allowRotate = true;
+        var settings = FrontRoomsLevelProfiles.Resolve().Generation(777);
+        settings.moduleChance = 1f;
+        // The base tier is under test, not the profile's value.
+        settings.moduleTier = 0;
+        var lib = new List<RoomModuleData> { m };
+        int Placed(int tier) => PlacedWith(lib, tier);
+        int PlacedWith(List<RoomModuleData> library, int tier)
+        {
+            var cc = new FrontRoomsMapCache(settings, library) { Tier = tier };
+            var n = 0;
+            for (var y = -6; y < 6; y++)
+            for (var x = -6; x < 6; x++)
+            {
+                var d = cc.Get(new GridCoord(x, y));
+                for (var r = 0; r < d.rooms.Length; r++) if (d.ModuleOf(r) != null) n++;
+            }
+            return n;
+        }
+        int at1 = Placed(1), at3 = Placed(3);
+        Check(at1 == 0 && at3 > 0, "tiers: a module with tiers 1-9 is placed " + at1 + " times at run tier 1 and " + at3 + " at tier 3 (module tier = base + tier - 1)");
+        // The upper bound: a module for tiers 0-1 comes at run tiers 1 and 2, never at 3.
+        var early = Room(3, 3, ZoneTheme.Level0);
+        early.minTier = 0; early.maxTier = 1; early.weight = 1f; early.allowRotate = true;
+        var libEarly = new List<RoomModuleData> { early };
+        int e1 = PlacedWith(libEarly, 1), e2 = PlacedWith(libEarly, 2), e3 = PlacedWith(libEarly, 3);
+        Check(e1 > 0 && e2 > 0 && e3 == 0, "tiers: a module with tiers 0-1 is placed " + e1 + "/" + e2 + "/" + e3 + " times at run tiers 1/2/3");
+    }
+
+    // ---------- P4: markers ----------
+
+    static void KeySpot(List<GameObject> roots, List<FrontRoomsLevelProfile> profiles)
+    {
+        // A 6 x 6 room over chunk (0, 0)'s cells 1..6 holds its zone's key cell (always local 1..6).
+        var m = Room(6, 6, ZoneTheme.Level0);
+        var probe = ModuleWorld(roots, profiles, m, 1, 1, -35f, "MAP INTERACTION TEST / key probe");
+        var data = probe.Cache.Get(new GridCoord(0, 0));
+        if (!data.hasKey) { Check(false, "key spot: chunk (0, 0) has no key in this profile (tall zone?)"); return; }
+        var site = data.keySiteCell;
+        var cs = MapGrid.CellSize;
+        // The marker in the key's own cell, off its centre, on the floor, turned 30°.
+        var mx = (site.x - 1 + .5f) * cs + .6f;
+        var mz = (site.y - 1 + .5f) * cs - .4f;
+        m.markers = new[] { new ModuleMarker { kind = ModuleMarkerKind.KeySpot, x = mx, z = mz, y = 0f, yaw = 30f } };
+        var world = ModuleWorld(roots, profiles, m, 1, 1, -36f, "MAP INTERACTION TEST / key spot");
+        var d2 = world.Cache.Get(new GridCoord(0, 0));
+        Check(d2.keySpot && d2.keyCell == site && Mathf.Abs(d2.keyX - (cs + mx)) < .001f && Mathf.Abs(d2.keyZ - (cs + mz)) < .001f,
+            "key spot: the module's key spot takes the zone key (cell " + d2.keyCell + ", at " + d2.keyX.ToString("0.00") + ", " + d2.keyZ.ToString("0.00") + ")");
+        var key = world.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name.StartsWith("Key · zone"));
+        var expected = new Vector3(cs + mx, .06f, cs + mz);
+        Check(key != null && (key.localPosition - expected).sqrMagnitude < 1e-4f && Mathf.Abs(Mathf.DeltaAngle(key.localEulerAngles.y, 30f)) < .5f,
+            "key spot: the key lies at the marker, turned with it (" + (key != null ? key.localPosition.ToString("F2") : "none") + ")");
+        // Without a key spot the key keeps its cell centre.
+        var data0 = probe.Cache.Get(new GridCoord(0, 0));
+        Check(!data0.keySpot && data0.keyCell == data0.keySiteCell, "key spot: without one the key stays at its site cell");
+    }
+
+    /// <summary>Walking distance in cells (open edges and doors, not glass) from a cell, up to maxDepth.</summary>
+    static Dictionary<GridCoord, int> Walk(FrontRoomsMapWorld world, GridCoord start, int maxDepth)
+    {
+        var depth = new Dictionary<GridCoord, int> { [start] = 0 };
+        var queue = new Queue<GridCoord>();
+        queue.Enqueue(start);
+        while (queue.Count > 0)
+        {
+            var cell = queue.Dequeue();
+            if (depth[cell] >= maxDepth) continue;
+            foreach (var s in Steps)
+            {
+                var n = cell + s;
+                if (depth.ContainsKey(n) || !world.IsBuilt(n)) continue;
+                var p = world.PassageBetween(cell, n);
+                if (p == FrontRoomsMapWorld.Passage.Wall || p == FrontRoomsMapWorld.Passage.Glass) continue;
+                depth[n] = depth[cell] + 1;
+                queue.Enqueue(n);
+            }
+        }
+        return depth;
+    }
+
+    static void RelayEntry(List<GameObject> roots, List<FrontRoomsLevelProfile> profiles)
+    {
+        var m = Room(3, 3, ZoneTheme.Level0);
+        m.markers = new[] { new ModuleMarker { kind = ModuleMarkerKind.RelayEntry, x = 4.5f, z = 4.5f, tag = "doorway" } };
+        var world = ModuleWorld(roots, profiles, m, 3, 3, -37f, "MAP INTERACTION TEST / relay entry");
+        var list = new List<(Vector3 pos, string tag)>();
+        world.RelayEntries(list);
+        Check(list.Count == 1 && list[0].tag == "doorway", "relay entry: the map lists the module's entry (" + list.Count + ")");
+        if (list.Count != 1) return;
+        var entry = list[0].pos;
+        var entryCell = world.CellOf(entry);
+        // A player 10-14 cells of walking away that cannot see the entry, facing away from it.
+        var depth = Walk(world, entryCell, 14);
+        var eye = Vector3.up * ModuleUnits.PlayerEye;
+        GridCoord? spot = null;
+        foreach (var pair in depth.OrderBy(x => x.Value))
+        {
+            if (pair.Value < 10) continue;
+            var feet = world.CellCenter(pair.Key);
+            if (!Physics.Linecast(feet + eye, entry + Vector3.up * 1.6f) || !Physics.Linecast(feet + eye, entry + Vector3.up * 1.95f)) continue;
+            spot = pair.Key;
+            break;
+        }
+        if (!spot.HasValue) { Check(false, "relay entry: no cell 10-14 cells from the entry that cannot see it"); return; }
+        var player = new GameObject("test player").transform;
+        player.SetParent(world.transform, false);
+        var body = player.gameObject.AddComponent<CapsuleCollider>();
+        body.height = ModuleUnits.PlayerHeight;
+        body.radius = ModuleUnits.PlayerRadius;
+        body.center = Vector3.up * (ModuleUnits.PlayerHeight * .5f);
+        var p = world.CellCenter(spot.Value);
+        player.position = p;
+        Physics.SyncTransforms();
+        var forward = (p - entry);
+        forward.y = 0f;
+        forward.Normalize();
+        var tuning = new FrontRoomsHunterTuning { releaseDelaySeconds = 0f };
+        var hunter = new FrontRoomsMapHunter(world, tuning, body, null, 9);
+        var arrivals = new List<(Vector3 pos, string tag)>();
+        hunter.Arrived += (pos, tag) => arrivals.Add((pos, tag));
+        hunter.Tick(Dt, p, p + eye, forward);
+        Check(hunter.Released && arrivals.Count == 1 && arrivals[0].tag == "doorway" && Flat(arrivals[0].pos - entry) < .01f && Flat(hunter.Position - entry) < .01f,
+            "relay entry: released at the module's entry behind the player, Arrived with tag 'doorway' (" + (arrivals.Count > 0 ? arrivals[0].tag + " at " + arrivals[0].pos.ToString("F2") : "no arrival") + ")");
+        // A relay to an unmarked cell raises Arrived with no tag: stand next to the entry so it is out of the band.
+        var near = world.CellCenter(entryCell);
+        player.position = near;
+        Physics.SyncTransforms();
+        var hunter2 = new FrontRoomsMapHunter(world, tuning, body, null, 9);
+        var tags = new List<string>();
+        hunter2.Arrived += (pos, tag) => tags.Add(tag);
+        hunter2.Tick(Dt, near, near + eye, Vector3.forward);
+        Check(hunter2.Released && tags.Count == 1 && tags[0] == null, "relay entry: an arrival in an unmarked cell has no tag");
+    }
+
+    static float Flat(Vector3 v) => new Vector2(v.x, v.z).magnitude;
+
+    /// <summary>The Office fill keeps off a module's Relay entry (0.8 m) and its floor key (1 m): both are put where the kit stood without them.</summary>
+    static void FillKeepsClear(List<GameObject> roots, List<FrontRoomsLevelProfile> profiles)
+    {
+        var cs = MapGrid.CellSize;
+        var m = Room(6, 6, ZoneTheme.Office);   // 6 x 6 at (1, 1) holds the key's site cell (local 1..6)
+        m.fill = ModuleFill.Office;
+        var probe = ModuleWorld(roots, profiles, m, 1, 1, -39f, "MAP INTERACTION TEST / fill clear probe");
+        var data = probe.Cache.Get(new GridCoord(0, 0));
+        var origin = probe.transform.TransformPoint(new Vector3(cs, 0f, cs));
+        // Non-vacuous: put the entry where the kit put furniture when nothing was kept clear.
+        var hit = probe.GetComponentsInChildren<Transform>(true).Where(t => t.name == "office dressing")
+            .SelectMany(t => t.GetComponentsInChildren<Collider>(true)).Select(c => c.bounds)
+            .Where(b => b.min.y <= ModuleUnits.RelayHeight)
+            .Select(b => new Vector2(b.center.x - origin.x, b.center.z - origin.z))
+            .FirstOrDefault(p => p.x > 1.5f && p.y > 1.5f && p.x < m.WidthMetres - 1.5f && p.y < m.DepthMetres - 1.5f);
+        if (hit == default) { Check(false, "fill clear: the Office kit put nothing inside the probe room"); return; }
+        var markers = new List<ModuleMarker> { new ModuleMarker { kind = ModuleMarkerKind.RelayEntry, x = hit.x, z = hit.y, tag = "vent", host = "" } };
+        var site = data.keySiteCell;
+        if (data.hasKey) markers.Add(new ModuleMarker { kind = ModuleMarkerKind.KeySpot, x = (site.x - 1 + .5f) * cs, z = (site.y - 1 + .5f) * cs, y = 0f, host = "" });
+        m.markers = markers.ToArray();
+        var world = ModuleWorld(roots, profiles, m, 1, 1, -40f, "MAP INTERACTION TEST / fill clear");
+        var d = world.Cache.Get(new GridCoord(0, 0));
+        var keep = new List<(Rect r, string what)> { (new Rect(cs + hit.x - .4f, cs + hit.y - .4f, .8f, .8f), "Relay entry") };
+        if (d.hasKey && d.keySpot) keep.Add((new Rect(d.keyX - .5f, d.keyZ - .5f, 1f, 1f), "floor key"));
+        var bad = new List<string>(); var n = 0;
+        foreach (var root in world.GetComponentsInChildren<Transform>(true).Where(t => t.name == "office dressing"))
+        foreach (var c in root.GetComponentsInChildren<Collider>(true))
+        {
+            var b = c.bounds; if (b.min.y > ModuleUnits.RelayHeight) continue;
+            var lo = world.transform.InverseTransformPoint(b.min); var hi = world.transform.InverseTransformPoint(b.max);
+            n++;
+            foreach (var (r, what) in keep)
+                if (lo.x < r.xMax - .02f && r.xMin + .02f < hi.x && lo.z < r.yMax - .02f && r.yMin + .02f < hi.z) bad.Add(what + ": " + c.name);
+        }
+        Check(n > 0 && bad.Count == 0, "fill clear: the Office fill keeps off the Relay entry (0.8 m) and the floor key (1 m) (" + string.Join(", ", bad.Take(6)) + ")");
+        Check(!data.hasKey || (d.keySpot && keep.Count == 2), "fill clear: the key spot took the zone key");
+        // Optional: reuse RelayEntry's release procedure (factored out as a helper) on `world` and assert Arrived with tag "vent" at the entry.
+    }
+
+    // ---------- P4: live tuning ----------
+
+    static void Live(List<GameObject> roots, List<FrontRoomsLevelProfile> profiles)
+    {
+        var m = Room(3, 3, ZoneTheme.Level0);
+        var world = ModuleWorld(roots, profiles, m, 3, 3, -38f, "MAP INTERACTION TEST / live");
+        var live = UnityEngine.Object.Instantiate(FrontRoomsLevelProfiles.Resolve());
+        live.hideFlags = HideFlags.DontSave;
+        profiles.Add(live);
+        live.buildRadius = 3;
+        var applied = 0;
+        world.LiveApplied += () => applied++;
+        var before = world.SightDistance;
+        world.ApplyLive(live);
+        Check(applied == 1 && world.BuildRadius == 3 && world.SightDistance > before, "live: ApplyLive takes the build radius (sight " + before + " → " + world.SightDistance + " m)");
+        // ReplaceModule rebuilds chunk (0, 0) and leaves the others as they were.
+        var others = world.GetComponentsInChildren<Transform>(true).Where(t => t.parent == world.transform && t.name.StartsWith("Chunk ") && !t.name.StartsWith("Chunk (0, 0)")).Select(t => t.gameObject).ToList();
+        var oldChunk = world.GetComponentsInChildren<Transform>(true).First(t => t.parent == world.transform && t.name.StartsWith("Chunk (0, 0)")).gameObject;
+        var m2 = Room(3, 3, ZoneTheme.Level0);
+        m2.innerEast[0] = ModuleEdge.Wall;
+        world.ReplaceModule(new GridCoord(0, 0), m2, 3, 3);
+        var newChunk = world.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.parent == world.transform && t.name.StartsWith("Chunk (0, 0)") && t.gameObject.activeSelf);
+        var data = world.Cache.Get(new GridCoord(0, 0));
+        Check(newChunk != null && newChunk.gameObject != oldChunk && others.All(o => o != null) && data.east[MapGrid.LocalIndex(3, 3)] == EdgeKind.Wall,
+            "live: ReplaceModule rebuilt chunk (0, 0) with the new module (inner wall in) and kept the " + others.Count + " other chunks");
+        // The rebuilt chunk's Relay entries are registered again, and a removed one is gone.
+        var m3 = Room(3, 3, ZoneTheme.Level0);
+        m3.markers = new[] { new ModuleMarker { kind = ModuleMarkerKind.RelayEntry, x = 4.5f, z = 4.5f, tag = "t" } };
+        world.ReplaceModule(new GridCoord(0, 0), m3, 3, 3);
+        var list = new List<(Vector3 pos, string tag)>();
+        world.RelayEntries(list);
+        var withEntry = list.Count == 1 && list[0].tag == "t";
+        world.ReplaceModule(new GridCoord(0, 0), Room(3, 3, ZoneTheme.Level0), 3, 3);
+        world.RelayEntries(list);
+        Check(withEntry && list.Count == 0, "live: a rebuilt chunk registers its module's Relay entry again, and drops it when the module no longer has one");
     }
 
     // ---------- The guard round Build ----------

@@ -44,6 +44,10 @@ None of the original period faces can ship. They are either commercial (ITC, Lin
 | Engraved script (Baker, Charles Barone, Karastan logos) | Mac Snell Roundhand / Kuenstler | `PinyonScript/PinyonScript-Regular` | |
 | Brush script (Merillat, Kirschman's, Heilig-Meyers) | Mac Brush Script | `Yellowtail/Yellowtail-Regular` | Apache 2.0 |
 | TV character generator, typewriter, teletext (dealer tags, HSC item specs, phone numbers, QVC panels) | broadcast CG hardware | `VT323/VT323-Regular`, `CourierPrime/CourierPrime-*` | Add a 2–4 px black outline and drop shadow, as on period CG |
+| Modern No. 20 (Met Home "The Gathering Room", 1992; WhatTheFont match) | Stephenson Blake / Bitstream; Office copy local only | `OldStandardTT/OldStandard-Regular`, `-Italic`, `-Bold` | Condensed Scotch/modern face; for compressed headlines scale width to 80–85 % |
+| Wide slab, Figgins Antique type (Met Home "STYLE PREVIEW", 1989; WhatTheFont match) | commercial | `HoltwoodOneSC/HoltwoodOneSC-Regular` | Caps only; track +40 to +80 |
+| Gill Sans Bold type (Home pull quotes ≈18/22 with ■■■■■ end mark) | Monotype; Office copy local only | `Cabin/Cabin-Bold`, `-SemiBold`, `-CondensedBold` | Humanist stand-in, not a clone |
+| Clarendon / slab (Interiors masthead, Waterbed City and Gallery Furniture TV) | commercial | `ZillaSlab/ZillaSlab-*` | Masthead caps tracked +200 to +400 |
 
 ## Using them in Unity
 - **Legacy Text / TextMesh:** assign the imported Font.

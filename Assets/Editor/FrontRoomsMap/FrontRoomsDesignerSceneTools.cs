@@ -16,7 +16,9 @@ using UnityEngine.SceneManagement;
 ///   field being typed in, and the rebuilt prop is selected again;
 /// - Delete on selected props removes them from the module, Duplicate adds
 ///   copies of them to it;
-/// - the room's outline and openings are drawn on the floor.
+/// - the room's outline and openings are drawn on the floor, and its
+///   gameplay markers (K key spot, R Relay entry with its tag; drawn only:
+///   they are edited in the plan and the marker fields).
 /// Clicking a prop selects the whole kit, not a mesh inside it, and props
 /// stay selected across every rebuild.
 ///
@@ -34,6 +36,8 @@ public static class FrontRoomsDesignerSceneTools
     /// <summary>A prop this far (m) or this many degrees from its module place has been moved; well above float error 5 km out, well under the 0.05 m snap.</summary>
     const float MovedMetres = .004f, MovedDegrees = .05f;
     static readonly Color OutlineColor = new Color(1f, .6f, .2f, .9f), OpeningColor = new Color(.3f, .9f, .4f, .9f), GhostFill = new Color(.4f, 1f, .5f, .25f);
+    // As in the plan (FrontRoomsModulePlanView).
+    static readonly Color KeyColor = new Color(1f, .82f, .2f, .95f), RelayColor = new Color(.8f, .4f, 1f, .95f);
 
     static FrontRoomsModulePreview cached;
     // Transforms of tagged props that Undo saw change, and the undo group of the first, until Sync writes them back.
@@ -45,7 +49,7 @@ public static class FrontRoomsDesignerSceneTools
     // Props to select after the next rebuild, when an edit knows better than the current selection (a drop, a new prop).
     static int[] reselect;
     static (string kit, Vector2 at)? ghost;
-    static GUIStyle label;
+    static GUIStyle label, keyLabel, relayLabel;
 
     static FrontRoomsDesignerSceneTools()
     {
@@ -374,7 +378,7 @@ public static class FrontRoomsDesignerSceneTools
         if (e.type == EventType.Repaint) DrawRoom(preview);
     }
 
-    /// <summary>The module's outline just above the floor, its openings in green with their kind, and a dragged kit's footprint.</summary>
+    /// <summary>The module's outline just above the floor, its openings in green with their kind, its markers, and a dragged kit's footprint.</summary>
     static void DrawRoom(FrontRoomsModulePreview preview)
     {
         var m = preview.module.data;
@@ -400,6 +404,7 @@ public static class FrontRoomsDesignerSceneTools
             Opening(m.west[j], new Vector2(0f, j * cs), new Vector2(0f, (j + 1) * cs));
             Opening(m.east[j], new Vector2(m.WidthMetres, j * cs), new Vector2(m.WidthMetres, (j + 1) * cs));
         }
+        DrawMarkers(preview);
         if (ghost == null) return;
         // Where the dragged kit will stand, wall units already against their wall.
         var p = FrontRoomsModuleEditing.NewProp(m, ghost.Value.kit, ghost.Value.at);
@@ -408,5 +413,39 @@ public static class FrontRoomsDesignerSceneTools
         float c = Mathf.Cos(rad), s = Mathf.Sin(rad);
         Vector3 Corner(float x, float z) => At(p.x + x * c + z * s, p.z - x * s + z * c, p.y + .03f);
         Handles.DrawSolidRectangleWithOutline(new[] { Corner(f[0], f[1]), Corner(f[2], f[1]), Corner(f[2], f[3]), Corner(f[0], f[3]) }, GhostFill, OpeningColor);
+    }
+
+    /// <summary>
+    /// The module's markers where the game uses them: a disc (a Relay entry
+    /// as wide as the Relay's body) on the floor, a key spot at its height
+    /// with a dotted line down to the floor, a tick for the yaw, and K or R
+    /// with the host or tag above it.
+    /// </summary>
+    static void DrawMarkers(FrontRoomsModulePreview preview)
+    {
+        var m = preview.module.data;
+        if (m.markers == null || m.markers.Length == 0) return;
+        if (keyLabel == null) keyLabel = new GUIStyle(EditorStyles.miniBoldLabel) { alignment = TextAnchor.MiddleCenter, normal = { textColor = KeyColor } };
+        if (relayLabel == null) relayLabel = new GUIStyle(EditorStyles.miniBoldLabel) { alignment = TextAnchor.MiddleCenter, normal = { textColor = RelayColor } };
+        var up = preview.transform.up;
+        foreach (var mk in m.markers)
+        {
+            var key = mk.kind == ModuleMarkerKind.KeySpot;
+            var at = new Vector2(mk.x, mk.z);
+            var floor = preview.ModuleToWorld(at, .03f);
+            var centre = key ? preview.ModuleToWorld(at, mk.y + .03f) : floor;
+            var radius = key ? .15f : ModuleUnits.RelayRadius;
+            var colour = key ? KeyColor : RelayColor;
+            Handles.color = colour;
+            if (key && mk.y > .05f) Handles.DrawDottedLine(floor, centre, 3f);
+            Handles.color = new Color(colour.r, colour.g, colour.b, .3f);
+            Handles.DrawSolidDisc(centre, up, radius);
+            Handles.color = colour;
+            Handles.DrawWireDisc(centre, up, radius, 2f);
+            var heading = preview.ModuleToWorldRotation(mk.yaw) * Vector3.forward;
+            Handles.DrawAAPolyLine(3f, centre, centre + heading * (radius + .25f));
+            var text = key ? "K" + (string.IsNullOrEmpty(mk.host) ? "" : " " + FrontRoomsModuleEditing.Short(mk.host)) : "R" + (string.IsNullOrEmpty(mk.tag) ? "" : " " + mk.tag);
+            Handles.Label(centre + up * .35f, text, key ? keyLabel : relayLabel);
+        }
     }
 }

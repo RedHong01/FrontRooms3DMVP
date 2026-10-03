@@ -30,6 +30,24 @@ public sealed class FrontRoomsMapWalker : MonoBehaviour
     float flashUntil;
     GUIStyle large, meta, center;
 
+    /// <summary>Move the walker at once (the Level Designer's live rebuild): the controller is off while it moves, and the look resets to the heading.</summary>
+    public void Teleport(Vector3 position, float newYaw)
+    {
+        body.enabled = false;
+        transform.SetPositionAndRotation(position, Quaternion.Euler(0f, newYaw, 0f));
+        yaw = newYaw;
+        pitch = 0f;
+        fallSpeed = 0f;
+        if (view != null) view.transform.localRotation = Quaternion.identity;
+        body.enabled = true;
+    }
+
+    /// <summary>Follow the map's build radius after a live profile change: the far plane stops just short of what may not be built.</summary>
+    public void RefreshView()
+    {
+        if (view != null && world != null) view.farClipPlane = world.SightDistance;
+    }
+
     public static FrontRoomsMapWalker Spawn(FrontRoomsMapWorld world, Vector3 position, float yaw = 0f)
     {
         var go = new GameObject("Map test player");

@@ -21,7 +21,7 @@ using UnityEngine;
 public sealed class FrontRoomsPrintDriver : MonoBehaviour
 {
     /// <summary>Resources path of the packed print (Tools/print/print_tool.py pack).</summary>
-    public const string DefaultPrint = "Print/FR_Print_ChevronTest";
+    public const string DefaultPrint = "Print/FR_Print_HardEdge";
     const string ReduceMotionKey = "FrontRooms.ReduceWallMotion";
     const double Tau = Math.PI * 2.0;
 

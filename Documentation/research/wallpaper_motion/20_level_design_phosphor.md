@@ -335,7 +335,12 @@ Tiers follow the unconfirmed DP08 proposal. With no tier system, everything stay
 
 - **Direction** comes from the world axis (z when |n.x| > 0.5, else x), never the mirrored PlanarFrame u (FrontRoomsSurface.shader:157-161). Arrows therefore point the same world way from both sides of a corridor.
 - **B substance rule:** the mean B within any 100 mm square must be ≥ 0.6 inside strokes, so strokes read as solid at 20 m. Fine detail is for reading under 2 m.
-- **Old relief chevrons:** they were paper geometry seen in light, while these chevrons are emission seen only in the dark. The visual chat should keep proportions distinct. This is accepted as deliberate, and narrative may tie the two together (§12).
+- **Print chevrons vs ink chevrons (updated 2026-10-03, after Red chose the WP03 "Hard edge" print and dropped the ghost emboss).** Three cues keep them apart:
+  - **Orientation:** the print's chevrons point UP the wall (55° mitred bands, plus the motif arrows), while FLOW chevrons point ALONG the wall toward the route.
+  - **Medium:** the print is albedo seen in light; the ink is emission seen only in the dark.
+  - **Arm angle:** the narrative chat (30_narrative_phosphor.md §10) asks for FLOW arms of about 30–35°, kept isolated inside the glow band, so that in failing cells, where both show, no ink chevron is ever drawn at the print's 55°.
+
+  The final angle is the visual chat's call.
 
 **Distances** (vertical FOV 76°, FrontRooms3DGame.cs:227, gives ≈ 691/d px per metre at 1080p):
 - A 0.40 m chevron is ~14 px at 20 m, with strokes ~3.5 px.
@@ -575,10 +580,10 @@ The run is reached through `MapRunStarted` (FrontRooms3DGame.cs:608).
 
 ## 15. Open questions for Red
 
-1. **HUD:** may the map chat retire `RELAY nn M` and the HUNT/SEARCH state text (FrontRooms3DGame.cs:1539-1544) and move them behind an assist? The design depends on it.
+1. **ANSWERED (Red, 2026-10-03): yes.** The RELAY distance and state text are off by default and become an assist option; the map chat lands it after Level Designer P4. Original question: **HUD:** may the map chat retire `RELAY nn M` and the HUNT/SEARCH state text (FrontRooms3DGame.cs:1539-1544) and move them behind an assist? The design depends on it.
 2. **Tier counting:** count by new thresholds (6 per tier or 2.5 min), or by DP08's zone ids? Zone ids tick about 3.6 per minute even for a random walker.
 3. **Pressure trigger:** Chase only (recommended), or also Hunt and Search within 8 cells (stronger, but it leaks the Relay)?
-4. **Lies:** enable forged FLOW at T4+, or keep the ink truthful forever?
+4. **ANSWERED (Red, 2026-10-03): forged FLOW is ON from T4.** Original question: **Lies:** enable forged FLOW at T4+, or keep the ink truthful forever?
 5. **Office blind zones (13.6% of cells):** keep them as deliberate hint-free stretches?
 6. **First-dark beat:** use the in-view lamp death (recommended) or the original pre-dead cell? Either one needs visual-chat sign-off on the lamp override.
 7. **Lamp overrides:** may the drought breaker and the optional border dusk change lamp temperaments at runtime (LEVEL_MODULE_SPEC.md:76)?

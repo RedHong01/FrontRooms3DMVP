@@ -210,7 +210,7 @@ namespace FrontRooms.Map
                 var coord = new GridCoord(cx, cy);
                 var a = cache.Get(coord);
                 var b = fresh.Generate(coord);
-                if (!Same(a.east, b.east) || !Same(a.north, b.north) || !Same(a.west, b.west) || !Same(a.south, b.south) || !Same(a.pillar, b.pillar) || !Same(a.pillarStyle, b.pillarStyle) || a.keyCell != b.keyCell
+                if (!Same(a.east, b.east) || !Same(a.north, b.north) || !Same(a.west, b.west) || !Same(a.south, b.south) || !Same(a.pillar, b.pillar) || !Same(a.pillarStyle, b.pillarStyle) || a.keyCell != b.keyCell || a.keySpot != b.keySpot || a.keyX != b.keyX || a.keyZ != b.keyZ || a.keyY != b.keyY || a.tier != b.tier
                     || !Same(a.rooms, b.rooms) || !Same(a.lamp, b.lamp) || !SameModules(a, b))
                     Fail("chunk " + coord + " differs when rebuilt");
                 var shifted = fresh.Generate(coord, 1);
@@ -234,7 +234,7 @@ namespace FrontRooms.Map
             {
                 RoomModuleData x = a.ModuleOf(r), y = b.ModuleOf(r);
                 if ((x == null) != (y == null)) return false;
-                if (x != null && (x.width != y.width || x.depth != y.depth || !Same(x.lamps, y.lamps) || !Same(x.props, y.props)
+                if (x != null && (x.width != y.width || x.depth != y.depth || !Same(x.lamps, y.lamps) || !Same(x.props, y.props) || !Same(x.markers, y.markers)
                     || !Same(x.innerEast, y.innerEast) || !Same(x.innerNorth, y.innerNorth))) return false;
             }
             return true;

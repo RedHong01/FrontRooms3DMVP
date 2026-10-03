@@ -14,8 +14,9 @@ using WallSide = FrontRoomsModuleEditing.WallSide;
 /// (FrontRoomsLevelDesignerWindow; a module's own Inspector edits it too).
 /// Menu: FrontRooms → Level Designer.
 /// Headless: -executeMethod FrontRoomsLevelDesigner.SetupBatch -quit creates the
-/// scene and the sample modules; CaptureBatch renders every module to
-/// Verification/designer-*.png.
+/// scene and the sample modules; ResetSamples puts the samples back as
+/// shipped (no dialog in batch, the assets and their GUIDs kept);
+/// CaptureBatch renders every module to Verification/designer-*.png.
 /// </summary>
 public static class FrontRoomsLevelDesigner
 {
@@ -290,7 +291,16 @@ public static class FrontRoomsLevelDesigner
     /// <summary>A prop with its back to one of the room's walls (FrontRoomsModuleEditing.AgainstRoomWall, as the palette places wall units).</summary>
     static ModuleProp Wall(string kit, float along, WallSide side, RoomModuleData m, float y = 0f) => FrontRoomsModuleEditing.AgainstRoomWall(kit, along, side, m, y);
 
-    static IEnumerable<(string, string, RoomModuleData)> Samples()
+    /// <summary>A key spot at a module point, lying on the top of the prop there (as the plan places one), else on the floor.</summary>
+    static ModuleMarker Key(RoomModuleData m, float x, float z, float yaw = 0f) =>
+        new ModuleMarker { kind = ModuleMarkerKind.KeySpot, x = x, z = z, y = FrontRoomsModuleEditing.TopUnder(m, new Vector2(x, z)) ?? 0f, yaw = yaw, tag = "", host = "" };
+
+    /// <summary>A Relay entry on the floor, facing <paramref name="yaw"/>, with its tag for the sound.</summary>
+    static ModuleMarker Relay(float x, float z, float yaw, string tag) =>
+        new ModuleMarker { kind = ModuleMarkerKind.RelayEntry, x = x, z = z, yaw = yaw, tag = tag, host = "" };
+
+    /// <summary>The sample modules as shipped: name, notes and room. Their checks find no errors and no warnings (FrontRoomsLevelDesignerTests).</summary>
+    public static IEnumerable<(string name, string notes, RoomModuleData data)> Samples()
     {
         // A Level 0 waiting room: a partition with a doorway, a row of chairs against the wall, a clock, one dead lamp.
         var a = new RoomModuleData { width = 4, depth = 3, height = ZoneHeight.Standard, theme = ZoneTheme.Level0, fill = ModuleFill.None, columns = ModuleColumns.None };
@@ -309,7 +319,9 @@ public static class FrontRoomsLevelDesigner
         };
         a.lamps[1 + 1 * 4] = ModuleLamp.Dead;
         a.lamps[3 + 2 * 4] = ModuleLamp.Failing;
-        yield return ("L0_WaitingRoom_4x3", "Level 0: a waiting room cut in two by a partition with a doorway. Chairs face nobody.", a);
+        // The key, when it falls here, lies on the side table at the end of the row of chairs.
+        a.markers = new[] { Key(a, a.props[3].x, a.props[3].z, 20f) };
+        yield return ("L0_WaitingRoom_4x3", "Level 0: a waiting room cut in two by a partition with a doorway. Chairs face nobody. The key lies on the side table.", a);
 
         // An Office bullpen: the Office kit fills round a copier and a water cooler; columns follow the 6 m grid.
         var b = new RoomModuleData { width = 4, depth = 4, height = ZoneHeight.Standard, theme = ZoneTheme.Office, fill = ModuleFill.Office, columns = ModuleColumns.Auto };
@@ -319,7 +331,9 @@ public static class FrontRoomsLevelDesigner
         b.north[3] = ModuleEdge.Arch;
         b.props = new[] { Wall("Kit_Copier", 2.0f, WallSide.West, b), Wall("Kit_WaterCooler", 9.2f, WallSide.West, b), Wall("Kit_FilingCabinet", 1.0f, WallSide.North, b), Wall("Kit_FilingCabinet", 1.4f, WallSide.North, b) };
         b.lamps[0 + 3 * 4] = ModuleLamp.Dim;
-        yield return ("Office_Bullpen_4x4", "Level 4: an open-plan office. The Office kit lays out the pods; the copier, cooler and files are fixed.", b);
+        // The Relay may come out of a vent low on the east wall, facing into the room.
+        b.markers = new[] { Relay(11.45f, 7.6f, 270f, "vent") };
+        yield return ("Office_Bullpen_4x4", "Level 4: an open-plan office. The Office kit lays out the pods; the copier, cooler and files are fixed. The Relay may come out of a vent on the east wall.", b);
 
         // A tall pillar hall: 6 m columns, a furniture pile, most lamps dead.
         var c = new RoomModuleData { width = 6, depth = 5, height = ZoneHeight.Tall, theme = ZoneTheme.Level0, fill = ModuleFill.Pile, columns = ModuleColumns.Auto };
@@ -329,7 +343,9 @@ public static class FrontRoomsLevelDesigner
         c.north[3] = ModuleEdge.Arch;
         for (var k = 0; k < c.lamps.Length; k += 3) c.lamps[k] = ModuleLamp.Dead;
         c.lamps[2 + 2 * 6] = ModuleLamp.Failing;
-        yield return ("Tall_PillarHall_6x5", "Level 0 tall hall: a colonnade on the 6 m grid and a pile of furniture in one bay.", c);
+        // The Relay may step in through the north doorway, facing south down the hall.
+        c.markers = new[] { Relay(10.5f, 14.4f, 180f, "doorway") };
+        yield return ("Tall_PillarHall_6x5", "Level 0 tall hall: a colonnade on the 6 m grid and a pile of furniture in one bay. The Relay may step in through the north doorway.", c);
 
         // A low storage room: one way in, crates and a bookcase, dim and failing lamps.
         var d = new RoomModuleData { width = 2, depth = 3, height = ZoneHeight.Low, theme = ZoneTheme.Level0, fill = ModuleFill.None, columns = ModuleColumns.None };
@@ -343,6 +359,8 @@ public static class FrontRoomsLevelDesigner
         d.lamps[0 + 0 * 2] = ModuleLamp.Dim;
         d.lamps[1 + 1 * 2] = ModuleLamp.Off;
         d.lamps[0 + 2 * 2] = ModuleLamp.Failing;
-        yield return ("Low_Storage_2x3", "Level 0 low room: a dead-end store with one doorway.", d);
+        // The key lies on the crate at the back, on its near edge, within reach past the pallet.
+        d.markers = new[] { Key(d, 1.4f, 7.25f, 12f) };
+        yield return ("Low_Storage_2x3", "Level 0 low room: a dead-end store with one doorway. The key lies on the crate at the back.", d);
     }
 }
