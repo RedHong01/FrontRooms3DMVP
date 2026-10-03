@@ -43,6 +43,7 @@ namespace FrontRooms.Audio
         FrontRoomsMapHunter relay;
         HunterState lastState = HunterState.Dormant;
         bool relayRevealed, caught;
+        float nextBedCheck;
         Transform listener;
         FrontRoomsPlayerFootsteps player;
         FrontRoomsRelaySound relayBody;
@@ -153,6 +154,7 @@ namespace FrontRooms.Audio
                 FrontRoomsFmod.Note("ready");
                 Debug.Log("[FrontRoomsAudio] FMOD ready: banks loaded, room tone on, legacy Unity audio muted.");
             }
+            if (!caught && now >= nextBedCheck) { nextBedCheck = now + 1f; StartRoomTone(); }   // restarts a bed FMOD finished
             EnsureRunVoices();
             // Caught cuts everything to silence: the lamps must not come back under the tinnitus.
             if (!caught && now >= nextFixtureUpdate) { nextFixtureUpdate = now + .2f; UpdateFixtures(); }
@@ -163,12 +165,12 @@ namespace FrontRooms.Audio
         // ------------------------------------------------------------ room tone
         void StartRoomTone()
         {
-            if (!humBed.isValid())
+            if (FrontRoomsFmod.Finished(ref humBed))
             {
                 humBed = FrontRoomsFmod.Create2D(SoundIds.HumBed);
                 if (humBed.isValid()) humBed.start();
             }
-            if (!airBed.isValid()) { airBed = FrontRoomsFmod.Create2D(SoundIds.AirBed); if (airBed.isValid()) airBed.start(); }
+            if (FrontRoomsFmod.Finished(ref airBed)) { airBed = FrontRoomsFmod.Create2D(SoundIds.AirBed); if (airBed.isValid()) airBed.start(); }
         }
 
         void StopRoomTone(bool immediate)
@@ -224,7 +226,7 @@ namespace FrontRooms.Audio
                     if (relayBody == null) relayBody = rig.gameObject.AddComponent<FrontRoomsRelaySound>();
                 }
             }
-            if (relayBody != null) { relayBody.hunter = relay; relayBody.listener = listener; relayBody.dampnessAt = DampnessAt; }
+            if (relayBody != null) { relayBody.hunter = relay; relayBody.map = map; relayBody.listener = listener; relayBody.dampnessAt = DampnessAt; }
 
             // Doors and lamps are built at runtime (chunks, pooled rooms): attach once per new transform.
             var scene = SceneManager.GetActiveScene();
@@ -332,6 +334,7 @@ namespace FrontRooms.Audio
                 if (raw > lampMax[index]) lampMax[index] = raw;
                 var level = Mathf.Clamp01(raw / lampMax[index]);
                 LampEvents(index, lamp.transform.position, level);
+                if (fixtureStarted[v] && FrontRoomsFmod.Finished(ref fixtureVoice[v])) fixtureStarted[v] = false;
                 if (!fixtureVoice[v].isValid())
                 {
                     fixtureVoice[v] = FrontRoomsFmod.Create(SoundIds.Fixture, lamp.transform.position);
@@ -409,7 +412,7 @@ namespace FrontRooms.Audio
             if (map == null || caught) return;
             if (breath.isValid() && player != null) breath.setParameterByID(staminaId, player.Stamina01);
             if (relay == null || !relay.Released || listener == null) return;
-            if (!heartbeat.isValid())
+            if (FrontRoomsFmod.Finished(ref heartbeat))
             {
                 heartbeat = FrontRoomsFmod.Create2D(SoundIds.Heartbeat);
                 if (heartbeat.isValid()) heartbeat.start();
@@ -439,7 +442,7 @@ namespace FrontRooms.Audio
             relay.StateChanged += OnRelayState;
             relay.DoorBlow += OnDoorBlow;
             relay.Caught += OnCaught;
-            if (relayBody != null) relayBody.hunter = relay;
+            if (relayBody != null) { relayBody.hunter = relay; relayBody.map = map; }
         }
 
         /// <summary>Run voices and parameter ids, created once FMOD is ready (and again after a catch).</summary>
@@ -453,7 +456,7 @@ namespace FrontRooms.Audio
                 stressProgressId = FrontRoomsFmod.ParameterId(SoundIds.WindowStress, SoundIds.Param.Progress);
                 runIdsReady = true;
             }
-            if (!breath.isValid() && !caught)
+            if (!caught && FrontRoomsFmod.Finished(ref breath))
             {
                 breath = FrontRoomsFmod.Create2D(SoundIds.Breath);
                 if (breath.isValid()) breath.start();

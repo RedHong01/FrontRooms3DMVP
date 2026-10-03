@@ -13,6 +13,7 @@ namespace FrontRooms.Audio
     public sealed class FrontRoomsRelaySound : MonoBehaviour
     {
         public FrontRoomsMapHunter hunter;
+        public FrontRoomsMapWorld map;
         public Transform listener;
         public System.Func<Vector3, float> dampnessAt;
 
@@ -82,8 +83,12 @@ namespace FrontRooms.Audio
             var walls = 0;
             for (var i = 0; i < count; i++)
             {
-                var t = hits[i].collider.transform;
-                if (t.IsChildOf(transform) || t.IsChildOf(listener.root)) continue;
+                var c = hits[i].collider;
+                if (c.transform.IsChildOf(transform)) continue;
+                // Count only the map's walls, doors and windows, and not an open door's leaf: the same test the
+                // hunter's own hearing uses. (The old 'skip anything under the listener's root' skipped every
+                // wall, because the map is built under the same root as the player: 3D audit 3D-04.)
+                if (map != null ? !map.IsArchitecture(c) || map.IsOpenDoorLeaf(c) : c.transform.IsChildOf(listener)) continue;
                 walls++;
             }
             var target = walls == 0 ? 0f : walls == 1 ? .55f : .85f;
@@ -94,7 +99,7 @@ namespace FrontRooms.Audio
         {
             if (!FrontRoomsFmod.Ready || listener == null) return;
             if (!released) { FrontRoomsFmod.Stop(ref presence); return; }
-            if (!presence.isValid())
+            if (FrontRoomsFmod.Finished(ref presence))
             {
                 presence = FrontRoomsFmod.Create(SoundIds.RelayPresence, transform.position);
                 if (!presence.isValid()) return;

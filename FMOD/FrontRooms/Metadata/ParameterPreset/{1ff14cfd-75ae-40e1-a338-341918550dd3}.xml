@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.02.03.00">
+	<object class="ParameterPreset" id="{1ff14cfd-75ae-40e1-a338-341918550dd3}">
+		<property name="name">
+			<value>Progress</value>
+		</property>
+		<relationship name="folder">
+			<destination>{ec392971-797d-45c0-a935-5395b25ee4d3}</destination>
+		</relationship>
+		<relationship name="parameter">
+			<destination>{b5544839-8e3f-4bd1-b5c0-7f9e1d994c83}</destination>
+		</relationship>
+	</object>
+	<object class="GameParameter" id="{b5544839-8e3f-4bd1-b5c0-7f9e1d994c83}" />
+</objects>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objects serializationModel="Studio.02.03.00">
+	<object class="MixerGroup" id="{f7dbc395-a4c6-4038-8e6b-75fec9bc1711}">
+		<property name="name">
+			<value>Relay</value>
+		</property>
+		<relationship name="effectChain">
+			<destination>{d1a4f9ae-f5bd-432c-96a8-e56096d33168}</destination>
+		</relationship>
+		<relationship name="panner">
+			<destination>{d88fae2b-e55f-4166-976e-2c6a2cbb42da}</destination>
+		</relationship>
+		<relationship name="output">
+			<destination>{6c13ae29-0520-4209-9d6d-f087628c4086}</destination>
+		</relationship>
+	</object>
+	<object class="MixerBusEffectChain" id="{d1a4f9ae-f5bd-432c-96a8-e56096d33168}">
+		<relationship name="effects">
+			<destination>{62297b00-445b-4931-af57-ea238bfe3163}</destination>
+			<destination>{b69df0cc-e73c-4ea4-acf4-45c9a8e11253}</destination>
+		</relationship>
+	</object>
+	<object class="MixerBusPanner" id="{d88fae2b-e55f-4166-976e-2c6a2cbb42da}" />
+	<object class="MixerBusFader" id="{62297b00-445b-4931-af57-ea238bfe3163}" />
+	<object class="MixerSend" id="{b69df0cc-e73c-4ea4-acf4-45c9a8e11253}">
+		<property name="level">
+			<value>-8</value>
+		</property>
+		<property name="inputFormat">
+			<value>2</value>
+		</property>
+		<relationship name="mixerReturn">
+			<destination>{82f5ce02-97a0-410d-808c-c096bd9dd8a7}</destination>
+		</relationship>
+	</object>
+</objects>

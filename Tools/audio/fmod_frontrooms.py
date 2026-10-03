@@ -597,7 +597,7 @@ DAMP = {  # Dampness 0-1 on the player's step layers; 0.4 = ordinary Level 0 car
 }
 
 
-DOOR3D = dict(spatial=True, min=1.0, max=26.0, bus="Mechanism", bank="SFX")
+DOOR3D = dict(spatial=True, min=1.0, max=26.0, extent=130, bus="Mechanism", bank="SFX")
 
 # Stream double doors (FrontRoomsDoorSound Mode.Stream): one instance per leaf, Leaf = Lead (left hinge) or
 # Follow (right). The two pools are disjoint recorded moments (recorded_library.build_stream_doors), so a pair
@@ -648,7 +648,7 @@ SPEC = {
     ],
     "reverb": dict(name="Room Reverb", sends={"Foley": -14, "Mechanism": -10, "Relay": -8},
                    # decay (ms) / wet (dB) per Zone label: Low, Standard, Tall, Office
-                   decay=[[0, 520], [1, 800], [2, 1650], [3, 380]],
+                   decay=[[0, 430], [1, 500], [2, 1400], [3, 380]],
                    wet=[[0, -12], [1, -10], [2, -6], [3, -15]]),
     "vcas": {"VCA Music": ["Music"], "VCA SFX": ["SFX", "Subjective", "UI"], "VCA Ambience": ["AMB"]},
     "banks": ["Ambience", "SFX", "Music"],
@@ -666,12 +666,12 @@ SPEC = {
                           auto=[dict(prop="volume", param="Zone", points=[[0, 0], [1, 0], [2, -14], [3, -2]])]),
                      dict(name="Mall", sounds=[dict(files=[rec("Ambience/amb_air_mall_loop.wav")], loop=True, volume=-6)],
                           auto=[dict(prop="volume", param="Zone", points=[[0, -40], [1, -24], [2, 0], [3, -40]])])]),
-        dict(path="Ambience/Fixture", spatial=True, min=.5, max=9.0, bus="Hum", bank="Ambience", params=["Level"],
+        dict(path="Ambience/Fixture", spatial=True, min=.5, max=9.0, rolloff=0, extent=140, bus="Hum", bank="Ambience", params=["Level"],
              ahdsr=[40, 120], note="One per lit fixture near the listener (4 voices, started 0.53 s apart so the same loop never sums in phase). "
                   "Level = the lamp's brightness this frame. -28 dB: measured in-game 2026-10-02, 6 lamps at -16 were louder than the footsteps.",
              tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_fixture_close_loop.wav")], loop=True, volume=-28)],
                           auto=[dict(prop="volume", param="Level", points=[[0, -60], [.05, -30], [1, 0]])])]),
-        dict(path="Ambience/FixtureEvent", spatial=True, min=.5, max=14.0, bus="Hum", bank="Ambience",
+        dict(path="Ambience/FixtureEvent", spatial=True, min=.5, max=14.0, rolloff=0, extent=100, bus="Hum", bank="Ambience",
              params=["FixtureEvent"],
              tracks=[dict(name="Strike", sounds=[dict(files=lib("Ambience/amb_fixture_strike"), randPitch=.6, volume=-4,
                                                       cond=[["FixtureEvent", "Strike"]])]),
@@ -796,27 +796,27 @@ SPEC = {
              note="Diegetic key ring. The motif hook (first two notes) gets layered here once the motif is chosen.",
              tracks=[dict(name="Keys", sounds=[dict(files=lib("Foley/plr_key_pickup"), volume=1, randPitch=.6)])]),
         # ---------------------------------------------------------- the Relay
-        dict(path="Relay/Footstep", spatial=True, min=1.5, max=42.0, rolloff=3, bus="Relay", bank="SFX",
+        dict(path="Relay/Footstep", spatial=True, min=1.5, max=42.0, rolloff=3, extent=140, bus="Relay", bank="SFX",
              params=["RelayGait", "Occlusion", "Dampness"], occlusion=True,
              note="Driven by the rig's foot contacts. Occlusion 0-1 comes from the walls between. Hard soles on "
                   "damp carpet, slowed 2-4 st; the player's damp layers pitched down follow Dampness.",
              masterAuto=[dict(prop="volume", param="Occlusion", points=OCCLUSION_DB)],
              tracks=[dict(name="Walk", sounds=[dict(files=lib("Relay/rly_step_carpet_walk_body"), cond=[["RelayGait", "Walk"]],
-                                                    randPitch=1, randVol=1.5, volume=9)]),
+                                                    randPitch=1, randVol=1.5, volume=5)]),
                      dict(name="Run", sounds=[dict(files=lib("Relay/rly_step_carpet_run_body"), cond=[["RelayGait", "Run"]],
-                                                   randPitch=1, randVol=1.5, volume=10)]),
+                                                   randPitch=1, randVol=1.5, volume=6)]),
                      dict(name="Drag", sounds=[dict(files=lib("Relay/rly_step_carpet_drag_body"), cond=[["RelayGait", "Drag"]],
-                                                    volume=9, randPitch=1)]),
+                                                    volume=5, randPitch=1)]),
                      dict(name="Moist", sounds=[dict(files=lib("Foley/plr_step_damp_any_moist"), pitch=-5, volume=1,
                                                      randPitch=1.5, auto=[dict(prop="volume", param="Dampness",
                                                                                points=DAMP["moist"])])]),
                      dict(name="Squish", sounds=[dict(files=lib("Foley/plr_step_soaked_any_squish"), pitch=-4, volume=3,
                                                       auto=[dict(prop="volume", param="Dampness", points=DAMP["squish"])])])]),
-        dict(path="Relay/Presence", spatial=True, min=2.0, max=30.0, bus="Relay", bank="SFX",
+        dict(path="Relay/Presence", spatial=True, min=2.0, max=30.0, extent=140, bus="Relay", bank="SFX",
              params=["Proximity", "Occlusion"], occlusion=True, ahdsr=[800, 1500],
              masterAuto=[dict(prop="volume", param="Occlusion", points=OCCLUSION_DB)],
              tracks=[dict(name="Drone", sounds=[dict(files=["Relay/relay_presence_loop.wav"], loop=True, volume=-6)],
-                          auto=[dict(prop="volume", param="Proximity", points=[[0, -50], [.5, -14], [1, 0]])])]),
+                          auto=[dict(prop="volume", param="Proximity", points=[[0, -4], [1, 0]])])]),
         dict(path="Relay/Clicks", spatial=True, min=1.0, max=30.0, bus="Relay", bank="SFX",
              tracks=[dict(name="Clicks", sounds=[dict(files=files("Relay/relay_clicks", 4))])]),
         dict(path="Relay/Stinger", bus="Music", bank="SFX", params=["RelayState"],

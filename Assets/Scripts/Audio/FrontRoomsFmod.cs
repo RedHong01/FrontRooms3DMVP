@@ -158,6 +158,21 @@ namespace FrontRooms.Audio
             catch (System.Exception e) { Fail(e.Message); }
         }
 
+        /// <summary>
+        /// True when a loop the game still wants is gone: never created, or FMOD finished it by itself
+        /// (STOPPED with a still-valid handle). A finished instance is released so the caller re-creates it.
+        /// Only call this on instances that were started.
+        /// </summary>
+        public static bool Finished(ref EventInstance instance)
+        {
+            if (!instance.isValid()) return true;
+            if (instance.getPlaybackState(out var state) != FMOD.RESULT.OK || state != PLAYBACK_STATE.STOPPED) return false;
+            Note("loop finished by itself, restarting");
+            instance.release();
+            instance = default;
+            return true;
+        }
+
         public static void Stop(ref EventInstance instance, bool immediate = false)
         {
             if (!instance.isValid()) return;

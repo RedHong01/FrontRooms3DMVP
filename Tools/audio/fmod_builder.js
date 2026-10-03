@@ -75,6 +75,8 @@ function makeMixer() {
     var fx = ret.effectChain.addEffect("SFXReverbEffect");
     fx.highCut = 5000;
     fx.dryLevel = -80;
+    // 3 m carpeted cells: first reflections arrive within ~10 ms, so no 20/40 ms default pre-delay (3D-14).
+    attempt("reverb timing", function () { fx.earlyDelay = 1; fx.lateDelay = 7; fx.hfDecayRatio = 40; }, true);
     automate(fx, { prop: "decayTime", param: "Zone", points: rv.decay });
     automate(fx, { prop: "wetLevel", param: "Zone", points: rv.wet });
     Object.keys(rv.sends).forEach(function (busName) {
@@ -155,9 +157,15 @@ function automate(obj, a) {
     a.points.forEach(function (p) { c.addAutomationPoint(p[0], p[1]); });
 }
 
+// Loop length of the event being built: every looping instrument is stretched to it and the event
+// gets a loop region over it, so loops never stop on their own (3D audit 3D-03: an async loop with
+// no region plays one pass and the event goes STOPPED with its handle still valid).
+var CUR_LOOP = 0;
+
 function addSound(ev, track, s) {
     var len = 0;
     s.files.forEach(function (f) { len = Math.max(len, SPEC.durations[f]); });
+    if (s.loop && CUR_LOOP) len = CUR_LOOP - (s.start || 0);
     var snd;
     if (s.files.length === 1) {
         snd = track.addSound(ev.timeline, "SingleSound", s.start || 0, len);
@@ -199,11 +207,30 @@ function makeEvent(e) {
         var sp = findEffect(ev.masterTrack.mixerGroup, "SpatialiserEffect");
         sp.minimumDistance = e.min;
         sp.maximumDistance = e.max;
-        if (e.rolloff !== undefined) sp.distanceRolloffType = e.rolloff;
+        // The spatialiser's own min/max are ignored unless it overrides the event range, so set the event's
+        // range (3D-01: every event ran at the default 1-20 m). Max first so min never exceeds it.
+        attempt("event range " + e.path, function () {
+            ev.automatableProperties.maximumDistance = e.max;
+            ev.automatableProperties.minimumDistance = e.min;
+        }, true);
+        // Inverse Tapered unless the SPEC asks otherwise (3D-02: the default Linear Squared barely falls off
+        // near and drops off a cliff far). Lamps keep Linear Squared on purpose (a fade by max).
+        sp.distanceRolloffType = e.rolloff !== undefined ? e.rolloff : 3;
+        // Width (3D-06): with Auto extent and 0 min extent anything 45-90 deg off-centre sat in one ear.
+        attempt("extent " + e.path, function () {
+            sp.extentMode = 1;                       // User
+            sp.soundSize = e.size !== undefined ? e.size : 2 * e.min;
+            sp.minimumExtent = e.extent !== undefined ? e.extent : 120;
+        }, true);
     }
     ev.mixerInput.output = BUS[e.bus];
     ev.relationships.banks.add(BANK[e.bank]);
     (e.params || []).forEach(function (p) { ev.addGameParameter(GP[p]); });
+    var loopLen = 0;
+    (e.tracks || []).forEach(function (t) { (t.sounds || []).forEach(function (s) {
+        if (s.loop) s.files.forEach(function (f) { loopLen = Math.max(loopLen, (s.start || 0) + SPEC.durations[f]); });
+    }); });
+    CUR_LOOP = e.markers ? 0 : loopLen;
     (e.tracks || []).forEach(function (t) {
         var track = ev.addGroupTrack(t.name);
         (t.sounds || []).forEach(function (s) { addSound(ev, track, s); });
@@ -222,6 +249,8 @@ function makeEvent(e) {
         eq.frequencyA = 22000;
         automate(eq, { prop: "frequencyA", param: "Occlusion", points: [[0, 22000], [.5, 2500], [1, 700]] });
     }
+    if (CUR_LOOP) ev.addMarkerTrack().addRegion(0, CUR_LOOP, "loop", studio.project.regionLoopMode.Looping);
+    CUR_LOOP = 0;
     if (e.markers) {
         var mt = ev.addMarkerTrack();
         var r = e.markers.region;
