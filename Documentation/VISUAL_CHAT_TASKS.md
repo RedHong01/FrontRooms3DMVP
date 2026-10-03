@@ -1,6 +1,6 @@
 # Visual chat (游戏视觉) — task queue
 
-Updated 2026-10-02 23:0x. This lists everything open from the visual chat's conversation with Red, with its status and what it depends on.
+Updated 2026-10-03 00:2x. This lists everything open from the visual chat's conversation with Red, with its status and what it depends on.
 
 **Owner areas:** Rendering/*, Editor/Rendering/*, Office/*, FrontRoomsRoomStream.cs, FrontRoomsRelayRig.cs, the prop and creature kits (Tools/Blender), Tools/lookdev, surface and glass materials, the post stack, look-dev.
 
@@ -9,6 +9,17 @@ Updated 2026-10-02 23:0x. This lists everything open from the visual chat's conv
 - No AudioSources: sound goes through events and 声音 (Documentation/AUDIO_CONTRACT.md).
 - Kit names are frozen.
 - Era lock: 1990 (research/office_and_film/22_era_lock.md).
+
+**Standing order (Red, 2026-10-03 00:0x):** conceive and land every visual at the HIGHEST spec (desktop is the reference), including glass ray tracing and the models. In practice: a hero LOD0 per model that holds up at 0.3 m, plus LOD1/LOD2; the best reflections the hardware allows; WebGL gets its own cheaper path and never lowers desktop.
+
+## 0. Fixes from Red's play screenshots (2026-10-03)
+
+| # | Issue | Cause | Status |
+|---|---|---|---|
+| F1 | Troffer lenses and windows draw flat cyan in Tall Halls | Unity's placeholder while a shader variant compiles asynchronously. The map makes its lens (URP/Lit + `_EMISSION`) and glass (URP/Lit transparent) at runtime, and the URP keyword prefilter changed at 22:27, so new variants compiled in front of the player. The shader-compiler logs show they all compiled (ok=1). The Xcode "missing Metal Toolchain" errors in Editor.log are compiler-start probe noise, not the cause | **DONE**: `Assets/Editor/Rendering/FrontRoomsPlayModeShaderCompile.cs` (Editor only) makes Play Mode compile shaders synchronously (a one-off hitch instead of cyan, like a build) and restores async in Edit Mode. Tested in a clone. The lasting fix is G1/G3, which move lens and glass onto project materials |
+| F2 | A white square around the crosshair; the key glyph has a white box too | `Resources/UI/HUD_Crosshair.png` and `HUD_KeyGlyph.png` are fully opaque (white background flattened in, already so in commit 6019500) | **WAIT-RED**: fixed copies with real alpha are in the visual chat's scratchpad (`hud/`); overwriting the project files needs Red's OK |
+| F3 | The FMOD Studio Debug overlay covers the level title | FMOD for Unity's PlayInEditor default (overlay on) | 声音 is taking the fix to Red (move it bottom-right or turn it off) |
+| F4 | 234 "no audio listeners" warnings | The FMOD wizard's "Replace Unity Listener" step removed the camera's AudioListener (scene not saved); Unity audio is disabled project-wide, so the warnings are harmless | 声音 is taking the fix to Red |
 
 Status legend: **RUNNING** (a workflow is in progress) · **QUEUED** (next up) · **WAIT-RED** (needs Red's call) · **WAIT-CHAT** (waiting on another chat) · **DONE**.
 
@@ -38,18 +49,22 @@ Red: "the glass material and reflection values are wrong; the render level is to
 | G5 | Kit_InteriorWindow pane onto the glass graph (with an interior-mapping back layer) | visual | QUEUED after G1 |
 | G6 | Zone reflection cubemaps (lit Level 0, lit Office, dead-lamp; plus the title-stream rooms) + `FrontRoomsLook.SetZoneReflection(kind)`. Keep intensity ≤ 0.5 at first; crossfade 0.5 s. Prove a runtime change reaches URP in a play-mode test. Caveat from the wallpaper chat: a baked cube shows a frozen print, so keep it low on glossy surfaces | visual (+ map calls it at run start and on zone change) | RUNNING (glass-track). Stub with the final signature is IN MAIN (`ReflectionZone {Level0, Office, Tall, DeadLamp}`, `SetZoneReflection(zone, blend=.5)`); the map chat calls it + ApplyAmbient |
 | G7 | Per-room Custom ReflectionProbes at chunk build (desktop tiers): probe blending + box projection in the URP asset; `_REFLECTION_PROBE_BLENDING/BOX_PROJECTION` defines in Surface.shader; 64–128 px; measure atlas memory | visual (asset/shader) + map (spawning) | QUEUED (desktop tier) |
-| G8 | Fracture variants: 3×3 impact centres × 2 = 18 pre-fractured panes (Blender, 6 mm slab, green edges), each with its own crack mask; teeth that stay in the frame + floor glass; opaque shards, no shadows on moving pieces | visual | QUEUED (shared with the interactables kit's window remnants) |
+| G8 | Fracture variants (pre-fractured panes, teeth, floor glass). **Re-scoped by GD1:** the interactables kit no longer builds remnants; the glass-destruction plan defines the sets | visual | WAIT on GD1 |
 | G9 | Map side: pane 6 mm, glazing stops, a stool trim, shadows off, load `Glass_Window`; a per-edge record (break stage, impact uv, seed); `Hold()` passes the hit point; `GlassCracked` + `WindowShattered`; keep `GlassBroken` firing (声音 relies on it) | map chat | WAIT-CHAT: contract to be sent with the audit |
 | G11 | **Ray-traced reflections? (Red: "try whether ray tracing works")** Feasibility study.
 - **Known going in:** URP 17 has no hardware ray tracing (DXR is HDRP-only, desktop DX12/Vulkan), and WebGL has none at all.
 - **Alternatives to evaluate and measure:** a custom screen-space-reflection renderer feature; a time-sliced planar reflection for the window being looked at; per-room probes (G7); a realtime probe at the window on hold start.
-- **Also report** what switching to HDRP would cost, so Red can decide the target. | visual | RUNNING (glass-track) |
+- **Also report** what switching to HDRP would cost, so Red can decide the target. | visual | **DONE** (`research/glass/11_reflections_and_raytracing.md`): Unity 6000.3 reports no hardware ray tracing on Metal (measured on the M3 Max), URP has none, and the web has none. HDRP ray tracing is Windows DX12 + RTX-class only and would lose WebGL. Recommended: zone cubes + per-room probes + a planar reflection on the held pane (desktop high tier). G13 below covers the remaining 'real rays' option |
+| G13 | **Real ray-traced glass on desktop (Red's highest-spec order).** The only path that runs on the Mac is software rays in compute (Unity's UnifiedRayTracing, measured 'Compute True'); on Windows DX12 hardware RT could back the same pass. A desktop-only prototype: reflection rays only from glass pixels, BVH of nearby rooms, quarter/half res + denoise. Weigh it against the planar result before building | visual | QUEUED (after G1–G6 land; desktop only) |
 | G12 | **Staged physical fracture (Red):**
 - crack stages during the 1 s hold, tied to the progress;
 - at the break, shards fall with physics (Rigidbody, no shadows on movers) and break again on hitting the floor (second-level fracture);
 - floor glass and teeth remain in the frame;
 - a WebGL budget (piece caps, pooling, settle-to-static).
 - **Runtime component:** a visual-chat VFX script subscribing to the map's `GlassCracked` / `WindowShattered` (hit point, impulse). Meshes come from the interactables kit's fracture set (R3/1d). | visual (+ map events) | QUEUED (meshes in R3) |
+| GD1 | **Glass destruction looks fake → research + plan (Red, 2026-10-03 00:0x).** Red: the procedural crack lines read fake; shipped games usually pre-build stage models and swap them ("maybe not fully accurate — research how destructible scenes are made, across developer conferences"). Four researchers: conference destruction talks (staged pre-fracture, clusters, runtime fracture, VAT), glass in shipped games + real 1990 window-glass fracture, micro-cutscene camera, Unity/URP build path. Output: `research/glass/destruction/01–04` + `10_glass_destruction_plan.md` | visual | RUNNING (workflow glass-destruction-research) |
+| GD2 | **Glass micro-cutscene (Red, 2026-10-03 00:0x):** trying to break a window gets camera feedback like a micro cutscene. Recommended shot + numbers as a replacement for `FrontRoomsShotTimings.Glass` (sound beats 0.35/0.70/1.0 stay); hands/arm or not is Red's call | visual (values) + map chat (camera) | RUNNING (inside GD1) |
+| GD3 | Build the staged breakage per the GD1 plan (Blender fracture generator, stage swaps, crack rendering, shards, floor glass, desktop highest spec + WebGL path) in a private clone, with beat-by-beat frame verification | visual | QUEUED after GD1 |
 | G10 | Verification capture of the combined result (clear values + grime + zone cube) with the audit's in-engine harness (proj_audit, seed 4242 frames 01/04/23/34/35 + dead lamp) before sign-off | visual | RUNNING (glass-track verify) |
 
 ## 1b. WebGL optimisation (Red, 2026-10-02 23:2x)
@@ -100,7 +115,7 @@ Red: "the glass material and reflection values are wrong; the render level is to
 - **Ours:** the camera curve and timing, the anchors on the key and cylinder (R3), and the shot spec.
 - **Map chat's:** the FrontRooms3DGame camera takeover (input locked, a timeline hook, the `Paused` event respected).
 - **SFX** via events to 声音. | anchors RUNNING (R3); shot spec in the audit contract → WAIT-CHAT |
-| R3 | Interactables kit (Red: "keys etc. have no real models"): zone keys + tags + hosts, lockset/handle at DoorHandle* constants, hinges, the door leaf (≤ 0.05), the interior window frame, glass remnants. All render-only, following the map's binding constraints (research/interactables/00_map_constraints.md). Then an in-engine render, a critic pass and the map contract | RUNNING |
+| R3 | Interactables kit (Red: "keys etc. have no real models"). **Highest spec applied 2026-10-03:** hero LOD0 per asset for 0.3 m inspection + LOD1/LOD2; glass remnants moved to GD1/GD3: zone keys + tags + hosts, lockset/handle at DoorHandle* constants, hinges, the door leaf (≤ 0.05), the interior window frame, glass remnants. All render-only, following the map's binding constraints (research/interactables/00_map_constraints.md). Then an in-engine render, a critic pass and the map contract | RUNNING |
 
 ## 3. Queued (visual chat)
 
