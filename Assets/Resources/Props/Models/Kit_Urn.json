@@ -1,0 +1,60 @@
+{
+ "name": "Kit_Urn",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "mouth",
+   "pos": [
+    0,
+    0.38,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "decor",
+  "pile_piece"
+ ],
+ "noCollider": true,
+ "pile": {
+  "cls": "Small",
+  "mass": 0,
+  "states": [
+   "Upright",
+   "Side"
+  ],
+  "tolerance": 0.5,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.13994194567203522,
+  0.0,
+  -0.137815922498703
+ ],
+ "boundsMax": [
+  0.13994194567203522,
+  0.3799999952316284,
+  0.137815922498703
+ ],
+ "triangles": 644,
+ "slots": [
+  "Prop_Ceramic",
+  "Prop_Rubber"
+ ],
+ "trianglesLod1": 270,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.27988389134407043,
+  0.275631844997406
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.43
+}

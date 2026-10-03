@@ -1,0 +1,98 @@
+{
+ "name": "Kit_QueenAnneArmchair",
+ "supports": [
+  {
+   "name": "seat",
+   "centre": [
+    0,
+    0.505,
+    0.07
+   ],
+   "size": [
+    0.5,
+    0.4
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.2525,
+    -0.015
+   ],
+   "size": [
+    0.694,
+    0.505,
+    0.702
+   ]
+  },
+  {
+   "centre": [
+    0,
+    0.7815,
+    -0.258
+   ],
+   "size": [
+    0.6,
+    0.553,
+    0.216
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "sit",
+   "pos": [
+    0,
+    0.505,
+    0.06
+   ]
+  }
+ ],
+ "tags": [
+  "pile",
+  "seat",
+  "domestic"
+ ],
+ "pile": {
+  "cls": "Seat",
+  "mass": 1,
+  "states": [
+   "Upright",
+   "Back",
+   "EdgeLean"
+  ],
+  "tolerance": 0.45,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.3465999960899353,
+  0.0,
+  -0.3657838702201843
+ ],
+ "boundsMax": [
+  0.3465999960899353,
+  1.0584211349487305,
+  0.335999995470047
+ ],
+ "triangles": 4918,
+ "slots": [
+  "Prop_WoodWalnut",
+  "Prop_VelvetPink"
+ ],
+ "trianglesLod1": 1720,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.015000000000000013
+ ],
+ "footprintSize": [
+  0.694,
+  0.702
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.108
+}

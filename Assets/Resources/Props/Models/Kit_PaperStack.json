@@ -1,0 +1,72 @@
+{
+ "name": "Kit_PaperStack",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    -0.0708173037694868,
+    0.0815,
+    0.006768264469190603
+   ],
+   "size": [
+    0.05,
+    0.16
+   ]
+  }
+ ],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "folder_tab",
+   "pos": [
+    0.05702477718747724,
+    0.075,
+    0.14251675373000353
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "desk_top"
+ ],
+ "noCollider": true,
+ "pile": {
+  "cls": "Small",
+  "mass": 0,
+  "states": [
+   "Upright"
+  ],
+  "tolerance": 0.5,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.1780110001564026,
+  0.0,
+  -0.1748615801334381
+ ],
+ "boundsMax": [
+  0.1678963452577591,
+  0.09869249910116196,
+  0.15207020938396454
+ ],
+ "triangles": 286,
+ "slots": [
+  "Prop_Paper",
+  "Prop_Cardboard",
+  "Prop_Label",
+  "Prop_SteelBlack"
+ ],
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.005057327449321747,
+  -0.011395685374736786
+ ],
+ "footprintSize": [
+  0.3459073454141617,
+  0.32693178951740265
+ ],
+ "placement": "DeskTop",
+ "service": 0.0,
+ "minCeiling": 0.149
+}

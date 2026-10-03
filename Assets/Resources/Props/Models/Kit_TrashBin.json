@@ -1,0 +1,56 @@
+{
+ "name": "Kit_TrashBin",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "mouth",
+   "pos": [
+    0,
+    0.38,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "office"
+ ],
+ "noCollider": true,
+ "pile": {
+  "cls": "Small",
+  "mass": 0,
+  "states": [
+   "Upright",
+   "Side"
+  ],
+  "tolerance": 0.5,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.18019999563694,
+  0.0,
+  -0.13019999861717224
+ ],
+ "boundsMax": [
+  0.18019999563694,
+  0.3799999952316284,
+  0.13019999861717224
+ ],
+ "triangles": 500,
+ "slots": [
+  "Prop_PlasticGrey"
+ ],
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.36039999127388,
+  0.2603999972343445
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.43
+}

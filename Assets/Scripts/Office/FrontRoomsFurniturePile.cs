@@ -105,6 +105,8 @@ public static class FrontRoomsFurniturePile
         if (parent == null || lib.Count == 0 || radius < .6f || ceilingHeight < 1.8f) return null;
         var rng = new Rng(seed);
         var tableau = force ?? ChooseTableau(rng, lib, radius, ceilingHeight);
+        // Cubicle panels and posts only belong to the pasted-workstation tableau.
+        if (tableau != Tableau.OfficeCluster) lib = Filter(lib, p => !p.info.HasTag("office_cluster_only"));
         var plan = new Plan
         {
             centre = Vector3.zero,

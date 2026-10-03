@@ -167,6 +167,13 @@ namespace FrontRooms.Map
         // Rooms carved on top of the maze, in carving order. A later room can
         // overlap an earlier one.
         public CellRect[] rooms = new CellRect[0];
+        // Per room: the authored module stamped there (RoomModuleStamp), or null for a generated room.
+        public RoomModuleData[] roomModules = new RoomModuleData[0];
+        // Per cell (i + j*8): a lamp a module set; Auto rolls it from the seed.
+        public ModuleLamp[] lamp = new ModuleLamp[MapGrid.CellsPerChunk];
+
+        /// <summary>The module stamped as room r, or null.</summary>
+        public RoomModuleData ModuleOf(int r) => roomModules != null && r >= 0 && r < roomModules.Length ? roomModules[r] : null;
 
         public GridCoord Origin => MapGrid.ChunkOrigin(coord);
 
@@ -371,12 +378,28 @@ namespace FrontRooms.Map
         /// Columns of one chunk: every 6 m grid corner strictly inside a room
         /// that qualifies and wins its roll. See MapSettings for the rule.
         /// </summary>
-        void PlaceColumns(MapChunk chunk, int revision)
+        public void PlaceColumns(MapChunk chunk, int revision)
         {
             const int n = MapGrid.ChunkCells;
+            Array.Clear(chunk.pillar, 0, chunk.pillar.Length);
+            Array.Clear(chunk.pillarStyle, 0, chunk.pillarStyle.Length);
             for (var r = 0; r < chunk.rooms.Length; r++)
             {
                 var rect = chunk.rooms[r];
+                var module = chunk.ModuleOf(r);
+                if (module != null && module.columns == ModuleColumns.None) continue;
+                if (module != null && module.columns == ModuleColumns.Custom)
+                {
+                    // A module's own columns stand where it says, inside its room.
+                    if (!chunk.RoomIntact(r)) continue;
+                    foreach (var c in module.customColumns)
+                    {
+                        if (c.x <= 0 || c.y <= 0 || c.x >= rect.w || c.y >= rect.h) continue;
+                        chunk.pillar[rect.x + c.x + (rect.y + c.y) * (n + 1)] = true;
+                        chunk.pillarStyle[rect.x + c.x + (rect.y + c.y) * (n + 1)] = c.large ? MapChunk.ColumnLarge : (byte)0;
+                    }
+                    continue;
+                }
                 if (rect.w < settings.columnMinRoomCells || rect.h < settings.columnMinRoomCells || !chunk.RoomIntact(r)) continue;
                 var zone = ZoneOf(chunk.Cell(rect.x, rect.y));
                 if (zone.height == ZoneHeight.Low || !Uniform(chunk, rect)) continue;
@@ -448,6 +471,7 @@ namespace FrontRooms.Map
             Rooms(chunk.ownZone.height, out var roomCount, out var roomMin, out var roomMax);
             var roomRng = MapHash.Hash(seed, coord.x, coord.y, MapHash.Rooms, revision) | 1u;
             chunk.rooms = new CellRect[Math.Max(0, roomCount)];
+            chunk.roomModules = new RoomModuleData[chunk.rooms.Length];
             for (var r = 1; r <= roomCount; r++)
             {
                 var w = roomMin + (int)(Next(ref roomRng) % (uint)(roomMax - roomMin + 1));
@@ -533,13 +557,29 @@ namespace FrontRooms.Map
         public int Count => chunks.Count;
         public IEnumerable<MapChunk> Built => chunks.Values;
 
+        // Modules placed by hand (the Level Designer preview), per chunk.
+        readonly Dictionary<GridCoord, List<(RoomModuleData module, int x, int y)>> placements = new Dictionary<GridCoord, List<(RoomModuleData, int, int)>>();
+
         public MapChunk Get(GridCoord coord)
         {
             if (chunks.TryGetValue(coord, out var chunk)) return chunk;
             revisions.TryGetValue(coord, out var revision);
             chunk = Generator.Generate(coord, revision);
+            if (placements.TryGetValue(coord, out var list))
+                foreach (var p in list) RoomModuleStamp.Apply(Generator, chunk, p.module, p.x, p.y);
             chunks[coord] = chunk;
             return chunk;
+        }
+
+        /// <summary>
+        /// Stamp a module into a chunk, with its south-west cell at chunk-local
+        /// (x, y), every time that chunk is generated (and again after a shift).
+        /// </summary>
+        public void Place(GridCoord chunk, RoomModuleData module, int x, int y)
+        {
+            if (!placements.TryGetValue(chunk, out var list)) placements[chunk] = list = new List<(RoomModuleData, int, int)>();
+            list.Add((module, x, y));
+            chunks.Remove(chunk);
         }
 
         public bool IsBuilt(GridCoord coord) => chunks.ContainsKey(coord);

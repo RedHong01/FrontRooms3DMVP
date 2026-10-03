@@ -1,0 +1,115 @@
+{
+ "name": "Kit_DisplayCabinet",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    1.8,
+    0
+   ],
+   "size": [
+    0.86,
+    0.36000000000000004
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.9,
+    0
+   ],
+   "size": [
+    0.9,
+    1.8,
+    0.4
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top",
+   "pos": [
+    0,
+    1.8,
+    0
+   ]
+  },
+  {
+   "name": "shelf 1",
+   "pos": [
+    0,
+    0.523,
+    -0.027499999999999997
+   ]
+  },
+  {
+   "name": "shelf 2",
+   "pos": [
+    0,
+    0.908,
+    -0.027499999999999997
+   ]
+  },
+  {
+   "name": "shelf 3",
+   "pos": [
+    0,
+    1.293,
+    -0.027499999999999997
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "case_goods",
+  "pile",
+  "pile_piece",
+  "glass"
+ ],
+ "pile": {
+  "cls": "Case",
+  "mass": 2,
+  "states": [
+   "Upright",
+   "Back",
+   "Side",
+   "EdgeLean"
+  ],
+  "tolerance": 0.2,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.44999998807907104,
+  0.0,
+  -0.20000000298023224
+ ],
+ "boundsMax": [
+  0.44999998807907104,
+  1.7999999523162842,
+  0.20000000298023224
+ ],
+ "triangles": 1154,
+ "slots": [
+  "Prop_WoodOak",
+  "Prop_Glass",
+  "Prop_Hardboard",
+  "Prop_Brass"
+ ],
+ "trianglesLod1": 460,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.9,
+  0.4
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.85
+}

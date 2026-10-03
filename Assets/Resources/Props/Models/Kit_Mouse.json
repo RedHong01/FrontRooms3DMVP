@@ -1,0 +1,48 @@
+{
+ "name": "Kit_Mouse",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "mouse",
+   "pos": [
+    -0.022,
+    0.038000000000000006,
+    0.004
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "desk_top"
+ ],
+ "noCollider": true,
+ "boundsMin": [
+  -0.10999999940395355,
+  0.0,
+  -0.17220085859298706
+ ],
+ "boundsMax": [
+  0.10999999940395355,
+  0.03749921917915344,
+  0.09000000357627869
+ ],
+ "triangles": 280,
+ "slots": [
+  "Prop_FabricChair",
+  "Prop_PlasticBeige",
+  "Prop_PlasticBlack"
+ ],
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.04110042750835419
+ ],
+ "footprintSize": [
+  0.2199999988079071,
+  0.26220086216926575
+ ],
+ "placement": "DeskTop",
+ "service": 0.0,
+ "minCeiling": 0.087
+}

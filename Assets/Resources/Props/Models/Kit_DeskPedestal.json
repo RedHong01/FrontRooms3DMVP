@@ -1,0 +1,88 @@
+{
+ "name": "Kit_DeskPedestal",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    0.76,
+    0
+   ],
+   "size": [
+    1.33,
+    0.6699999999999999
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.38,
+    0
+   ],
+   "size": [
+    1.37,
+    0.76,
+    0.71
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top",
+   "pos": [
+    0,
+    0.76,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "desk",
+  "case_goods",
+  "pile",
+  "pile_piece"
+ ],
+ "pile": {
+  "cls": "Table",
+  "mass": 3,
+  "states": [
+   "Upright",
+   "Back"
+  ],
+  "tolerance": 0.35,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.6850000023841858,
+  0.0,
+  -0.35499998927116394
+ ],
+ "boundsMax": [
+  0.6850000023841858,
+  0.7599999904632568,
+  0.362248033285141
+ ],
+ "triangles": 1742,
+ "slots": [
+  "Prop_WoodCherry",
+  "Prop_Backer",
+  "Prop_Brass"
+ ],
+ "trianglesLod1": 696,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  1.37,
+  0.71
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.81
+}

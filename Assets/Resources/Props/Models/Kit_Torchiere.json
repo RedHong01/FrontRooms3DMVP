@@ -1,0 +1,68 @@
+{
+ "name": "Kit_Torchiere",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "light",
+   "pos": [
+    0,
+    1.812,
+    0
+   ]
+  },
+  {
+   "name": "dimmer",
+   "pos": [
+    0,
+    1.062,
+    0.044
+   ]
+  }
+ ],
+ "tags": [
+  "pile",
+  "lamp",
+  "domestic"
+ ],
+ "noCollider": true,
+ "pile": {
+  "cls": "Tall",
+  "mass": 0,
+  "states": [
+   "Upright",
+   "EdgeLean"
+  ],
+  "tolerance": 0.3,
+  "palette": "domestic70s",
+  "topper": true
+ },
+ "boundsMin": [
+  -0.1809999942779541,
+  0.0,
+  -0.1809999942779541
+ ],
+ "boundsMax": [
+  0.1809999942779541,
+  1.8524999618530273,
+  0.1809999942779541
+ ],
+ "triangles": 636,
+ "slots": [
+  "Prop_SteelBlack",
+  "Prop_PlasticWhite"
+ ],
+ "trianglesLod1": 267,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.3619999885559082,
+  0.3619999885559082
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.902
+}

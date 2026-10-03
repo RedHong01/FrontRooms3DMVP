@@ -1,0 +1,89 @@
+{
+ "name": "Kit_DresserLow",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    0.78,
+    0
+   ],
+   "size": [
+    1.3599999999999999,
+    0.44
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.39,
+    0
+   ],
+   "size": [
+    1.4,
+    0.78,
+    0.48
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top",
+   "pos": [
+    0,
+    0.78,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "case_goods",
+  "pile",
+  "pile_piece"
+ ],
+ "pile": {
+  "cls": "Case",
+  "mass": 3,
+  "states": [
+   "Upright",
+   "Back",
+   "EdgeLean"
+  ],
+  "tolerance": 0.2,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.699999988079071,
+  0.0,
+  -0.2402999997138977
+ ],
+ "boundsMax": [
+  0.699999988079071,
+  0.7799999713897705,
+  0.23999999463558197
+ ],
+ "triangles": 1588,
+ "slots": [
+  "Prop_WoodCherry",
+  "Prop_Hardboard",
+  "Prop_Label",
+  "Prop_Brass"
+ ],
+ "trianglesLod1": 1106,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  1.4,
+  0.48
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.83
+}

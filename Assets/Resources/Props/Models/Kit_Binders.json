@@ -1,0 +1,59 @@
+{
+ "name": "Kit_Binders",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "row_start",
+   "pos": [
+    0.1513752059457119,
+    0,
+    0.135
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "desk_top"
+ ],
+ "noCollider": true,
+ "pile": {
+  "cls": "Small",
+  "mass": 0,
+  "states": [
+   "Upright"
+  ],
+  "tolerance": 0.5,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.1513752043247223,
+  0.0,
+  -0.13899999856948853
+ ],
+ "boundsMax": [
+  0.15197841823101044,
+  0.29425132274627686,
+  0.1402388960123062
+ ],
+ "triangles": 360,
+ "slots": [
+  "Prop_Vinyl",
+  "Prop_Paper",
+  "Prop_Label",
+  "Prop_FabricTeal"
+ ],
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  0.0003016069531440735,
+  0.000619448721408844
+ ],
+ "footprintSize": [
+  0.3033536225557327,
+  0.27923889458179474
+ ],
+ "placement": "DeskTop",
+ "service": 0.0,
+ "minCeiling": 0.344
+}

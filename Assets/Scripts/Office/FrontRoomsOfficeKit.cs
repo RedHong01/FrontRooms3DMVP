@@ -37,6 +37,10 @@ public static class FrontRoomsOfficeKit
     // Kit asset names (Resources/Props/Models). Missing assets are skipped.
     public const string Panel = "Kit_CubiclePanel";           // 1.524 m wide fabric panel, front +Z
     public const string PanelShort = "Kit_CubiclePanelShort"; // 0.762 m end panel (desk depth)
+    public const string PanelTall = "Kit_CubiclePanelTall";   // 1.65 m spine panel (blocks the Relay's 1.6 m sight ray)
+    public const string Post = "Kit_PanelPost";               // 64 mm connector post at panel joints
+    public const string PostTall = "Kit_PanelPostTall";
+    const float PostWidth = .064f;
     public const string Desk = "Kit_OfficeDesk";              // 1.524 x 0.762 m worksurface + pedestal
     public const string Monitor = "Kit_CRTMonitor";
     public const string PC = "Kit_PCDesktop";
@@ -449,7 +453,7 @@ public static class FrontRoomsOfficeKit
     {
         var desk = FrontRoomsKitLibrary.GetInfo(Desk);
         if (desk == null) return;
-        var stationW = Mathf.Max(1.5f, desk.Size.x) + .03f;
+        var stationW = Mathf.Max(1.5f, desk.Size.x) + PostWidth; // desk + one connector post
         var stationD = Mathf.Max(.75f, desk.Size.z) + .94f;
         var rows = 0;
         foreach (var side in sides)
@@ -486,20 +490,65 @@ public static class FrontRoomsOfficeKit
     {
         var desk = FrontRoomsKitLibrary.GetInfo(Desk);
         if (desk == null) return;
-        var stationW = Mathf.Max(1.5f, desk.Size.x) + .03f;
+        var stationW = Mathf.Max(1.5f, desk.Size.x) + PostWidth; // desk + one connector post
         var stationD = Mathf.Max(.75f, desk.Size.z) + .94f;
-        var maxPods = Mathf.Clamp(Mathf.RoundToInt(floor.width * floor.height / 24f), 1, 8);
-        var pods = 0;
-        for (var tries = 0; tries < 40 && pods < maxPods; tries++)
+        // A planned cubicle farm (the reference office): pods in rows along the
+        // room's long axis, separated by exact chase lanes, 1.05 m off the walls.
+        var alongX = floor.width >= floor.height;
+        var longLen = alongX ? floor.width : floor.height;
+        var shortLen = alongX ? floor.height : floor.width;
+        var rows = shortLen >= 2 * stationD + 2.1f + Aisle ? 2 : 1;
+        var cols = longLen >= 2 * stationW + 2.1f ? 2 : 1;
+        var podLong = cols * stationW + PostWidth;
+        var podShort = rows * stationD + .07f;
+        var nLong = Mathf.Max(0, Mathf.FloorToInt((longLen - 2.1f + Aisle) / (podLong + Aisle)));
+        var nShort = Mathf.Max(0, Mathf.FloorToInt((shortLen - 2.1f + Aisle) / (podShort + Aisle)));
+        var placed = 0;
+        if (nLong > 0 && nShort > 0)
         {
-            var cols = rng.Range(1, 3);
-            var rows = rng.Chance(.7f) ? 2 : 1;
-            var alongX = floor.width >= floor.height ? rng.Chance(.75f) : rng.Chance(.25f);
-            var podW = cols * stationW + .1f;
-            var podD = rows * stationD + .07f;
-            var w = alongX ? podW : podD;
-            var d = alongX ? podD : podW;
-            // At least 1 m from every wall; pods keep a full chase aisle between them.
+            var spanLong = nLong * podLong + (nLong - 1) * Aisle;
+            var spanShort = nShort * podShort + (nShort - 1) * Aisle;
+            var startLong = (longLen - spanLong) * .5f;
+            var startShort = (shortLen - spanShort) * .5f;
+            for (var i = 0; i < nLong; i++)
+                for (var j = 0; j < nShort; j++)
+                {
+                    if (rng.Chance(.08f)) continue; // an emptied bay, as in a half-vacated floor
+                    var a0 = startLong + i * (podLong + Aisle);
+                    var b0 = startShort + j * (podShort + Aisle);
+                    // Try the full pod, then a single-column pod in the same bay.
+                    for (var variant = 0; variant < 2; variant++)
+                    {
+                        var c = variant == 0 ? cols : 1;
+                        var pl = c * stationW + PostWidth;
+                        var la = a0 + (podLong - pl) * .5f;
+                        var rect = alongX ? new Rect(floor.xMin + la, floor.yMin + b0, pl, podShort)
+                                          : new Rect(floor.xMin + b0, floor.yMin + la, podShort, pl);
+                        var halo = Expand(rect, Aisle * .5f);
+                        if (!occ.Free(rect) || !occ.FreeOfProps(halo) || !LaneClear(runs, rect)) continue;
+                        if (!TryCommit(occ, clear, rect, halo)) continue;
+                        runs.Add(rect);
+                        var pod = new GameObject("cubicle pod").transform;
+                        pod.SetParent(root, false);
+                        pod.localPosition = new Vector3(rect.center.x, 0f, rect.center.y);
+                        pod.localRotation = Quaternion.Euler(0f, alongX ? 0f : 90f, 0f);
+                        BuildRun(pod, c, rows, stationW, stationD, rng, back: false, tall: rng.Chance(.15f) && FrontRoomsKitLibrary.Has(PanelTall));
+                        placed++;
+                        break;
+                    }
+                }
+        }
+        if (placed > 0) return;
+        // Odd-shaped rooms: fall back to scattered pods.
+        for (var tries = 0; tries < 40 && placed < 4; tries++)
+        {
+            var c = rng.Range(1, 3);
+            var r = rng.Chance(.7f) ? 2 : 1;
+            var ax = floor.width >= floor.height ? rng.Chance(.75f) : rng.Chance(.25f);
+            var pw = c * stationW + PostWidth;
+            var pd = r * stationD + .07f;
+            var w = ax ? pw : pd;
+            var d = ax ? pd : pw;
             var xMin = floor.xMin + 1.05f; var xMax = floor.xMax - 1.05f - w;
             var zMin = floor.yMin + 1.05f; var zMax = floor.yMax - 1.05f - d;
             if (xMax < xMin || zMax < zMin) continue;
@@ -511,9 +560,9 @@ public static class FrontRoomsOfficeKit
             var pod = new GameObject("cubicle pod").transform;
             pod.SetParent(root, false);
             pod.localPosition = new Vector3(rect.center.x, 0f, rect.center.y);
-            pod.localRotation = Quaternion.Euler(0f, alongX ? 0f : 90f, 0f);
-            BuildRun(pod, cols, rows, stationW, stationD, rng, back: false);
-            pods++;
+            pod.localRotation = Quaternion.Euler(0f, ax ? 0f : 90f, 0f);
+            BuildRun(pod, c, r, stationW, stationD, rng, back: false, tall: rng.Chance(.15f) && FrontRoomsKitLibrary.Has(PanelTall));
+            placed++;
         }
     }
 
@@ -523,7 +572,7 @@ public static class FrontRoomsOfficeKit
     /// back = true the spine sits at z = 0 (a wall row), otherwise the run is
     /// centred on the origin.
     /// </summary>
-    static void BuildRun(Transform run, int cols, int rows, float stationW, float stationD, Rng rng, bool back)
+    static void BuildRun(Transform run, int cols, int rows, float stationW, float stationD, Rng rng, bool back, bool tall = false)
     {
         var halfW = cols * stationW * .5f;
         var spine = back ? 0f : (rows == 2 ? 0f : -stationD * .5f);
@@ -545,8 +594,11 @@ public static class FrontRoomsOfficeKit
             for (var c = 0; c <= cols; c++)
                 FrontRoomsKitLibrary.Spawn(PanelShort, run, new Vector3(-halfW + stationW * c, 0f, z), 90f, null, true, c == 0 || c == cols ? "end panel" : "divider panel");
         }
+        // Spine panels between the posts; tall pods block the Relay's sight.
         for (var c = 0; c < cols; c++)
-            FrontRoomsKitLibrary.Spawn(Panel, run, new Vector3(-halfW + stationW * (c + .5f), 0f, spine), 0f, null, true, "spine panel");
+            FrontRoomsKitLibrary.Spawn(tall ? PanelTall : Panel, run, new Vector3(-halfW + stationW * (c + .5f), 0f, spine), 0f, null, true, "spine panel");
+        for (var c = 0; c <= cols; c++)
+            FrontRoomsKitLibrary.Spawn(tall ? PostTall : Post, run, new Vector3(-halfW + stationW * c, 0f, spine), 0f, null, false, "panel post");
     }
 
     /// <summary>One desk in station space: back panel at z = 0, user side +Z.</summary>

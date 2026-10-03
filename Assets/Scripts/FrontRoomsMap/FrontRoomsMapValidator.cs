@@ -141,16 +141,18 @@ namespace FrontRooms.Map
                     if (c.pillar[(x - o.x) + (y - o.y) * (n + 1)])
                     {
                         report.pillars++;
-                        // 7. Columns stand on the 6 m grid, strictly inside an intact room, never in a Low zone.
-                        if (!FrontRoomsMapGenerator.OnColumnGrid(cell)) Fail("column off the 6 m grid at " + cell);
-                        if (gen.HeightOf(cell) == ZoneHeight.Low) Fail("column in a Low zone at " + cell);
-                        var inside = false;
-                        for (var r = 0; r < c.rooms.Length && !inside; r++)
+                        // 7. Columns stand strictly inside an intact room: on the 6 m grid and
+                        // never in a Low zone, unless a module placed its own.
+                        var owner = -1;
+                        for (var r = 0; r < c.rooms.Length && owner < 0; r++)
                         {
                             var room = c.rooms[r];
-                            inside = c.RoomIntact(r) && gen.Uniform(c, room) && x - o.x > room.x && x - o.x < room.x + room.w && y - o.y > room.y && y - o.y < room.y + room.h;
+                            if (c.RoomIntact(r) && x - o.x > room.x && x - o.x < room.x + room.w && y - o.y > room.y && y - o.y < room.y + room.h) owner = r;
                         }
-                        if (!inside) Fail("column outside an intact room at " + cell);
+                        var custom = owner >= 0 && c.ModuleOf(owner) != null && c.ModuleOf(owner).columns == ModuleColumns.Custom;
+                        if (owner < 0 || (!custom && !gen.Uniform(c, c.rooms[owner]))) Fail("column outside an intact room at " + cell);
+                        if (!custom && !FrontRoomsMapGenerator.OnColumnGrid(cell)) Fail("column off the 6 m grid at " + cell);
+                        if (!custom && gen.HeightOf(cell) == ZoneHeight.Low) Fail("column in a Low zone at " + cell);
                     }
                 }
             }

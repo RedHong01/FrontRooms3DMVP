@@ -1,0 +1,72 @@
+{
+ "name": "Kit_Pouf",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    0.4,
+    0
+   ],
+   "size": [
+    0.3,
+    0.3
+   ]
+  }
+ ],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "sit",
+   "pos": [
+    0,
+    0.4,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "upholstery",
+  "pile_piece"
+ ],
+ "noCollider": true,
+ "pile": {
+  "cls": "Small",
+  "mass": 0,
+  "states": [
+   "Upright",
+   "Side"
+  ],
+  "tolerance": 0.5,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.2499910145998001,
+  0.0,
+  -0.2528638243675232
+ ],
+ "boundsMax": [
+  0.2499910145998001,
+  0.40299999713897705,
+  0.2514188289642334
+ ],
+ "triangles": 766,
+ "slots": [
+  "Prop_FabricNavy"
+ ],
+ "trianglesLod1": 298,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0007224977016448975
+ ],
+ "footprintSize": [
+  0.4999820291996002,
+  0.5042826533317566
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.453
+}

@@ -1,0 +1,89 @@
+{
+ "name": "Kit_Credenza",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    0.76,
+    0
+   ],
+   "size": [
+    1.48,
+    0.42000000000000004
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.38,
+    0
+   ],
+   "size": [
+    1.52,
+    0.76,
+    0.46
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top",
+   "pos": [
+    0,
+    0.76,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "domestic",
+  "case_goods",
+  "pile",
+  "pile_piece"
+ ],
+ "pile": {
+  "cls": "Case",
+  "mass": 3,
+  "states": [
+   "Upright",
+   "Back"
+  ],
+  "tolerance": 0.2,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.7599999904632568,
+  0.0,
+  -0.23029999434947968
+ ],
+ "boundsMax": [
+  0.7599999904632568,
+  0.7599999904632568,
+  0.23000000417232513
+ ],
+ "triangles": 1108,
+ "slots": [
+  "Prop_WoodCherry",
+  "Prop_Hardboard",
+  "Prop_Label",
+  "Prop_Brass"
+ ],
+ "trianglesLod1": 738,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  1.52,
+  0.46
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.81
+}

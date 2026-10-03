@@ -1,0 +1,57 @@
+{
+ "name": "Kit_WallClock",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "hang",
+   "pos": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "name": "dial",
+   "pos": [
+    0,
+    0,
+    0.037
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "wall_decor"
+ ],
+ "noCollider": true,
+ "boundsMin": [
+  -0.1599999964237213,
+  -0.1599999964237213,
+  -6.469285551702342e-09
+ ],
+ "boundsMax": [
+  0.1599999964237213,
+  0.1599999964237213,
+  0.049500007182359695
+ ],
+ "triangles": 538,
+ "slots": [
+  "Prop_PlasticBlack",
+  "Prop_PlasticWhite",
+  "Prop_PlasticRed",
+  "Prop_Glass"
+ ],
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  0.024750000356537072
+ ],
+ "footprintSize": [
+  0.3199999928474426,
+  0.04950001365164525
+ ],
+ "placement": "Wall",
+ "service": 0.0,
+ "minCeiling": 0.21
+}

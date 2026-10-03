@@ -1,0 +1,61 @@
+{
+ "name": "Kit_CubiclePanelShort",
+ "supports": [],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.76,
+    0
+   ],
+   "size": [
+    0.762,
+    1.52,
+    0.064
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top_centre",
+   "pos": [
+    0,
+    1.52,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "panel"
+ ],
+ "boundsMin": [
+  -0.38100001215934753,
+  0.0,
+  -0.03350000083446503
+ ],
+ "boundsMax": [
+  0.38100001215934753,
+  1.5199999809265137,
+  0.03350000083446503
+ ],
+ "triangles": 456,
+ "slots": [
+  "Prop_SteelPutty",
+  "Prop_PlasticBlack",
+  "Prop_FabricCubicle"
+ ],
+ "trianglesLod1": 184,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.762,
+  0.064
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.57
+}

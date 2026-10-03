@@ -1,6 +1,6 @@
-"""Connector post for the 1.37 m cubicle panels: the square putty steel post
+"""Connector post for the 1.52 m cubicle panels: the square putty steel post
 that joins two to four panels at an L, T or X junction (Steelcase 9000 /
-Haworth type). 64 x 64 mm (the panel thickness), 1.37 m tall, rounded
+Haworth type). 64 x 64 mm (the panel thickness), 1.52 m tall, rounded
 corners, a chamfered end cap flush with the panel caps and a levelling glide
 under it. One slot, no collider (the panels carry the collision).
 
@@ -15,7 +15,7 @@ NAME = "Kit_PanelPost"
 STEEL = "Prop_SteelPutty"
 
 S = 0.064
-H = 1.37
+H = 1.52  # measured in the target office frame (panel tops above eye-level horizon)
 R = 0.008               # corner radius of the post section
 GLIDE_H = 0.012
 CAP_H = 0.010

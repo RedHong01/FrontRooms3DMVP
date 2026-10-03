@@ -1,0 +1,95 @@
+{
+ "name": "Kit_TaskChair",
+ "supports": [
+  {
+   "name": "seat",
+   "centre": [
+    0,
+    0.45,
+    0.03
+   ],
+   "size": [
+    0.4,
+    0.38
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.477,
+    -0.029
+   ],
+   "size": [
+    0.624,
+    0.954,
+    0.656
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "sit",
+   "pos": [
+    0,
+    0.45,
+    0.03
+   ]
+  },
+  {
+   "name": "back_top",
+   "pos": [
+    0,
+    0.95,
+    -0.32846611731005537
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "seat"
+ ],
+ "pile": {
+  "cls": "Seat",
+  "mass": 1,
+  "states": [
+   "Upright",
+   "Inverted",
+   "Side",
+   "Back"
+  ],
+  "tolerance": 0.45,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.3113028109073639,
+  0.00019999966025352478,
+  -0.3557887673377991
+ ],
+ "boundsMax": [
+  0.30583515763282776,
+  0.9528768062591553,
+  0.29766014218330383
+ ],
+ "triangles": 4484,
+ "slots": [
+  "Prop_PlasticBlack",
+  "Prop_Chrome",
+  "Prop_FabricChair"
+ ],
+ "trianglesLod1": 1792,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.029000000000000026
+ ],
+ "footprintSize": [
+  0.624,
+  0.656
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.003
+}

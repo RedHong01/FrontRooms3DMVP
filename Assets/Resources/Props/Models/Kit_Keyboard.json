@@ -1,0 +1,62 @@
+{
+ "name": "Kit_Keyboard",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "keys_centre",
+   "pos": [
+    -0.0,
+    0.03179806585677917,
+    0.01921990904562799
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "desk_top",
+  "pile_piece"
+ ],
+ "noCollider": true,
+ "pile": {
+  "cls": "Small",
+  "mass": 0,
+  "states": [
+   "Upright",
+   "Side"
+  ],
+  "tolerance": 0.5,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.23000000417232513,
+  -4.656612873077393e-10,
+  -0.18686339259147644
+ ],
+ "boundsMax": [
+  0.23000000417232513,
+  0.03433627635240555,
+  0.0947478711605072
+ ],
+ "triangles": 1306,
+ "slots": [
+  "Prop_KeyboardKeys",
+  "Prop_PlasticBeige",
+  "Prop_PlasticGrey",
+  "Prop_PlasticBlack"
+ ],
+ "trianglesLod1": 98,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.04605776071548462
+ ],
+ "footprintSize": [
+  0.46000000834465027,
+  0.28161126375198364
+ ],
+ "placement": "DeskTop",
+ "service": 0.0,
+ "minCeiling": 0.084
+}

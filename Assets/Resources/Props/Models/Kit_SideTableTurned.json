@@ -1,0 +1,99 @@
+{
+ "name": "Kit_SideTableTurned",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    0.66,
+    0
+   ],
+   "size": [
+    0.44,
+    0.44
+   ]
+  },
+  {
+   "name": "shelf",
+   "centre": [
+    0,
+    0.185,
+    0
+   ],
+   "size": [
+    0.324,
+    0.38399999999999995
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.33,
+    0
+   ],
+   "size": [
+    0.46,
+    0.66,
+    0.46
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top",
+   "pos": [
+    0,
+    0.66,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "table",
+  "pile",
+  "pile_piece"
+ ],
+ "pile": {
+  "cls": "Table",
+  "mass": 1,
+  "states": [
+   "Upright",
+   "Inverted"
+  ],
+  "tolerance": 0.35,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.23000000417232513,
+  0.0,
+  -0.23000000417232513
+ ],
+ "boundsMax": [
+  0.23000000417232513,
+  0.6599999666213989,
+  0.23000000417232513
+ ],
+ "triangles": 2688,
+ "slots": [
+  "Prop_WoodWalnut",
+  "Prop_Brass",
+  "Prop_Rubber"
+ ],
+ "trianglesLod1": 1102,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.46,
+  0.46
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.71
+}

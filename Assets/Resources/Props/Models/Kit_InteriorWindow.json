@@ -1,0 +1,47 @@
+{
+ "name": "Kit_InteriorWindow",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "centre",
+   "pos": [
+    0,
+    0.61,
+    0.025
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "wall_decor"
+ ],
+ "noCollider": true,
+ "boundsMin": [
+  -1.2200000286102295,
+  0.0,
+  -0.05999999865889549
+ ],
+ "boundsMax": [
+  1.2200000286102295,
+  1.2200000286102295,
+  0.06069999933242798
+ ],
+ "triangles": 114,
+ "slots": [
+  "Prop_SteelBlack",
+  "Prop_GlassCRT"
+ ],
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  0.000350000336766243
+ ],
+ "footprintSize": [
+  2.440000057220459,
+  0.12069999799132347
+ ],
+ "placement": "Wall",
+ "service": 0.0,
+ "minCeiling": 1.27
+}

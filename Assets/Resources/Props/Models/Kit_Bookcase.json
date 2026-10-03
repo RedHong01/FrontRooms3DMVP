@@ -1,0 +1,150 @@
+{
+ "name": "Kit_Bookcase",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    1.8,
+    0
+   ],
+   "size": [
+    0.87,
+    0.27
+   ]
+  },
+  {
+   "name": "bottom shelf",
+   "centre": [
+    0,
+    0.094,
+    -0.0059999999999999915
+   ],
+   "size": [
+    0.8059999999999999,
+    0.256
+   ]
+  },
+  {
+   "name": "shelf 1",
+   "centre": [
+    0,
+    0.43420000000000003,
+    -0.010999999999999989
+   ],
+   "size": [
+    0.8059999999999999,
+    0.24600000000000002
+   ]
+  },
+  {
+   "name": "shelf 2",
+   "centre": [
+    0,
+    0.7744000000000001,
+    -0.010999999999999989
+   ],
+   "size": [
+    0.8059999999999999,
+    0.24600000000000002
+   ]
+  },
+  {
+   "name": "shelf 3",
+   "centre": [
+    0,
+    1.1146,
+    -0.010999999999999989
+   ],
+   "size": [
+    0.8059999999999999,
+    0.24600000000000002
+   ]
+  },
+  {
+   "name": "shelf 4",
+   "centre": [
+    0,
+    1.4547999999999999,
+    -0.010999999999999989
+   ],
+   "size": [
+    0.8059999999999999,
+    0.24600000000000002
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.9,
+    0
+   ],
+   "size": [
+    0.9,
+    1.8,
+    0.3
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top",
+   "pos": [
+    0,
+    1.8,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "case_goods",
+  "pile",
+  "pile_piece",
+  "shelving"
+ ],
+ "pile": {
+  "cls": "Case",
+  "mass": 2,
+  "states": [
+   "Upright",
+   "Back",
+   "Side",
+   "EdgeLean"
+  ],
+  "tolerance": 0.2,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.44999998807907104,
+  0.0,
+  -0.15000000596046448
+ ],
+ "boundsMax": [
+  0.44999998807907104,
+  1.8000000715255737,
+  0.15000000596046448
+ ],
+ "triangles": 554,
+ "slots": [
+  "Prop_WoodOak",
+  "Prop_Chipboard",
+  "Prop_Label"
+ ],
+ "trianglesLod1": 248,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.9,
+  0.3
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.85
+}

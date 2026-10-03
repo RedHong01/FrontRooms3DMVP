@@ -1,0 +1,102 @@
+{
+ "name": "Kit_OfficeDesk",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    0.74,
+    0
+   ],
+   "size": [
+    1.5,
+    0.74
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.3705,
+    0
+   ],
+   "size": [
+    1.524,
+    0.741,
+    0.762
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "monitor",
+   "pos": [
+    0.2,
+    0.74,
+    -0.08
+   ]
+  },
+  {
+   "name": "keyboard",
+   "pos": [
+    0.2,
+    0.74,
+    0.245
+   ]
+  },
+  {
+   "name": "chair",
+   "pos": [
+    0.2,
+    0.0,
+    0.62
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "workstation"
+ ],
+ "pile": {
+  "cls": "Table",
+  "mass": 2,
+  "states": [
+   "Upright",
+   "Inverted",
+   "Side"
+  ],
+  "tolerance": 0.35,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.7620000243186951,
+  0.0,
+  -0.38100001215934753
+ ],
+ "boundsMax": [
+  0.7620000243186951,
+  0.7412000298500061,
+  0.38100001215934753
+ ],
+ "triangles": 1366,
+ "slots": [
+  "Prop_LaminateBeige",
+  "Prop_SteelBrown",
+  "Prop_SteelPutty"
+ ],
+ "trianglesLod1": 560,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  1.524,
+  0.762
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.791
+}

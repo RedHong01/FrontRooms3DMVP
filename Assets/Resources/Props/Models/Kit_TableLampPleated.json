@@ -1,0 +1,62 @@
+{
+ "name": "Kit_TableLampPleated",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "light",
+   "pos": [
+    0,
+    0.47,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "pile",
+  "lamp",
+  "domestic",
+  "table_top"
+ ],
+ "noCollider": true,
+ "pile": {
+  "cls": "Tall",
+  "mass": 0,
+  "states": [
+   "Upright"
+  ],
+  "tolerance": 0.3,
+  "palette": "domestic70s",
+  "topper": true
+ },
+ "boundsMin": [
+  -0.1899999976158142,
+  -9.374972432851791e-05,
+  -0.1899999976158142
+ ],
+ "boundsMax": [
+  0.1899999976158142,
+  0.6209999918937683,
+  0.1899999976158142
+ ],
+ "triangles": 1492,
+ "slots": [
+  "Prop_Brass",
+  "Prop_CeramicGlaze",
+  "Prop_LampShade",
+  "Prop_PlasticBlack"
+ ],
+ "trianglesLod1": 626,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.3799999952316284,
+  0.3799999952316284
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.671
+}

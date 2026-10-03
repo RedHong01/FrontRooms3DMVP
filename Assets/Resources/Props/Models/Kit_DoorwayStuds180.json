@@ -1,0 +1,108 @@
+{
+ "name": "Kit_DoorwayStuds180",
+ "supports": [],
+ "colliders": [
+  {
+   "centre": [
+    0.938,
+    1.1635,
+    0
+   ],
+   "size": [
+    0.076,
+    2.327,
+    0.14
+   ]
+  },
+  {
+   "centre": [
+    -0.938,
+    1.1635,
+    0
+   ],
+   "size": [
+    0.076,
+    2.327,
+    0.14
+   ]
+  },
+  {
+   "centre": [
+    0,
+    2.2635,
+    0
+   ],
+   "size": [
+    1.8,
+    0.12699999999999978,
+    0.14
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "opening",
+   "pos": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "name": "header",
+   "pos": [
+    0,
+    2.2,
+    0.07
+   ]
+  },
+  {
+   "name": "clear_corner_a",
+   "pos": [
+    0.9,
+    0,
+    0.07
+   ]
+  },
+  {
+   "name": "clear_corner_b",
+   "pos": [
+    -0.9,
+    2.2,
+    -0.07
+   ]
+  }
+ ],
+ "tags": [
+  "arch",
+  "wall_decor"
+ ],
+ "boundsMin": [
+  -0.9760000109672546,
+  0.0,
+  -0.07000000029802322
+ ],
+ "boundsMax": [
+  0.9762572050094604,
+  2.327000141143799,
+  0.0745946541428566
+ ],
+ "triangles": 438,
+ "slots": [
+  "Prop_Studs",
+  "Prop_TapeBlue"
+ ],
+ "trianglesLod1": 182,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  1.952,
+  0.14
+ ],
+ "placement": "Wall",
+ "service": 0.0,
+ "minCeiling": 2.377
+}

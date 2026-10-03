@@ -1,0 +1,113 @@
+{
+ "name": "Kit_Hutch_Cherry",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    1.9,
+    -0.075
+   ],
+   "size": [
+    0.92,
+    0.31999999999999995
+   ]
+  },
+  {
+   "name": "buffet ledge",
+   "centre": [
+    0,
+    0.8,
+    0.155
+   ],
+   "size": [
+    0.96,
+    0.17
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.4,
+    0
+   ],
+   "size": [
+    1.0,
+    0.8,
+    0.5
+   ]
+  },
+  {
+   "centre": [
+    0,
+    1.35,
+    -0.075
+   ],
+   "size": [
+    1.0,
+    1.0999999999999999,
+    0.35
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top",
+   "pos": [
+    0,
+    1.9,
+    -0.075
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "case_goods",
+  "pile",
+  "pile_piece",
+  "glass"
+ ],
+ "pile": {
+  "cls": "Case",
+  "mass": 3,
+  "states": [
+   "Upright",
+   "Back",
+   "EdgeLean"
+  ],
+  "tolerance": 0.2,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.5,
+  0.0,
+  -0.25
+ ],
+ "boundsMax": [
+  0.5,
+  1.899999976158142,
+  0.2630000114440918
+ ],
+ "triangles": 1744,
+ "slots": [
+  "Prop_WoodCherry",
+  "Prop_Brass",
+  "Prop_Glass"
+ ],
+ "trianglesLod1": 696,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  1.0,
+  0.5
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.95
+}

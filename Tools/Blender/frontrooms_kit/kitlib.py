@@ -630,6 +630,18 @@ class Kit:
             bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
             if obj.get("fr_uv") not in ("decal", "keep"):
                 self._uv_metres(obj)
+        # LOD1 bookkeeping survives the join as vertex groups: parts marked
+        # with lod1_drop() vanish from the LOD1; decal and thin parts (glass,
+        # signs, labels < 12 mm) are protected from the collapse.
+        for obj in self.parts:
+            groups = []
+            if obj.get("fr_lod1_drop"):
+                groups.append("fr_lod1_drop")
+            if obj.get("fr_uv") == "decal" or min(obj.dimensions) < 0.012:
+                groups.append("fr_lod_keep")
+            for gname in groups:
+                vg = obj.vertex_groups.get(gname) or obj.vertex_groups.new(name=gname)
+                vg.add([v.index for v in obj.data.vertices], 1.0, "REPLACE")
         bpy.ops.object.select_all(action="DESELECT")
         for obj in self.parts:
             obj.select_set(True)
@@ -642,6 +654,7 @@ class Kit:
         mesh = merged.data
         mesh.shade_smooth()
         mesh.set_sharp_from_angle(angle=math.radians(smooth_angle))
+        self.smooth_angle = smooth_angle
         self.object = merged
         # Bounds and footprint for the sidecar.
         xs = [v.co.x for v in mesh.vertices]
@@ -667,6 +680,20 @@ class Kit:
                     mats[i] = self._material(new_slot)
 
     # ------------------------------------------------------------------ export
+    @staticmethod
+    def lod1_drop(obj):
+        """Mark a part as sub-pixel at the LOD1 switch (slots, glides, screws):
+        it is deleted from the LOD1 instead of being collapsed."""
+        obj["fr_lod1_drop"] = True
+        return obj
+
+    def _strip_lod_groups(self):
+        for obj in [self.object] + ([self.lod1] if getattr(self, "lod1", None) is not None else []):
+            for gname in ("fr_lod1_drop", "fr_lod_keep"):
+                vg = obj.vertex_groups.get(gname)
+                if vg is not None:
+                    obj.vertex_groups.remove(vg)
+
     def make_lod1(self, ratio):
         """Add <NAME>_LOD1: a collapse-decimated copy at ``ratio`` of LOD0's
         triangles (UVs and slots kept). Unity builds a LODGroup from the
@@ -681,13 +708,35 @@ class Kit:
         lod1 = self.object.copy()
         lod1.data = self.object.data.copy()
         bpy.context.scene.collection.objects.link(lod1)
-        mod = lod1.modifiers.new("lod1", "DECIMATE")
-        mod.ratio = ratio
-        mod.use_collapse_triangulate = True
-        bpy.context.view_layer.objects.active = lod1
-        bpy.ops.object.select_all(action="DESELECT")
-        lod1.select_set(True)
-        bpy.ops.object.modifier_apply(modifier=mod.name)
+        lod0_tris = self.meta.get("triangles") or sum(len(p.vertices) - 2 for p in self.object.data.polygons)
+        target = lod0_tris * ratio
+        # 1. Drop sub-pixel detail parts outright.
+        drop = lod1.vertex_groups.get("fr_lod1_drop")
+        if drop is not None:
+            bm = bmesh.new()
+            bm.from_mesh(lod1.data)
+            deform = bm.verts.layers.deform.verify()
+            doomed = [v for v in bm.verts if drop.index in v[deform]]
+            bmesh.ops.delete(bm, geom=doomed, context="VERTS")
+            bm.to_mesh(lod1.data)
+            bm.free()
+        current = sum(len(p.vertices) - 2 for p in lod1.data.polygons)
+        # 2. Collapse what is left only if still above target, protecting
+        #    decal / thin parts so glass and signs do not fold into slivers.
+        if current > target:
+            mod = lod1.modifiers.new("lod1", "DECIMATE")
+            mod.ratio = max(0.05, target / max(current, 1))
+            mod.use_collapse_triangulate = True
+            if lod1.vertex_groups.get("fr_lod_keep") is not None:
+                mod.vertex_group = "fr_lod_keep"
+                mod.invert_vertex_group = True
+            bpy.context.view_layer.objects.active = lod1
+            bpy.ops.object.select_all(action="DESELECT")
+            lod1.select_set(True)
+            bpy.ops.object.modifier_apply(modifier=mod.name)
+        # 3. Re-mark sharp edges: collapse leaves box corners shading round.
+        lod1.data.shade_smooth()
+        lod1.data.set_sharp_from_angle(angle=math.radians(getattr(self, "smooth_angle", 35.0)))
         self.object.name = self.name + "_LOD0"
         lod1.name = self.name + "_LOD1"
         self.lod1 = lod1
@@ -698,6 +747,7 @@ class Kit:
         the imported object has identity rotation and unit scale. With a LOD1
         the file holds <NAME>_LOD0 and <NAME>_LOD1 under the file root."""
         os.makedirs(os.path.dirname(fbx_path), exist_ok=True)
+        self._strip_lod_groups()
         bpy.ops.object.select_all(action="DESELECT")
         self.object.select_set(True)
         if getattr(self, "lod1", None) is not None:

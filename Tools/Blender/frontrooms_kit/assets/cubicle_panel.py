@@ -1,9 +1,9 @@
-"""Freestanding 1990s systems-furniture partition panel, 60" wide x 54" tall
+"""Freestanding 1990s systems-furniture partition panel, 60" wide x 60" tall
 (the slate fabric cubicle wall in Red's target office image).
 
 Real-world reference: Steelcase Series 9000 / Haworth Unigroup-era acoustic
-panels. 1.524 m wide, 1.37 m tall (the reference office reads over the
-panels), 64 mm thick. Fabric-wrapped tackable core on BOTH faces, set 4 mm
+panels. 1.524 m wide, 1.52 m tall (in the reference office the panel tops sit
+just above the eye-level horizon), 64 mm thick. Fabric-wrapped tackable core on BOTH faces, set 4 mm
 inside a moulded putty frame: rounded top cap rail, vertical end trims with
 rounded outer corners and slotted hang-on standards beside them, on a dark
 100 mm base rail that stands 20 mm off the floor on two levelling glides
@@ -38,7 +38,7 @@ FABRIC = "Prop_FabricCubicle"
 TRIM = "Prop_SteelPutty"     # cap rail, end trims, standards (§5.2 "panel trim")
 DARK = "Prop_PlasticBlack"   # base rail, glides, standard slots
 
-H = 1.37
+H = 1.52  # measured in the target office frame (panel tops above eye-level horizon)
 T = 0.064
 TRIM_W = 0.030          # vertical end trim (X)
 TRIM_R = 0.011          # outer corner radius of the end trim

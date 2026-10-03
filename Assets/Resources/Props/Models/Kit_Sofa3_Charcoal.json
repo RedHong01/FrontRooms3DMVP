@@ -1,0 +1,115 @@
+{
+ "name": "Kit_Sofa3_Charcoal",
+ "supports": [
+  {
+   "name": "seat",
+   "centre": [
+    0,
+    0.45,
+    0.17
+   ],
+   "size": [
+    1.5,
+    0.46
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.225,
+    -0.0
+   ],
+   "size": [
+    2.0,
+    0.45,
+    0.9
+   ]
+  },
+  {
+   "centre": [
+    0,
+    0.635,
+    -0.33
+   ],
+   "size": [
+    2.0,
+    0.37,
+    0.24
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "sit_left",
+   "pos": [
+    0.527,
+    0.45,
+    0.17
+   ]
+  },
+  {
+   "name": "sit",
+   "pos": [
+    -0.0,
+    0.45,
+    0.17
+   ]
+  },
+  {
+   "name": "sit_right",
+   "pos": [
+    -0.527,
+    0.45,
+    0.17
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "upholstery",
+  "seat",
+  "pile_piece"
+ ],
+ "pile": {
+  "cls": "Soft",
+  "mass": 2,
+  "states": [
+   "Upright",
+   "Back",
+   "Side"
+  ],
+  "tolerance": 0.3,
+  "palette": "domestic70s",
+  "topper": true
+ },
+ "boundsMin": [
+  -0.9998296499252319,
+  0.0,
+  -0.44999998807907104
+ ],
+ "boundsMax": [
+  0.9998296499252319,
+  0.8220822215080261,
+  0.4580000042915344
+ ],
+ "triangles": 5918,
+ "slots": [
+  "Prop_FabricCharcoal",
+  "Prop_WoodDark"
+ ],
+ "trianglesLod1": 2366,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  2.0,
+  0.9
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.872
+}

@@ -1,0 +1,70 @@
+{
+ "name": "Kit_DeskPhone",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "handset",
+   "pos": [
+    0.068,
+    0.07657673298806542,
+    0.01587644602741868
+   ]
+  },
+  {
+   "name": "lcd",
+   "pos": [
+    -0.031,
+    0.05065347345892085,
+    -0.06697875667817257
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "desk_top",
+  "pile_piece"
+ ],
+ "noCollider": true,
+ "pile": {
+  "cls": "Small",
+  "mass": 0,
+  "states": [
+   "Upright",
+   "Side"
+  ],
+  "tolerance": 0.5,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.10050000250339508,
+  0.0,
+  -0.1923094540834427
+ ],
+ "boundsMax": [
+  0.10050000250339508,
+  0.08720651268959045,
+  0.132199227809906
+ ],
+ "triangles": 966,
+ "slots": [
+  "Prop_PlasticBeige",
+  "Prop_PlasticGrey",
+  "Prop_GlassCRT",
+  "Prop_PhoneKeys"
+ ],
+ "trianglesLod1": 290,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.03005511313676834
+ ],
+ "footprintSize": [
+  0.20100000500679016,
+  0.3245086818933487
+ ],
+ "placement": "DeskTop",
+ "service": 0.0,
+ "minCeiling": 0.137
+}

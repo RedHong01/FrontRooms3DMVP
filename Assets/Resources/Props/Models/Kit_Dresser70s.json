@@ -1,0 +1,91 @@
+{
+ "name": "Kit_Dresser70s",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    1.22,
+    0
+   ],
+   "size": [
+    0.82,
+    0.42000000000000004
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.61,
+    0.0023
+   ],
+   "size": [
+    0.86,
+    1.22,
+    0.4605
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top",
+   "pos": [
+    0,
+    1.22,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "case_goods",
+  "pile",
+  "pile_piece"
+ ],
+ "pile": {
+  "cls": "Case",
+  "mass": 3,
+  "states": [
+   "Upright",
+   "Back",
+   "Front",
+   "Side",
+   "EdgeLean"
+  ],
+  "tolerance": 0.2,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.4300000071525574,
+  -7.450580596923828e-09,
+  -0.2280000001192093
+ ],
+ "boundsMax": [
+  0.4300000071525574,
+  1.2200000286102295,
+  0.23250000178813934
+ ],
+ "triangles": 1614,
+ "slots": [
+  "Prop_WoodTeak",
+  "Prop_Hardboard",
+  "Prop_Label",
+  "Prop_Brass"
+ ],
+ "trianglesLod1": 676,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  0.0022999999999999965
+ ],
+ "footprintSize": [
+  0.86,
+  0.4605
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.27
+}

@@ -187,6 +187,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     readonly Dictionary<long, Door> doorByEdge = new Dictionary<long, Door>();
     readonly Dictionary<Collider, Window> windowByCollider = new Dictionary<Collider, Window>();
     readonly HashSet<Collider> shellColliders = new HashSet<Collider>();
+    // Modules placed by hand (the Level Designer preview), stamped whenever their chunk is generated.
+    readonly List<(RoomModuleData module, GridCoord chunk, int x, int y)> placedModules = new List<(RoomModuleData, GridCoord, int, int)>();
+    Vector3? spawnOverride;
     readonly List<GridCoord> scratch = new List<GridCoord>();
     readonly List<Door> movingDoors = new List<Door>();
     Transform player;
@@ -215,7 +218,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             if (randomSeedOnPlay && standalone) seed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
             TakeProfile(Profile, seed);
         }
-        Cache = new FrontRoomsMapCache(settings);
+        CreateCache();
         block = new MaterialPropertyBlock();
         BuildMaterials();
         if (!standalone || !Application.isPlaying) return;
@@ -274,7 +277,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     public Vector3 BuildForCapture()
     {
         TakeProfile(Profile, Profile.generation.seed);
-        Cache = new FrontRoomsMapCache(settings);
+        CreateCache();
         block = new MaterialPropertyBlock();
         BuildMaterials();
         ApplyRenderSettings();
@@ -284,6 +287,26 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         Begin(eye);
         return transform.TransformPoint(SpawnPoint() + Vector3.up * ModuleUnits.PlayerEye);
     }
+
+    void CreateCache()
+    {
+        Cache = new FrontRoomsMapCache(settings);
+        foreach (var p in placedModules) Cache.Place(p.chunk, p.module, p.x, p.y);
+    }
+
+    /// <summary>
+    /// Stamp a room module into chunk <paramref name="chunk"/> with its
+    /// south-west cell at chunk-local (x, y), whenever that chunk is built.
+    /// Call before the map starts (Awake, BuildForCapture). See RoomModuleStamp.
+    /// </summary>
+    public void PlaceModule(RoomModuleData module, GridCoord chunk, int x, int y)
+    {
+        placedModules.Add((module, chunk, x, y));
+        Cache?.Place(chunk, module, x, y);
+    }
+
+    /// <summary>Start the walker or capture eye here (map space) instead of the middle of chunk (0, 0).</summary>
+    public void OverrideSpawn(Vector3 mapPosition) => spawnOverride = mapPosition;
 
     static void Kill(UnityEngine.Object target)
     {
@@ -303,6 +326,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
     Vector3 SpawnPoint()
     {
+        if (spawnOverride.HasValue) return spawnOverride.Value;
         var mid = MapGrid.ChunkCells / 2;
         return new Vector3((mid + .5f) * MapGrid.CellSize, .05f, (mid + .5f) * MapGrid.CellSize);
     }
@@ -460,7 +484,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
             if (data.pillar[i + j * (n + 1)]) BuildColumn(data.pillarStyle[i + j * (n + 1)], new Vector3(i * cs, 0f, j * cs), height, zone.theme, theme, b, Get, Solid, origin);
 
-            BuildFixture(chunk, cell, cellCenter, height, theme);
+            BuildFixture(chunk, cell, cellCenter, height, theme, data.lamp[index]);
         }
 
         for (var b = 0; b < builders.Length; b++)
@@ -488,6 +512,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             key.GetComponent<Renderer>().sharedMaterial = keyGlow;
             chunk.keys.Add((key, data.ownZone.id));
         }
+        AddZoneGrades(chunk, data);
         Furnish(chunk, data);
         built[coord] = chunk;
     }
@@ -749,8 +774,10 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
     // ---------- Fixtures: each lamp keeps its own state ----------
 
-    void BuildFixture(BuiltChunk chunk, GridCoord cell, Vector3 localCenter, float height, ThemeMaterials theme)
+    void BuildFixture(BuiltChunk chunk, GridCoord cell, Vector3 localCenter, float height, ThemeMaterials theme, ModuleLamp lamp)
     {
+        // A module can take a lamp out altogether.
+        if (lamp == ModuleLamp.Off) return;
         var seed = Cache.Generator.Seed;
         var fixture = new Fixture { rng = MapHash.Hash(seed, cell.x, cell.y, 211) | 1u };
         var root = new GameObject("Fixture " + cell);
@@ -793,6 +820,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         // 0 steady, 1 stutters now and then, 2 failing, 3 dead with rare blinks, 4 dim.
         var roll = Rand(ref fixture.rng);
         fixture.mode = roll < .62f ? 0 : roll < .82f ? 1 : roll < .92f ? 2 : roll < .97f ? 3 : 4;
+        // A module's lamp: Steady..Dim map onto modes 0..4.
+        if (lamp != ModuleLamp.Auto) fixture.mode = (int)lamp - 1;
         fixture.phase = Rand(ref fixture.rng) * 50f;
         fixture.nextEvent = 2f + Rand(ref fixture.rng) * 14f;
         chunk.fixtures.Add(fixture);
@@ -935,18 +964,30 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         }
         try
         {
-            if (zone.theme == ZoneTheme.Office)
+            // A module's own props go in first; the kits fill round them.
+            var module = data.ModuleOf(r);
+            var obstacles = new List<Rect>(columns);
+            if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module));
+            var fill = module == null ? ModuleFill.Auto : module.fill;
+            var office = fill == ModuleFill.Office || (fill == ModuleFill.Auto && zone.theme == ZoneTheme.Office);
+            if (office)
             {
                 if (!dressOffices) return;
                 // The clear floor between wall faces; keep-clear strips and columns are in the same chunk-local metres.
                 var floor = new Rect(room.x * cs + ModuleUnits.WallHalf, room.y * cs + ModuleUnits.WallHalf,
                     room.w * cs - ModuleUnits.WallThickness, room.h * cs - ModuleUnits.WallThickness);
-                if (officeDress != null) officeDress.Invoke(null, new object[] { chunk.root.transform, floor, height, roomSeed, clear.ToArray(), columns.ToArray() });
+                if (officeDress != null) officeDress.Invoke(null, new object[] { chunk.root.transform, floor, height, roomSeed, clear.ToArray(), obstacles.ToArray() });
                 else if (officeDressOld != null) officeDressOld.Invoke(null, new object[] { chunk.root.transform, floor, height, roomSeed, clear.ToArray() });
+                return;
             }
-            else if (pileBuild != null && Mathf.Min(room.w, room.h) >= 4 && MapHash.Unit((uint)roomSeed) < (zone.height == ZoneHeight.Tall ? Mathf.Max(pileChance, .6f) : pileChance))
+            var pile = fill == ModuleFill.Pile
+                || (fill == ModuleFill.Auto && Mathf.Min(room.w, room.h) >= 4 && MapHash.Unit((uint)roomSeed) < (zone.height == ZoneHeight.Tall ? Mathf.Max(pileChance, .6f) : pileChance));
+            if (pile && pileBuild != null)
             {
-                if (PileSpot(room, columns, clear, out var center, out var radius))
+                // The pile keeps off the module's props as it does off the strips.
+                var keepOff = new List<Rect>(clear);
+                keepOff.AddRange(obstacles.GetRange(columns.Count, obstacles.Count - columns.Count));
+                if (PileSpot(room, columns, keepOff, out var center, out var radius))
                     pileBuild.Invoke(null, new object[] { chunk.root.transform, center, radius, height, roomSeed });
             }
         }
@@ -956,11 +997,81 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         }
     }
 
-    static float Distance(Rect r, Vector2 p)
+    /// <summary>
+    /// A module's props, placed with the visual chat's kit library at their
+    /// module positions. Returns their footprints in chunk-local metres.
+    /// </summary>
+    List<Rect> PlaceProps(BuiltChunk chunk, CellRect room, RoomModuleData module)
     {
-        var dx = Mathf.Max(r.xMin - p.x, 0f, p.x - r.xMax);
-        var dy = Mathf.Max(r.yMin - p.y, 0f, p.y - r.yMax);
-        return Mathf.Sqrt(dx * dx + dy * dy);
+        var footprints = new List<Rect>();
+        if (module.props == null || module.props.Length == 0) return footprints;
+        var cs = MapGrid.CellSize;
+        var root = new GameObject("module props").transform;
+        root.SetParent(chunk.root.transform, false);
+        float ox = room.x * cs, oz = room.y * cs;
+        foreach (var p in module.props)
+        {
+            if (string.IsNullOrEmpty(p.kit)) continue;
+            if (FrontRoomsKitLibrary.Spawn(p.kit, root, new Vector3(ox + p.x, 0f, oz + p.z), p.yaw, null, !p.noCollider, p.kit) == null) continue;
+            var f = KitFootprint(p.kit);
+            if (f == null) continue;
+            RoomModuleData.Bounds(p, f, out var x0, out var z0, out var x1, out var z1);
+            footprints.Add(Rect.MinMaxRect(ox + x0, oz + z0, ox + x1, oz + z1));
+        }
+        return footprints;
+    }
+
+    /// <summary>A kit asset's footprint about its pivot and its height: (min x, min z, max x, max z, height), or null.</summary>
+    public static float[] KitFootprint(string kit)
+    {
+        var info = FrontRoomsKitLibrary.GetInfo(kit);
+        if (info == null) return null;
+        var f = info.Footprint;
+        return new[] { f.xMin, f.yMin, f.xMax, f.yMax, info.Height };
+    }
+
+    /// <summary>
+    /// The visual chat's local Office grade (FrontRoomsPostStack.EnsureZoneVolume)
+    /// over this chunk's Office cells: runs of Office cells per row, merged
+    /// into rectangles down the rows, one volume each. Its 2.5 m blend hides
+    /// the seams between them.
+    /// </summary>
+    void AddZoneGrades(BuiltChunk chunk, MapChunk data)
+    {
+        const int n = MapGrid.ChunkCells;
+        var cs = MapGrid.CellSize;
+        var open = new List<(int x0, int x1, int y0, int y1)>();
+        var done = new List<(int x0, int x1, int y0, int y1)>();
+        for (var j = 0; j <= n; j++)
+        {
+            var runs = new List<(int, int)>();
+            for (var i = 0; j < n && i < n;)
+            {
+                if (Cache.ZoneOf(data.Cell(i, j)).theme != ZoneTheme.Office) { i++; continue; }
+                var start = i;
+                while (i < n && Cache.ZoneOf(data.Cell(i, j)).theme == ZoneTheme.Office) i++;
+                runs.Add((start, i));
+            }
+            var next = new List<(int x0, int x1, int y0, int y1)>();
+            foreach (var rect in open)
+            {
+                var k = runs.IndexOf((rect.x0, rect.x1));
+                if (k >= 0) { next.Add((rect.x0, rect.x1, rect.y0, j + 1)); runs.RemoveAt(k); }
+                else done.Add(rect);
+            }
+            foreach (var run in runs) next.Add((run.Item1, run.Item2, j, j + 1));
+            open = next;
+        }
+        for (var k = 0; k < done.Count; k++)
+        {
+            var rect = done[k];
+            var size = new Vector3((rect.x1 - rect.x0) * cs, ModuleUnits.StandardCeiling, (rect.y1 - rect.y0) * cs);
+            var center = new Vector3(rect.x0 * cs + size.x * .5f, size.y * .5f, rect.y0 * cs + size.z * .5f);
+            // EnsureZoneVolume keeps one volume per parent, so each rectangle gets its own.
+            var holder = new GameObject("Office grade " + k).transform;
+            holder.SetParent(chunk.root.transform, false);
+            FrontRoomsPostStack.EnsureZoneVolume(holder, "Office", new Bounds(center, size), 2.5f);
+        }
     }
 
     /// <summary>Footprints of the columns inside a room, in chunk-local metres.</summary>

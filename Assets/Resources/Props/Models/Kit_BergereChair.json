@@ -1,0 +1,64 @@
+{
+ "name": "Kit_BergereChair",
+ "supports": [],
+ "colliders": [
+  {
+   "centre": [
+    -0.0,
+    0.5292559266090393,
+    -0.0
+   ],
+   "size": [
+    0.6730944514274597,
+    1.0585118532180786,
+    0.6643873453140259
+   ]
+  }
+ ],
+ "anchors": [],
+ "tags": [
+  "pile"
+ ],
+ "pile": {
+  "cls": "Seat",
+  "mass": 1,
+  "states": [
+   "Upright",
+   "Back",
+   "EdgeLean"
+  ],
+  "tolerance": 0.45,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "license": "CC0 1.0 - Poly Haven, Green Chair 01 by Kirill Sannikov",
+ "source": "https://polyhaven.com/a/GreenChair_01",
+ "boundsMin": [
+  -0.33654722571372986,
+  0.0,
+  -0.33219367265701294
+ ],
+ "boundsMax": [
+  0.33654722571372986,
+  1.0585118532180786,
+  0.33219367265701294
+ ],
+ "triangles": 4213,
+ "slots": [
+  "Prop_VelvetPink",
+  "Prop_WoodWalnut"
+ ],
+ "trianglesLod1": 1894,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.6730944514274597,
+  0.6643873453140259
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.109
+}

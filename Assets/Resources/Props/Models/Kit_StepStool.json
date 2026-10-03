@@ -1,0 +1,110 @@
+{
+ "name": "Kit_StepStool",
+ "supports": [
+  {
+   "name": "tread1",
+   "centre": [
+    0,
+    0.335,
+    0.13354524352046487
+   ],
+   "size": [
+    0.38260308444052904,
+    0.11018205394267676
+   ]
+  },
+  {
+   "name": "tread2",
+   "centre": [
+    0,
+    0.668,
+    0.06360159597948126
+   ],
+   "size": [
+    0.3593458519590251,
+    0.11018205394267676
+   ]
+  },
+  {
+   "name": "top",
+   "centre": [
+    0,
+    1.0,
+    -0.046
+   ],
+   "size": [
+    0.3858346579521085,
+    0.21200000000000002
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.5,
+    0
+   ],
+   "size": [
+    0.45,
+    1.0,
+    0.5
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "top",
+   "pos": [
+    0,
+    1.0,
+    -0.046
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "seat",
+  "pile",
+  "pile_piece"
+ ],
+ "pile": {
+  "cls": "Seat",
+  "mass": 0,
+  "states": [
+   "Upright",
+   "EdgeLean",
+   "Side"
+  ],
+  "tolerance": 0.45,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.2248886078596115,
+  -0.0002791959559544921,
+  -0.24969422817230225
+ ],
+ "boundsMax": [
+  0.2248886078596115,
+  1.0,
+  0.2493833303451538
+ ],
+ "triangles": 696,
+ "slots": [
+  "Prop_WoodOak"
+ ],
+ "trianglesLod1": 278,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.45,
+  0.5
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.05
+}

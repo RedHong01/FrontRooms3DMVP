@@ -1,0 +1,120 @@
+{
+ "name": "Kit_FilingCabinet",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    1.32,
+    0
+   ],
+   "size": [
+    0.36,
+    0.62
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.66,
+    0
+   ],
+   "size": [
+    0.38,
+    1.32,
+    0.66
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "drawer1_pull",
+   "pos": [
+    0,
+    0.35750000000000004,
+    0.335
+   ]
+  },
+  {
+   "name": "drawer2_pull",
+   "pos": [
+    0,
+    0.6500000000000001,
+    0.335
+   ]
+  },
+  {
+   "name": "drawer3_pull",
+   "pos": [
+    0,
+    0.9425000000000001,
+    0.335
+   ]
+  },
+  {
+   "name": "drawer4_pull",
+   "pos": [
+    0,
+    1.235,
+    0.335
+   ]
+  },
+  {
+   "name": "lock",
+   "pos": [
+    -0.128,
+    1.279,
+    0.332
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "wall_unit"
+ ],
+ "pile": {
+  "cls": "Case",
+  "mass": 2,
+  "states": [
+   "Upright",
+   "Back",
+   "Side",
+   "EdgeLean"
+  ],
+  "tolerance": 0.2,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.1899999976158142,
+  0.0,
+  -0.33000001311302185
+ ],
+ "boundsMax": [
+  0.1899999976158142,
+  1.3199999332427979,
+  0.3301999866962433
+ ],
+ "triangles": 1040,
+ "slots": [
+  "Prop_SteelPutty",
+  "Prop_SteelBlack",
+  "Prop_Aluminium",
+  "Prop_Label"
+ ],
+ "trianglesLod1": 446,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.38,
+  0.66
+ ],
+ "placement": "Wall",
+ "service": 0.5,
+ "minCeiling": 1.37
+}

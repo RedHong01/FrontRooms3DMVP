@@ -1,0 +1,46 @@
+{
+ "name": "Kit_PanelPost",
+ "supports": [],
+ "colliders": [],
+ "anchors": [
+  {
+   "name": "top_centre",
+   "pos": [
+    0,
+    1.52,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "panel"
+ ],
+ "noCollider": true,
+ "boundsMin": [
+  -0.03200000151991844,
+  0.0,
+  -0.03200000151991844
+ ],
+ "boundsMax": [
+  0.03200000151991844,
+  1.5199999809265137,
+  0.03200000151991844
+ ],
+ "triangles": 108,
+ "slots": [
+  "Prop_SteelPutty"
+ ],
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.06400000303983688,
+  0.06400000303983688
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 1.57
+}

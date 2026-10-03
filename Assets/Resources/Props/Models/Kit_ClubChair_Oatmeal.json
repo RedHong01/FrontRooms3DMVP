@@ -1,0 +1,103 @@
+{
+ "name": "Kit_ClubChair_Oatmeal",
+ "supports": [
+  {
+   "name": "seat",
+   "centre": [
+    0,
+    0.43299999999999994,
+    0.12
+   ],
+   "size": [
+    0.42,
+    0.4
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.22,
+    -0.0
+   ],
+   "size": [
+    0.85,
+    0.44,
+    0.85
+   ]
+  },
+  {
+   "centre": [
+    0,
+    0.63,
+    -0.33
+   ],
+   "size": [
+    0.85,
+    0.38,
+    0.19
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "sit",
+   "pos": [
+    0,
+    0.43299999999999994,
+    0.12
+   ]
+  }
+ ],
+ "tags": [
+  "domestic",
+  "upholstery",
+  "seat",
+  "pile_piece"
+ ],
+ "pile": {
+  "cls": "Soft",
+  "mass": 2,
+  "states": [
+   "Upright",
+   "Back",
+   "Side",
+   "Inverted"
+  ],
+  "tolerance": 0.3,
+  "palette": "domestic70s",
+  "topper": false,
+  "restTilt": {
+   "Inverted": -16.0
+  }
+ },
+ "boundsMin": [
+  -0.4249829649925232,
+  0.0,
+  -0.4244142472743988
+ ],
+ "boundsMax": [
+  0.42498695850372314,
+  0.8199999928474426,
+  0.43700000643730164
+ ],
+ "triangles": 3805,
+ "slots": [
+  "Prop_FabricBeige",
+  "Prop_WoodDark"
+ ],
+ "trianglesLod1": 1521,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -2.7755575615628914e-17
+ ],
+ "footprintSize": [
+  0.85,
+  0.8500000000000001
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.87
+}

@@ -1,0 +1,85 @@
+{
+ "name": "Kit_BarStool",
+ "supports": [
+  {
+   "name": "seat",
+   "centre": [
+    0,
+    0.752,
+    0
+   ],
+   "size": [
+    0.26,
+    0.26
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.38,
+    0
+   ],
+   "size": [
+    0.5151206231708094,
+    0.76,
+    0.5151206231708094
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "sit",
+   "pos": [
+    0,
+    0.7496,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "pile"
+ ],
+ "pile": {
+  "cls": "Seat",
+  "mass": 0,
+  "states": [
+   "Upright",
+   "Inverted",
+   "Side"
+  ],
+  "tolerance": 0.45,
+  "palette": "domestic70s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.2575603127479553,
+  0.0,
+  -0.2575603127479553
+ ],
+ "boundsMax": [
+  0.2575603127479553,
+  0.7599999904632568,
+  0.2575603127479553
+ ],
+ "triangles": 1600,
+ "slots": [
+  "Prop_WoodWalnut",
+  "Prop_Chrome",
+  "Prop_Label"
+ ],
+ "trianglesLod1": 688,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.5151206231708094,
+  0.5151206231708094
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.81
+}

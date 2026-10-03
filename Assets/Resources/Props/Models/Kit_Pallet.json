@@ -1,0 +1,85 @@
+{
+ "name": "Kit_Pallet",
+ "supports": [
+  {
+   "name": "deck",
+   "centre": [
+    0,
+    0.144,
+    0
+   ],
+   "size": [
+    1.2,
+    1.0
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.072,
+    0
+   ],
+   "size": [
+    1.2,
+    0.144,
+    1.0
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "deck",
+   "pos": [
+    0,
+    0.144,
+    0
+   ]
+  }
+ ],
+ "tags": [
+  "storage",
+  "pallet",
+  "pile",
+  "pile_piece"
+ ],
+ "pile": {
+  "cls": "Crate",
+  "mass": 2,
+  "states": [
+   "Upright"
+  ],
+  "tolerance": 0.2,
+  "palette": "storage",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.6038560271263123,
+  0.0,
+  -0.5017163157463074
+ ],
+ "boundsMax": [
+  0.6018441915512085,
+  0.1439897119998932,
+  0.5013989210128784
+ ],
+ "triangles": 994,
+ "slots": [
+  "Prop_PinePallet",
+  "Prop_SteelBlack"
+ ],
+ "trianglesLod1": 436,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  1.2,
+  1.0
+ ],
+ "placement": "Floor",
+ "service": 0.0,
+ "minCeiling": 0.194
+}

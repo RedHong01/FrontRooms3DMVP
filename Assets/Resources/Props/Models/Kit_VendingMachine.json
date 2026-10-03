@@ -1,0 +1,101 @@
+{
+ "name": "Kit_VendingMachine",
+ "supports": [
+  {
+   "name": "top",
+   "centre": [
+    0,
+    1.83,
+    -0.0
+   ],
+   "size": [
+    0.88,
+    0.82
+   ]
+  }
+ ],
+ "colliders": [
+  {
+   "centre": [
+    0,
+    0.915,
+    0
+   ],
+   "size": [
+    0.9,
+    1.83,
+    0.84
+   ]
+  }
+ ],
+ "anchors": [
+  {
+   "name": "keypad",
+   "pos": [
+    -0.325,
+    1.45,
+    0.44
+   ]
+  },
+  {
+   "name": "delivery",
+   "pos": [
+    0.1,
+    0.36750000000000005,
+    0.44
+   ]
+  },
+  {
+   "name": "window",
+   "pos": [
+    0.1,
+    1.1324999999999998,
+    0.44
+   ]
+  }
+ ],
+ "tags": [
+  "office",
+  "wall_unit"
+ ],
+ "pile": {
+  "cls": "Case",
+  "mass": 3,
+  "states": [
+   "Upright",
+   "Back"
+  ],
+  "tolerance": 0.2,
+  "palette": "office90s",
+  "topper": false
+ },
+ "boundsMin": [
+  -0.453000009059906,
+  0.0,
+  -0.44806578755378723
+ ],
+ "boundsMax": [
+  0.4570000171661377,
+  1.8299999237060547,
+  0.46890348196029663
+ ],
+ "triangles": 2432,
+ "slots": [
+  "Prop_SteelBlack",
+  "Prop_Glass",
+  "Prop_VendingFront"
+ ],
+ "trianglesLod1": 1020,
+ "frontAxis": "+Z",
+ "footprintCentre": [
+  -0.0,
+  -0.0
+ ],
+ "footprintSize": [
+  0.9,
+  0.84
+ ],
+ "placement": "Wall",
+ "service": 0.5,
+ "minCeiling": 1.88
+}
