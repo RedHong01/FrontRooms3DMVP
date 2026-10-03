@@ -155,32 +155,39 @@ public static class FrontRoomsLevelDesignerTests
         Wall("west wall", new Vector2(.4f, 4.5f), 90f, (x0, z0, x1, z1) => Close(x0, gap), (x0, z0, x1, z1) => (z0 + z1) * .5f, 4.5f);
         Wall("east wall", new Vector2(W - .4f, 1.5f), 270f, (x0, z0, x1, z1) => Close(x1, W - gap), (x0, z0, x1, z1) => (z0 + z1) * .5f, 1.5f);
         Wall("inner wall, east face", new Vector2(6.4f, 4.5f), 90f, (x0, z0, x1, z1) => Close(x0, 6f + gap), (x0, z0, x1, z1) => (z0 + z1) * .5f, 4.5f);
-        Wall("inner wall, west face", new Vector2(5.6f, 7.5f - 3f), 270f, (x0, z0, x1, z1) => Close(x1, 6f - gap), (x0, z0, x1, z1) => (z0 + z1) * .5f, 4.5f);
+        Wall("inner wall, west face", new Vector2(5.6f, 4.5f), 270f, (x0, z0, x1, z1) => Close(x1, 6f - gap), (x0, z0, x1, z1) => (z0 + z1) * .5f, 4.5f);
         // Into a corner: kept clear of the side wall.
         Wall("south-west corner", new Vector2(.2f, .2f), 0f, (x0, z0, x1, z1) => Close(z0, gap) && x0 >= gap - 1e-3f, (x0, z0, x1, z1) => x0, gap);
 
         // The south doorway is not a wall: a unit put there goes to the wall beside it.
-        var arch = m.props[FrontRoomsModuleEditing.AddKit(module, wall, new Vector2(4.5f, .3f))];
+        var arch = Add(module, wall, new Vector2(4.5f, .3f));
         Check("wall unit put in a doorway goes to the wall beside it", arch.x <= 3f + 1e-3f || arch.x >= 6f - 1e-3f, P(arch));
 
         if (FrontRoomsKitLibrary.GetInfo("Kit_WallClock") != null)
         {
-            var clock = m.props[FrontRoomsModuleEditing.AddKit(module, "Kit_WallClock", new Vector2(4.5f, 8.8f))];
+            var clock = Add(module, "Kit_WallClock", new Vector2(4.5f, 8.8f));
             Check("hung kit goes up 2.1 m on its wall", CloseYaw(clock.yaw, 180f) && Close(clock.y, 2.1f), P(clock));
         }
 
-        var desk = floors.FirstOrDefault(k => FrontRoomsKitLibrary.GetInfo(k).TrySupport("top", out _, out _) && k == "Kit_OfficeDesk") ?? floors.First(k => FrontRoomsKitLibrary.GetInfo(k).TrySupport("top", out _, out _));
+        var desk = floors.Contains("Kit_OfficeDesk") ? "Kit_OfficeDesk" : floors.First(k => FrontRoomsKitLibrary.GetInfo(k).TrySupport("top", out _, out _));
         FrontRoomsKitLibrary.GetInfo(desk).TrySupport("top", out var top, out _);
         FrontRoomsModuleEditing.AddKit(module, desk, new Vector2(2f, 6.5f));
         var item = desks.Contains("Kit_Keyboard") ? "Kit_Keyboard" : desks[0];
-        var onDesk = m.props[FrontRoomsModuleEditing.AddKit(module, item, new Vector2(2f, 6.5f))];
+        var onDesk = Add(module, item, new Vector2(2f, 6.5f));
         Check("desk-top item lands on the desk under it, without a collider", Close(onDesk.y, top.y) && onDesk.noCollider && Close(onDesk.x, 2f) && Close(onDesk.z, 6.5f), P(onDesk) + " desk top " + top.y);
-        var onFloor = m.props[FrontRoomsModuleEditing.AddKit(module, item, new Vector2(8f, 4.5f))];
+        var onFloor = Add(module, item, new Vector2(8f, 4.5f));
         Check("desk-top item with no desk under it stays on the floor", onFloor.y == 0f && onFloor.noCollider, P(onFloor));
-        var outside = m.props[FrontRoomsModuleEditing.AddKit(module, floor, new Vector2(-2f, 20f))];
+        var outside = Add(module, floor, new Vector2(-2f, 20f));
         Check("a kit put outside the room is kept inside it", Close(outside.x, 0f) && Close(outside.z, D), P(outside));
         FrontRoomsModuleEditing.RemoveProps(module, new[] { m.props.Length - 1 });
         return (floor, floorIndex, wall, westIndex);
+    }
+
+    /// <summary>Add a kit as the palette does and return the prop it became (AddKit replaces the props array, so index it afterwards).</summary>
+    static ModuleProp Add(FrontRoomsRoomModule module, string kit, Vector2 at)
+    {
+        var index = FrontRoomsModuleEditing.AddKit(module, kit, at);
+        return module.data.props[index];
     }
 
     static string P(ModuleProp p) => p.kit + " x " + p.x.ToString("0.000") + " z " + p.z.ToString("0.000") + " y " + p.y.ToString("0.00") + " yaw " + p.yaw.ToString("0.0");
@@ -241,6 +248,19 @@ public static class FrontRoomsLevelDesignerTests
     static FrontRoomsModulePropTag Tag(FrontRoomsModulePreview preview, int index) =>
         preview.World.GetComponentsInChildren<FrontRoomsModulePropTag>(true).FirstOrDefault(t => t.index == index);
 
+    /// <summary>
+    /// Move a prop as the Move and Rotate tools do, recorded for Undo; the
+    /// flush is where Unity calls Undo.postprocessModifications (after every
+    /// drag step), then the tools' write-back runs as on the next editor update.
+    /// </summary>
+    static void MoveInScene(FrontRoomsModulePropTag tag, Vector3 position, Quaternion rotation)
+    {
+        Undo.RecordObject(tag.transform, "Move");
+        tag.transform.SetPositionAndRotation(position, rotation);
+        Undo.FlushUndoRecordObjects();
+        FrontRoomsDesignerSceneTools.Sync();
+    }
+
     // ---------- Scene view tools ----------
 
     static void SceneTools(FrontRoomsModulePreview preview, (string floor, int floorIndex, string wall, int westIndex) kits)
@@ -254,20 +274,20 @@ public static class FrontRoomsLevelDesignerTests
         if (tag == null) return;
         Selection.activeGameObject = tag.gameObject;
         var before = m.props[kits.floorIndex];
+        var world = preview.World;
         Undo.IncrementCurrentGroup();
-        Undo.RecordObject(tag.transform, "Move");
-        tag.transform.position = preview.ModuleToWorld(new Vector2(before.x + .52f, before.z - .31f), before.y);
-        tag.transform.rotation = Quaternion.Euler(0f, 90f, 0f) * tag.transform.rotation;
-        var away = FrontRoomsDesignerSceneTools.WriteBack(preview, tag);
+        MoveInScene(tag, preview.ModuleToWorld(new Vector2(before.x + .52f, before.z - .31f), before.y), Quaternion.Euler(0f, 90f, 0f) * tag.transform.rotation);
         var after = m.props[kits.floorIndex];
-        Check("write-back: x and z (0.05 m) and yaw follow the Scene, height and kit stay", away
-            && Close(after.x, FrontRoomsModuleEditing.Snap(before.x + .52f)) && Close(after.z, FrontRoomsModuleEditing.Snap(before.z - .31f))
+        Check("write-back: x and z (0.05 m) and yaw follow the Scene, height and kit stay",
+            Close(after.x, FrontRoomsModuleEditing.Snap(before.x + .52f)) && Close(after.z, FrontRoomsModuleEditing.Snap(before.z - .31f))
             && CloseYaw(after.yaw, before.yaw + 90f) && after.y == before.y && after.kit == before.kit, P(before) + " -> " + P(after));
-        FrontRoomsDesignerSceneTools.WriteBack(preview, tag);
+        Check("write-back: no rebuild while the prop is moving (the dragged object lives on)", preview.World == world && tag != null && FrontRoomsDesignerSceneTools.RebuildPending);
+        MoveInScene(tag, tag.transform.position, tag.transform.rotation);
         Check("write-back: a prop that has not moved again leaves the module alone", m.props[kits.floorIndex].Equals(after));
         Undo.FlushUndoRecordObjects();
         Undo.PerformUndo();
-        Check("write-back: Undo puts the module prop back", m.props[kits.floorIndex].Equals(before), P(m.props[kits.floorIndex]));
+        Check("write-back: one Undo puts the module prop and the object back", m.props[kits.floorIndex].Equals(before)
+            && (tag.transform.position - preview.ModuleToWorld(new Vector2(before.x, before.z), before.y)).magnitude < Near, P(m.props[kits.floorIndex]));
 
         // Moved along one axis only: the other keeps its exact value (a wall unit's gap is not on the 0.05 m grid).
         var wallTag = Tag(preview, kits.westIndex);
@@ -275,8 +295,7 @@ public static class FrontRoomsLevelDesignerTests
         {
             var w0 = m.props[kits.westIndex];
             Undo.IncrementCurrentGroup();
-            wallTag.transform.position = preview.ModuleToWorld(new Vector2(w0.x, w0.z + .4f), w0.y);
-            FrontRoomsDesignerSceneTools.WriteBack(preview, wallTag);
+            MoveInScene(wallTag, preview.ModuleToWorld(new Vector2(w0.x, w0.z + .4f), w0.y), wallTag.transform.rotation);
             var w1 = m.props[kits.westIndex];
             Check("write-back: moved along the wall, the distance from the wall is kept exactly", w1.x == w0.x && Close(w1.z, FrontRoomsModuleEditing.Snap(w0.z + .4f)) && w1.yaw == w0.yaw, P(w0) + " -> " + P(w1));
             Undo.FlushUndoRecordObjects();
@@ -290,14 +309,14 @@ public static class FrontRoomsLevelDesignerTests
         tag = Tag(preview, kits.floorIndex);
         Selection.activeGameObject = tag.gameObject;
         Undo.IncrementCurrentGroup();
-        tag.transform.position = preview.ModuleToWorld(new Vector2(before.x + 1f, before.z), before.y);
-        FrontRoomsDesignerSceneTools.WriteBack(preview, tag);
+        MoveInScene(tag, preview.ModuleToWorld(new Vector2(before.x + 1f, before.z), before.y), tag.transform.rotation);
         FrontRoomsDesignerSceneTools.Commit(preview);
         var rebuilt = Tag(preview, kits.floorIndex);
         var selected = Selection.activeGameObject != null ? Selection.activeGameObject.GetComponent<FrontRoomsModulePropTag>() : null;
         Check("commit: rebuilt prop at its new place, selected again", rebuilt != null && rebuilt != tag
             && (rebuilt.transform.position - preview.ModuleToWorld(new Vector2(before.x + 1f, before.z), before.y)).magnitude < Near
-            && selected == rebuilt, selected != null ? "selected index " + selected.index : "nothing selected");
+            && selected == rebuilt && !FrontRoomsDesignerSceneTools.RebuildPending, selected != null ? "selected index " + selected.index : "nothing selected");
+        Undo.FlushUndoRecordObjects();
         Undo.PerformUndo();
         Check("commit: Undo puts the module prop back", m.props[kits.floorIndex].Equals(before), P(m.props[kits.floorIndex]));
         preview.Rebuild();
@@ -352,8 +371,10 @@ public static class FrontRoomsLevelDesignerTests
         Undo.PerformUndo();
         Check("generator: Undo takes it out again", !profile.modules.Contains(module) && profile.modules.SequenceEqual(before));
 
+        // Two clicks: each is its own undo step.
         Undo.IncrementCurrentGroup();
         FrontRoomsLevelDesigner.SetUsedByGenerator(profile, module, true);
+        Undo.FlushUndoRecordObjects();
         Undo.IncrementCurrentGroup();
         FrontRoomsLevelDesigner.SetUsedByGenerator(profile, module, false);
         Check("generator: the toggle off removes it", !profile.modules.Contains(module) && profile.modules.SequenceEqual(before));

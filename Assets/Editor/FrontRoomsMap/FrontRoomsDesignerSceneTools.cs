@@ -18,10 +18,11 @@ using UnityEngine.SceneManagement;
 /// Clicking a prop selects the whole kit, not a mesh inside it, and props
 /// stay selected across every rebuild.
 ///
-/// Write-back polls the selected props each editor update rather than
-/// listening to Undo.postprocessModifications or ObjectChangeEvents: the
-/// preview's objects are DontSave, and polling catches every way of moving
-/// them whether or not Undo records it (see LEVEL_DESIGNER.md).
+/// Moves are seen through Undo.postprocessModifications, which Unity calls
+/// for the preview's DontSave props as for any scene object. The module is
+/// written on the next editor update, not inside that callback: an Undo
+/// record made there is lost (both checked in batch, see LEVEL_DESIGNER.md),
+/// and the write joins the move's undo step.
 /// </summary>
 [InitializeOnLoad]
 public static class FrontRoomsDesignerSceneTools
@@ -33,10 +34,12 @@ public static class FrontRoomsDesignerSceneTools
     static readonly Color OutlineColor = new Color(1f, .6f, .2f, .9f), OpeningColor = new Color(.3f, .9f, .4f, .9f), GhostFill = new Color(.4f, 1f, .5f, .25f);
 
     static FrontRoomsModulePreview cached;
-    // Moved props waiting for the rebuild: when they last moved, and where they were then.
-    static bool moved;
+    // Transforms of tagged props that Undo saw change, and the undo group of the first, until Sync writes them back.
+    static readonly HashSet<Transform> touched = new HashSet<Transform>();
+    static int touchedGroup;
+    // The preview whose props moved, waiting for its rebuild, and when they last moved.
+    static FrontRoomsModulePreview moved;
     static double lastMove;
-    static int lastPose;
     // Props to select after the next rebuild, when an edit knows better than the current selection (a drop, a new prop).
     static int[] reselect;
     static (string kit, Vector2 at)? ghost;
@@ -45,6 +48,7 @@ public static class FrontRoomsDesignerSceneTools
     static FrontRoomsDesignerSceneTools()
     {
         SceneView.duringSceneGui += OnSceneGUI;
+        Undo.postprocessModifications += OnModifications;
         EditorApplication.update += Update;
         Selection.selectionChanged += OnSelectionChanged;
         FrontRoomsModulePreview.Rebuilding += OnRebuilding;
@@ -141,37 +145,57 @@ public static class FrontRoomsDesignerSceneTools
     {
         var indices = reselect;
         reselect = null;
-        moved = false;
+        if (moved == preview) moved = null;
         if (indices != null && indices.Length > 0) SelectProps(preview, indices);
     }
 
     // ---------- Moving props in the Scene ----------
 
+    /// <summary>Note every tagged prop whose transform Undo saw change (the Move and Rotate tools, the Transform fields).</summary>
+    static UndoPropertyModification[] OnModifications(UndoPropertyModification[] modifications)
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode) return modifications;
+        foreach (var modification in modifications)
+        {
+            if (!(modification.currentValue?.target is Transform t) || t.GetComponentInParent<FrontRoomsModulePropTag>(true) == null) continue;
+            if (touched.Count == 0) touchedGroup = Undo.GetCurrentGroup();
+            touched.Add(t);
+            lastMove = EditorApplication.timeSinceStartup;
+        }
+        return modifications;
+    }
+
     static void Update()
     {
-        var preview = ActivePreview();
-        if (preview == null)
-        {
-            moved = false;
-            return;
-        }
-        var away = false;
-        var pose = 17;
-        foreach (var tag in SelectedTags(preview))
-        {
-            away |= WriteBack(preview, tag);
-            pose = pose * 31 + tag.transform.position.GetHashCode();
-            pose = pose * 31 + tag.transform.rotation.GetHashCode();
-        }
-        // Only a change since the last poll counts as a move, so a prop the rebuild cannot put back never rebuilds again and again.
-        if (pose != lastPose)
-        {
-            lastPose = pose;
-            lastMove = EditorApplication.timeSinceStartup;
-            if (away) moved = true;
-        }
+        Sync();
         // Rebuilding while a handle is held would destroy the object being dragged.
-        if (moved && GUIUtility.hotControl == 0 && EditorApplication.timeSinceStartup - lastMove >= Settle) Commit(preview);
+        if (moved != null && GUIUtility.hotControl == 0 && EditorApplication.timeSinceStartup - lastMove >= Settle) Commit(moved);
+    }
+
+    /// <summary>
+    /// Write the props Undo saw move back to their modules, as one undo step
+    /// with the move. The editor runs it every update; the tests call it
+    /// straight after a recorded move.
+    /// </summary>
+    public static void Sync()
+    {
+        if (touched.Count == 0) return;
+        var wrote = false;
+        foreach (var t in touched)
+        {
+            var tag = t != null ? t.GetComponentInParent<FrontRoomsModulePropTag>(true) : null;
+            var preview = tag != null ? tag.GetComponentInParent<FrontRoomsModulePreview>(true) : null;
+            if (preview == null || TagOf(tag.gameObject, preview) != tag) continue;
+            var module = preview.module;
+            var before = module.data.props[tag.index];
+            // A mesh moved inside the kit has nothing to write, but the rebuild puts it back.
+            if (WriteBack(preview, tag) || t != tag.transform) moved = preview;
+            wrote |= !module.data.props[tag.index].Equals(before);
+        }
+        touched.Clear();
+        if (!wrote) return;
+        Undo.FlushUndoRecordObjects();
+        Undo.CollapseUndoOperations(touchedGroup);
     }
 
     /// <summary>
@@ -180,17 +204,18 @@ public static class FrontRoomsDesignerSceneTools
     /// room) for the axes it moved along, yaw (whole degrees) if it turned.
     /// Recorded for Undo on the asset; the preview is not rebuilt here. Height
     /// stays the panel's (a lifted prop drops back at the rebuild). Returns
-    /// whether the prop is away from its module place.
+    /// whether the prop is away from its module place (scaled counts: the
+    /// rebuild sets it right).
     /// </summary>
-    public static bool WriteBack(FrontRoomsModulePreview preview, FrontRoomsModulePropTag tag)
+    static bool WriteBack(FrontRoomsModulePreview preview, FrontRoomsModulePropTag tag)
     {
-        if (TagOf(tag.gameObject, preview) != tag) return false;
         var module = preview.module;
         var m = module.data;
         var p = m.props[tag.index];
         var t = tag.transform;
         var turned = Quaternion.Angle(t.rotation, preview.ModuleToWorldRotation(p.yaw)) > MovedDegrees;
-        if ((t.position - preview.ModuleToWorld(new Vector2(p.x, p.z), p.y)).magnitude < MovedMetres && !turned) return false;
+        var scaled = (t.localScale - Vector3.one).sqrMagnitude > 1e-6f;
+        if ((t.position - preview.ModuleToWorld(new Vector2(p.x, p.z), p.y)).magnitude < MovedMetres && !turned) return scaled;
         var at = preview.WorldToModule(t.position);
         var q = p;
         if (Mathf.Abs(at.x - p.x) > MovedMetres) q.x = Mathf.Clamp(FrontRoomsModuleEditing.Snap(at.x), 0f, m.WidthMetres);
@@ -206,12 +231,14 @@ public static class FrontRoomsDesignerSceneTools
         return true;
     }
 
+    /// <summary>Props have moved and the preview has not been rebuilt from the module since.</summary>
+    public static bool RebuildPending => moved != null;
+
     /// <summary>The move is over: rebuild the preview from the module (the moved props stay selected).</summary>
     public static void Commit(FrontRoomsModulePreview preview)
     {
-        moved = false;
-        // The move's undo step closes here, not with whatever the designer does next.
-        Undo.FlushUndoRecordObjects();
+        moved = null;
+        if (preview == null || preview.module == null) return;
         FrontRoomsRoomModule.NotifyChanged(preview.module);
         preview.Rebuild();
     }

@@ -1,20 +1,27 @@
 """Hunter direction D — "Delivery" (Documentation/research/hunter/10_hunter_directions.md §6, §7.5).
 
-The delivery nobody signed for: a mover bent under a quilted, strapped moving-pad
-bundle that has become his back. Knit watch cap, two bands of silver tape over the
-eyes and mouth, brown duck-canvas work jacket, charcoal trousers, oversized pale
-cotton work gloves, steel-toe boots. Built in the "carry" render pose (Hunt plod).
+The delivery nobody signed for: a mover bent under a square-cornered, strapped
+moving-pad bundle that has become his back. Charcoal knit watch cap with an ecru
+cuff turned up at the brow (the only light on the head); the face below it is
+charcoal, plain big planes, in the load's shadow. Brown duck-canvas work jacket
+(waist length, banded hem), charcoal trousers, oversized pale cotton work gloves,
+steel-toe boots. Built in the "carry" render pose (Hunt plod).
 
 Coordinates are the spec's (metres, Z up, facing -Y, left = +X) before flooring.
+Rotations are Blender XYZ Euler degrees: X pitches, Y rolls (+Y lowers the +X end),
+Z yaws (§7.0). The load is a slab 0.72 x 0.42 x 0.50 m, corner radius 0.05, pitched
+20 deg with the torso, rolled -11 deg about Y (its right end down) and sitting 3 cm
+toward its left shoulder, so from the front it is a tilted block, not a round head.
+
 The tell: the cargo straps come down the load and run INTO the tops of the
 shoulders (the canvas puckers where they go in); they come back out of the front of
 the shoulders and cross the chest in an X with a buckle. It never sets the load down.
 
-Slots (6, the cap): pad navy (load, hanging corner), canvas brown (jacket),
-charcoal (trousers, knit cap), paper (gloves, binding, label), silver tape (tape,
-buckles), vinyl (face and neck in shadow, boots, straps, label print). The spec's
-SkinSallow neck and Chrome buckle are folded into vinyl and silver tape to stay
-within six slots (no skin reads, as §6 asks).
+Slots (6): pad navy (load, hanging corner), canvas brown (jacket), charcoal
+(trousers, cap, face, neck), paper (gloves, cap cuff, binding, label), vinyl (boots,
+straps, label print), chrome (the two buckles). No tape anywhere: the first build's
+silver tape over the eyes and mouth read as a bound hostage and sat near Little
+Nightmares' Janitor (critic C1, C6.5), so Creature_TapeSilver is gone.
 """
 
 import math
@@ -25,17 +32,17 @@ from mathutils.bvhtree import BVHTree
 
 NAME = "Hunter_D_Delivery"
 TITLE = "Delivery"
-PITCH = ("A mover bent double under a strapped, quilted moving pad that has grown into his back; "
-         "every time it relays, a fresh carrier arrives with the same load and the same label.")
-EYE = 1.60            # replaced in build() by the measured centre of the eye tape after flooring
+PITCH = ("A mover bent under a square, strapped moving-pad load whose straps run into his shoulders; "
+         "his face stays in its shadow, and every relay a fresh carrier arrives with the same load and label.")
+EYE = 1.60            # replaced in build() by the measured centre of the face (eye line) after flooring
 SMOOTH_ANGLE = 60.0
 
 PAD = "Creature_PadNavy"
 JACKET = "Creature_CanvasBrown"
 CLOTH = "Prop_FabricCharcoal"
 LIGHT = "Prop_Paper"
-TAPE = "Creature_TapeSilver"
 DARK = "Prop_Vinyl"
+CHROME = "Prop_Chrome"
 
 V = Vector
 
@@ -56,40 +63,81 @@ def _smooth(e0, e1, x):
 
 
 # ------------------------------------------------------------------ the load
-# A rounded box on a uniform grid (so the faces can bow, quilt and be cinched by the
-# straps), pitched with the torso and rolled so its right side sits lower; its two
-# ends sag like a soft load. Spec: 0.76 x 0.42 x 0.62.
-L_HALF = V((0.38, 0.21, 0.31))
-L_R = 0.13
-L_LOC = V((0.01, 0.06, 1.60))
-L_ROT = (20.0, -6.0, 0.0)        # spec wrote (20, 0, -6): in XYZ Euler that is a yaw; the roll is about Y
-L_PUFF = 0.032
-L_SAG = 0.035
-L_QUILT = 0.02
-L_QSTEP = 0.24
-L_CINCH = 0.016
-STRAP_X = 0.22                   # local x of the two vertical straps
-GIRTH_Z = -0.05                  # local z of the girth strap
+# A square-cornered slab (rounded box, radius 0.05) on a grid laid out for it: two
+# rows per corner quarter-round and the quilt seams / cell middles in between, so the
+# corners stay crisp, the faces bow a little, the quilting is a few grid-aligned
+# stitch lines (production bakes it to a normal map) and the straps cinch on a row.
+L_HALF = V((0.36, 0.21, 0.25))       # 0.72 W x 0.42 D x 0.50 H
+L_R = 0.05
+L_LOC = V((0.03, 0.06, 1.59))        # 3 cm toward its left shoulder
+L_ROT = (20.0, -11.0, 0.0)           # pitch 20 with the torso; roll -11 (right end down)
+L_PUFF = 0.014                       # faces bow out a little: a pad over something hard
+L_SAG = 0.008
+L_QUILT = 0.010                      # depth of a stitch line
+L_CELL = 0.15                        # target quilt cell
+L_CINCH = 0.012
 STRAP_W, STRAP_T = 0.055, 0.010
+GIRTH_Z = 0.0                        # local z of the girth strap (a cell-middle row)
 LR = _R(L_ROT)
+STRAP_END = {}                       # local z where each shoulder strap leaves the front face (set in build)
 
 
-def _radius(q):
-    """Soft everywhere except the top-back-left corner, where something boxy presses through."""
-    w = 1.0
-    for i in range(3):
-        w *= _smooth(0.15, 0.95, q[i] / L_HALF[i])
-    return L_R - 0.07 * w
+def _inner(i):
+    return L_HALF[i] - L_R
+
+
+def _seams(i):
+    """Interior quilt-seam positions along local axis i (the face perimeter is left plain)."""
+    inner = _inner(i)
+    n = max(1, round(2 * inner / L_CELL))
+    cell = 2 * inner / n
+    return [-inner + cell * m for m in range(1, n)], cell, n
+
+
+def _rows(i):
+    """Grid positions along local axis i: edge, 22.5 deg on the round, seams and cell middles."""
+    h, inner = L_HALF[i], _inner(i)
+    t = math.tan(math.radians(22.5)) * L_R
+    _s, cell, n = _seams(i)
+    return [-h, -inner - t] + [-inner + cell * m / 2 for m in range(2 * n + 1)] + [inner + t, h]
+
+
+STRAP_X = _inner(0) - _seams(0)[1] / 2      # local x of the two vertical straps: the outer cell middles
 
 
 def _rbox(q):
     """Box-surface point q (|q_k| = half size on its face) -> rounded-box point, normal."""
-    r = _radius(q)
-    inner = [L_HALF[i] - r for i in range(3)]
+    inner = [_inner(i) for i in range(3)]
     c = V([max(-inner[i], min(inner[i], q[i])) for i in range(3)])
     d = V(q) - c
     n = d.normalized() if d.length > 1e-9 else V((0, 0, 1))
-    return c + n * r, n
+    return c + n * L_R, n
+
+
+def _stitch(i, x):
+    seams = _seams(i)[0]
+    if not seams:
+        return 0.0
+    d = min(abs(x - s) for s in seams)
+    return math.exp(-(d / 0.03) ** 2)
+
+
+def _cinch(q, n):
+    """How much the straps pull the surface in at q (0..1)."""
+    h = L_HALF
+    front = n[1] < -0.7
+    cin = 0.0
+    for side, sx in (("l", 1), ("r", -1)):
+        g = math.exp(-((q[0] - sx * STRAP_X) / 0.05) ** 2)
+        if front:      # the shoulder strap only runs down the front face as far as its exit
+            g *= _smooth(STRAP_END.get(side, -h.z) - 0.06, STRAP_END.get(side, -h.z), q[2])
+        cin = max(cin, g)
+    g = math.exp(-((q[2] - GIRTH_Z) / 0.05) ** 2)
+    if front:          # the girth strap tucks under at the front corners
+        g *= _smooth(h.x - 0.12, h.x - 0.05, abs(q[0]))
+    if abs(n[2]) > 0.7:
+        g = 0.0
+    return max(cin, g)
 
 
 def _load_disp(q, n, quilt=True):
@@ -97,21 +145,16 @@ def _load_disp(q, n, quilt=True):
     a, b = [i for i in range(3) if i != k]
     w = max(0.0, 1 - (q[a] / L_HALF[a]) ** 2) * max(0.0, 1 - (q[b] / L_HALF[b]) ** 2)
     disp = L_PUFF * w * (0.7 if k == 2 else 1.0)
-    cin = max(math.exp(-((q[0] - STRAP_X) / 0.05) ** 2), math.exp(-((q[0] + STRAP_X) / 0.05) ** 2),
-              math.exp(-((q[2] - GIRTH_Z) / 0.05) ** 2))
+    cin = _cinch(q, n)
     disp -= (L_CINCH + L_PUFF * w * 0.8) * cin
     if quilt and L_QUILT:
-        fade = _smooth(0.84, 0.97, abs(n[k])) * (1 - 0.8 * cin)
-        u, v = q[a] / L_QSTEP, q[b] / L_QSTEP
-        g1, g2 = u + v + 0.5, u - v + 0.5
-        d1, d2 = abs(g1 - round(g1)), abs(g2 - round(g2))
-        stitch = max(math.exp(-(d1 / 0.15) ** 2), math.exp(-(d2 / 0.15) ** 2))
-        disp -= L_QUILT * stitch * fade
+        fade = _smooth(0.9, 0.99, abs(n[k])) * (1 - 0.8 * cin)
+        disp -= L_QUILT * max(_stitch(a, q[a]), _stitch(b, q[b])) * fade
     return disp
 
 
 def _warp(p):
-    """The soft load sags at its two ends."""
+    """The soft load sags a touch at its two ends."""
     return V((p.x, p.y, p.z - L_SAG * (p.x / L_HALF.x) ** 2))
 
 
@@ -123,10 +166,10 @@ def _load_point(q, off=0.0, quilt=False):
     return L_LOC + LR @ p, (LR @ n).normalized()
 
 
-def _pad(kit, step=0.037):
+def _pad(kit):
     bm = bmesh.new()
     h = L_HALF
-    cnt = [max(4, round(2 * h[i] / step)) for i in range(3)]
+    rows = [_rows(i) for i in range(3)]
     cache = {}
 
     def vert(q):
@@ -143,22 +186,28 @@ def _pad(kit, step=0.037):
         a, b = [i for i in range(3) if i != k]
         for s in (-1, 1):
             grid = []
-            for i in range(cnt[a] + 1):
+            for ra in rows[a]:
                 row = []
-                for j in range(cnt[b] + 1):
+                for rb in rows[b]:
                     q = [0.0, 0.0, 0.0]
-                    q[k] = s * h[k]
-                    q[a] = -h[a] + 2 * h[a] * i / cnt[a]
-                    q[b] = -h[b] + 2 * h[b] * j / cnt[b]
+                    q[k], q[a], q[b] = s * h[k], ra, rb
                     row.append(vert(q))
                 grid.append(row)
-            for i in range(cnt[a]):
-                for j in range(cnt[b]):
+            for i in range(len(rows[a]) - 1):
+                for j in range(len(rows[b]) - 1):
                     bm.faces.new((grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     obj = kit._new_object("load", bm, PAD, "metres", "xz")
     kit._place(obj, tuple(L_LOC), L_ROT)
     return obj
+
+
+def _binding_lift(q):
+    """Straps lift over the binding where they cross it (top-front edge, left-front edge)."""
+    h = L_HALF
+    d1 = abs(q[1] + h.y) + abs(q[2] - h.z)
+    d2 = abs(q[0] - h.x) + abs(q[1] + h.y)
+    return 0.015 * math.exp(-(min(d1, d2) / 0.035) ** 2)
 
 
 def _path(corners, step=0.025):
@@ -220,12 +269,12 @@ def _patch(kit, centre_xy, size, angle, off, slot, name, n=6):
     return kit._new_object(name, bm, slot, "metres", "xz")
 
 
-def _tail(kit, drop=0.27, nu=8, nv=7, thick=0.014):
+def _tail(kit, drop=0.24, nu=8, nv=7, thick=0.014):
     """A loose corner of the moving blanket hanging off the bundle's bottom-back-left corner,
     bound on both edges (the pale binding again, continuing the edge that runs down the
-    left side): the load is a blanket wrapped round something."""
+    left front): the load is a blanket wrapped round something hard."""
     h = L_HALF
-    attach = _path([(0.04, h.y - 0.035, -h.z), (h.x - 0.10, h.y - 0.035, -h.z), (h.x - 0.10, 0.0, -h.z)], 0.01)
+    attach = _path([(0.06, h.y - 0.035, -h.z), (h.x - 0.08, h.y - 0.035, -h.z), (h.x - 0.08, 0.02, -h.z)], 0.01)
     top_pts = [_load_point(q, -0.006)[0] for q in attach]
     acc = [0.0]
     for a, b in zip(top_pts, top_pts[1:]):
@@ -288,9 +337,9 @@ H_LOC = V((0.0, -0.255, 1.659))
 H_ROT = (36.0, 0.0, 3.0)                # hung 36 deg under the load, turned a touch to its left
 H_HALF = (0.09, 0.105, 0.1175)          # 0.18 W x 0.21 D x 0.235 H in the cap
 HR = _R(H_ROT)
-EYE_Z = (-0.014, 0.024)                 # head-local z of the eye tape
-MOUTH_Z = (-0.076, -0.048)
-CUFF_Z = (0.026, 0.072)
+FACE_Z = 0.004                          # head-local z of the eye line (the face's centre)
+CUFF_Z = (0.022, 0.080)                 # the turned-up ecru cuff, right at the brow
+CUFF_OUT = (0.011, 0.016)               # stands proud of the head, flaring a little at the fold
 
 
 def _head_deform(p):
@@ -298,9 +347,17 @@ def _head_deform(p):
     return V((p.x * (1 - 0.26 * t * t), p.y * (1 - 0.06 * t * t) - 0.014 * t * t, p.z))
 
 
+def _face_planes(p):
+    """Flatten the front of the face below the brow into one broad plane (no features but the nose)."""
+    if p.y >= 0:
+        return p
+    f = 0.10 * _smooth(0.02, -0.04, p.z) * _smooth(0.0, -0.06, p.y)
+    return V((p.x, p.y * (1 - f), p.z))
+
+
 def _head(kit):
-    """The face (dark, in shadow) and the knit cap over it, cut at the cuff."""
-    for part, slot, scale, cut in (("face", DARK, 1.0, None), ("cap", CLOTH, 1.045, CUFF_Z[0] - 0.006)):
+    """The face (charcoal, in shadow) and the charcoal knit cap over it, cut at the cuff."""
+    for part, scale, cut in (("face", 1.0, None), ("cap", 1.045, CUFF_Z[0] - 0.004)):
         bm = bmesh.new()
         bmesh.ops.create_uvsphere(bm, u_segments=18, v_segments=12, radius=1.0)
         if cut is not None:
@@ -310,8 +367,10 @@ def _head(kit):
             if cut is not None:
                 # knit cap: a little fuller, with a soft peak at the top-back
                 p = p * scale + V((0, 0.006, 0.012)) * max(0.0, p.z / H_HALF[2]) ** 3
+            else:
+                p = _face_planes(p)
             v.co = _head_deform(p)
-        obj = kit._new_object("head " + part, bm, slot, "metres", "xz")
+        obj = kit._new_object("head " + part, bm, CLOTH, "metres", "xz")
         kit._place(obj, tuple(H_LOC), H_ROT)
 
 
@@ -323,28 +382,19 @@ def _head_ring_point(v, z, off):
     return _head_deform(base + nrm * off)
 
 
-def _band(kit, z0, z1, arc_deg, t_out, slot, name, tilt=0.0, verts=24, bulge=None):
-    """A band wrapped round the head between head-local heights z0..z1, centred on the front.
-    bulge(v) adds extra outward offset (tape bridging the nose)."""
+def _band(kit, z0, z1, t_out, slot, name, verts=24):
+    """A full band round the head between head-local heights z0..z1, standing t_out = (bottom, top)
+    proud of the head (a turned-up knit cuff)."""
     bm = bmesh.new()
-    arc = math.radians(arc_deg)
-    full = arc_deg >= 359.9
-    count = verts if full else verts + 1
     rings = []
-    for i in range(count):
-        v = -math.pi / 2 - arc / 2 + arc * i / verts
-        dz = tilt * H_HALF[0] * math.cos(v)
-        extra = bulge(v) if bulge else 0.0
-        rings.append([bm.verts.new(_head_ring_point(v, z + dz, off + (extra if off > 0 else 0.0)))
-                      for z, off in ((z0, t_out), (z1, t_out), (z1, -0.006), (z0, -0.006))])
-    pairs = list(zip(rings, rings[1:])) + ([(rings[-1], rings[0])] if full else [])
-    for a, b in pairs:
+    for i in range(verts):
+        v = -math.pi / 2 + 2 * math.pi * i / verts
+        rings.append([bm.verts.new(_head_ring_point(v, z, off))
+                      for z, off in ((z0, t_out[0]), (z1, t_out[1]), (z1, -0.006), (z0, -0.006))])
+    for a, b in zip(rings, rings[1:] + rings[:1]):
         for k in range(4):
             m = (k + 1) % 4
             bm.faces.new((a[k], a[m], b[m], b[k]))
-    if not full:
-        bm.faces.new(list(reversed(rings[0])))
-        bm.faces.new(rings[-1])
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     obj = kit._new_object(name, bm, slot, "metres", "xz")
     kit._place(obj, tuple(H_LOC), H_ROT)
@@ -537,11 +587,20 @@ def _draped(tree, ctrl, off, keep_ends=1, lift=None):
     return pts, nrm
 
 
+def _to_load(p):
+    """World point -> load-local (before the warp/displacement)."""
+    return LR.transposed() @ (p - L_LOC)
+
+
 # ------------------------------------------------------------------ build
 def build(kit, cl):
     global EYE
     j = frame()
     J = lambda names, radii: {n: (j[n], r) for n, r in zip(names, radii)}  # noqa: E731
+    h = L_HALF
+    # Where each shoulder strap leaves the load's front face (7 cm above the shoulder).
+    for s in ("l", "r"):
+        STRAP_END[s] = min(h.z - 0.06, _to_load(j["shoulder_" + s]).z + 0.07)
 
     # Jacket: torso chain (hem to chest top) and two sleeve chains starting inside the
     # chest (separate chains: no flat Skin sheets at a 3-way branch).
@@ -562,19 +621,21 @@ def build(kit, cl):
         _tube_open(kit, c0, j["sleeve_" + s] - axis * 0.012, (rx * 0.97, ry * 0.97), (rx * 1.08, ry * 1.08),
                    JACKET, "cuff " + s, verts=16, wall=0.008)
         cl.decimate_to(sleeves[-1], 560)
-    # Jacket hem: a short flared skirt with a straight edge (chore-coat length, over the seat),
-    # perpendicular to the pitched torso; the skin's round end hides inside it.
-    axis = (j["belly"] - j["pelvis"]).normalized()
-    c0 = j["pelvis"] + axis * 0.06
-    rx, ry = _section(torso, c0, axis, rmax=0.4)
-    hang = (axis + V((0, 0, 0.6))).normalized()
-    _tube_open(kit, c0, j["pelvis"] - hang * 0.16, (rx * 0.97, ry * 0.97), (max(rx * 1.12, 0.235), ry * 1.12),
-               JACKET, "jacket hem", verts=24, wall=0.012, level=True)
     # Trousers: two leg chains from inside the jacket.
     trousers = cl.skin_body(kit, J(["seat_l", "hip_l", "knee_l", "hemt_l", "seat_r", "hip_r", "knee_r", "hemt_r"],
                                    [0.10, 0.118, 0.09, 0.082, 0.10, 0.118, 0.09, 0.082]),
                             [("seat_l", "hip_l"), ("hip_l", "knee_l"), ("knee_l", "hemt_l"),
                              ("seat_r", "hip_r"), ("hip_r", "knee_r"), ("knee_r", "hemt_r")], CLOTH, name="trousers")
+    # Jacket hem: a waist-length work jacket ends in a short, straight band at the hip,
+    # square to the pitched torso (it rides up at the back, as a jacket does when you bend).
+    # The first build's flared chore-coat skirt read from the front as an apron.
+    axis = (j["belly"] - j["pelvis"]).normalized()
+    c0 = j["pelvis"] + axis * 0.06
+    bot = j["pelvis"] - axis * 0.045
+    rx, ry = _section(torso, c0, axis, rmax=0.4)
+    trx, tryy = _section(trousers, bot, axis, slab=0.025, rmax=0.4)
+    _tube_open(kit, c0, bot, (rx * 0.97, ry * 0.97), (max(rx * 1.04, trx + 0.014), max(ry * 1.04, tryy + 0.014)),
+               JACKET, "jacket hem", verts=24, wall=0.012)
     cl.decimate_to(trousers, 900)
     for s in ("l", "r"):
         # trouser bottoms break over the boot tops: an open hem flush with the leg
@@ -599,37 +660,32 @@ def build(kit, cl):
                 rot=rot, name="sole " + s)
         kit.box((0.124, 0.095, 0.04), tuple(c + r @ V((0, 0.075, 0.02))), DARK, bevel=0.008, segments=1,
                 rot=rot, name="heel " + s)
-    # Neck (charcoal: no skin reads) and the capped, taped head with a nose under the tape.
-    cl.skin_body(kit, J(["neck_base", "neck"], [0.068, 0.062]), [("neck_base", "neck")], DARK, name="neck")
+    # Neck and face: charcoal, big plain planes, in the load's shadow; the ecru cuff turned
+    # up at the brow is the only light on the head.
+    cl.skin_body(kit, J(["neck_base", "neck"], [0.068, 0.062]), [("neck_base", "neck")], CLOTH, name="neck")
     _head(kit)
-    cl.ellipsoid(kit, (0.03, 0.034, 0.05), tuple(H_LOC + HR @ V((0, -0.097, -0.016))), DARK,
+    cl.ellipsoid(kit, (0.03, 0.034, 0.05), tuple(H_LOC + HR @ V((0, -0.097, -0.016))), CLOTH,
                  rot=(H_ROT[0] - 14, 0, H_ROT[2]), segments=10, rings=6, name="nose")
-    _band(kit, CUFF_Z[0], CUFF_Z[1], 360, 0.009, CLOTH, "cap cuff", verts=20)
-    nose_bridge = lambda v: 0.012 * math.exp(-((v + math.pi / 2) / 0.22) ** 2)  # noqa: E731
-    _band(kit, EYE_Z[0], EYE_Z[1], 205, 0.0045, TAPE, "tape eyes", tilt=0.06, bulge=nose_bridge, verts=22)
-    _band(kit, MOUTH_Z[0], MOUTH_Z[1], 160, 0.004, TAPE, "tape mouth", tilt=-0.05, verts=18)
+    _band(kit, CUFF_Z[0], CUFF_Z[1], CUFF_OUT, LIGHT, "cap cuff", verts=22)
     # Gloves.
     for s in ("l", "r"):
         _hand(kit, cl, j, s, "glove " + s)
 
     # The load.
     _pad(kit)
-    h = L_HALF
-    # Binding: the pad's pale edge tape, folded over the top-front lip and running
-    # down the left front corner; it wanders a little like a real blanket edge.
-    bq = _path([(-h.x, -h.y + 0.035, h.z), (h.x, -h.y + 0.035, h.z), (h.x, -h.y + 0.035, -h.z * 0.4)], 0.03)
+    # Binding: the pad's pale edge tape, folded over the top-front edge and down the
+    # left-front edge (on the corner round, so it sits on the slab and draws its edge).
+    bq = _path([(-h.x, -h.y, h.z), (h.x, -h.y, h.z), (h.x, -h.y, -h.z + 0.03)], 0.03)
     bpts, bnrm = [], []
-    for i, q in enumerate(bq):
-        wob = 0.012 * math.sin(i * 0.55)
-        q = V((q.x, q.y + wob, q.z)) if q.z > h.z - 1e-6 else V((q.x, q.y + wob, q.z))
-        p, n = _load_point(q, 0.007)
+    for q in bq:
+        p, n = _load_point(q, 0.006)
         bpts.append(p)
         bnrm.append(n)
-    _ribbon(kit, bpts, bnrm, 0.04, 0.012, LIGHT, "binding")
+    _ribbon(kit, bpts, bnrm, 0.046, 0.012, LIGHT, "binding")
     _tail(kit)
-    # Shipping label on the top face, stuck on slightly askew, with print.
-    lab_c, lab_a = (-0.02, 0.01), 7.0
-    _patch(kit, lab_c, (0.21, 0.27), lab_a, 0.004, LIGHT, "label")
+    # Shipping label on the top face (it faces up into the troffers and forward), askew, with print.
+    lab_c, lab_a = (-0.03, 0.0), 7.0
+    _patch(kit, lab_c, (0.21, 0.26), lab_a, 0.004, LIGHT, "label")
     ca, sa = math.cos(math.radians(lab_a)), math.sin(math.radians(lab_a))
     for du, dv, su, sv in ((-0.015, 0.085, 0.14, 0.014), (-0.03, 0.055, 0.11, 0.012), (-0.02, 0.028, 0.13, 0.012),
                            (0.0, -0.075, 0.15, 0.05)):
@@ -637,15 +693,14 @@ def build(kit, cl):
         cy = lab_c[1] + du * sa + dv * ca
         _patch(kit, (cx, cy), (su, sv), lab_a, 0.0055, DARK, "label print", n=2)
 
-    # Straps over the load: down the back, over the top, down the front face and INTO the shoulders.
+    # Straps over the load: up the back, over the top, down the front face and INTO the shoulders.
     sleeve_tree = _bvh(sleeves)
     for s, x0 in (("l", STRAP_X), ("r", -STRAP_X)):
-        sh_local = LR.transposed() @ (j["shoulder_" + s] - L_LOC)
-        z_end = sh_local.z + 0.07
+        z_end = STRAP_END[s]
         q = _path([(x0, -h.y * 0.2, -h.z), (x0, h.y, -h.z), (x0, h.y, h.z), (x0, -h.y, h.z), (x0, -h.y, z_end)], 0.03)
         pts, nrm = [], []
         for qq in q:
-            p, n = _load_point(qq, STRAP_T / 2 + 0.002)
+            p, n = _load_point(qq, STRAP_T / 2 + 0.002 + _binding_lift(qq))
             pts.append(p)
             nrm.append(n)
         tgt = j["shoulder_" + s] + V((0, -0.01, 0.0))
@@ -666,14 +721,14 @@ def build(kit, cl):
                 (-h.x, -h.y, GIRTH_Z), (-h.x + 0.06, -h.y, GIRTH_Z)], 0.03)
     gp, gn = [], []
     for i, qq in enumerate(gq):
-        off = STRAP_T * 1.5 + 0.002 if 0 < i < len(gq) - 1 else -0.01
+        off = STRAP_T / 2 + 0.002 + _binding_lift(qq) if 0 < i < len(gq) - 1 else -0.01
         p, n = _load_point(qq, off)
         gp.append(p)
         gn.append(n)
     _ribbon(kit, gp, gn, STRAP_W, STRAP_T, DARK, "girth strap")
     # Cam buckle on the girth strap, right side.
-    bp, bn = _load_point((-h.x, -0.05, GIRTH_Z), STRAP_T * 2 + 0.008)
-    kit.box((0.05, 0.016, 0.075), tuple(bp), TAPE, bevel=0.004, rot=_rot_to(bn), name="cam buckle")
+    bp, bn = _load_point((-h.x, -0.05, GIRTH_Z), STRAP_T + 0.008)
+    kit.box((0.05, 0.016, 0.075), tuple(bp), CHROME, bevel=0.004, rot=_rot_to(bn), name="cam buckle")
 
     # The chest X: each strap comes back out of the front of its shoulder and crosses
     # the chest to the opposite flank, where it runs into the jacket.
@@ -687,18 +742,24 @@ def build(kit, cl):
         pts, nrm = _draped(torso_tree, ctrl, STRAP_T / 2 + 0.009, keep_ends=2, lift=lift)
         _ribbon(kit, pts, nrm, 0.05, STRAP_T, DARK, "chest strap " + s)
     loc, n, _i, _d = torso_tree.find_nearest(cross)
-    kit.frame((0.085, 0.07), (0.055, 0.04), 0.014, tuple(loc + n * 0.032), TAPE, bevel=0.003,
+    kit.frame((0.085, 0.07), (0.055, 0.04), 0.014, tuple(loc + n * 0.032), CHROME, bevel=0.003,
               rot=_rot_to(n), name="buckle")
 
     lo = cl.floor_parts(kit)
-    # Eye: the centre of the eye tape's front, after flooring.
-    eye = H_LOC + HR @ _head_ring_point(-math.pi / 2, sum(EYE_Z) / 2, 0.0045)
+    # Eye: the centre of the face at the eye line, after flooring.
+    eye = H_LOC + HR @ _head_ring_point(-math.pi / 2, FACE_Z, 0.0)
     EYE = round(eye.z - lo, 3)
+    cuff = H_LOC + HR @ _head_ring_point(-math.pi / 2, sum(CUFF_Z) / 2, CUFF_OUT[1])
     import bpy
     bpy.context.view_layer.update()
     ws = [o.matrix_world @ v.co for o in kit.parts for v in o.data.vertices]
     front = -min(p.y for p in ws if p.z > 1.0)
     back = max(p.y for p in ws if 0.4 <= p.z <= 1.95)
+    load = [o for o in kit.parts if o.name.startswith("load")][0]
+    lw = [load.matrix_world @ v.co for v in load.data.vertices]
+    print("[delivery] load top %.3f (+0.04 bob %.3f), load x %.3f..%.3f; cuff front z %.3f; strap exits %s" % (
+        max(p.z for p in lw), max(p.z for p in lw) + 0.04, min(p.x for p in lw), max(p.x for p in lw),
+        cuff.z - lo, ", ".join("%s %.3f" % kv for kv in sorted(STRAP_END.items()))))
     print("[delivery] reach: front above 1 m %.3f, back 0.4-1.95 m %.3f" % (front, back))
     tris = {}
     for o in kit.parts:

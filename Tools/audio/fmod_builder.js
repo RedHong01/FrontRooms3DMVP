@@ -96,6 +96,15 @@ function makeMixer() {
     log("buses: " + Object.keys(BUS).length + ", reverb return + sends, vcas: " + Object.keys(SPEC.vcas).length);
 }
 
+// Safety ceiling on the master bus (added once; the builder never removes it).
+function masterLimiter() {
+    var master = ws.mixer.masterBus;
+    if (findEffect(master, "LimiterEffect")) return;
+    var lim = master.effectChain.addEffect("LimiterEffect");
+    attempt("limiter ceiling", function () { lim.ceiling = -1; }, true);
+    log("master limiter added");
+}
+
 function makeBanks() {
     BANK["Master Bank"] = studio.project.lookup("bank:/Master Bank") || studio.project.lookup("bank:/Master");
     SPEC.banks.forEach(function (name) {
@@ -211,7 +220,7 @@ function makeEvent(e) {
         var eq = master.effectChain.addEffect("MultibandEqEffect");
         eq.filterTypeA = 2;            // low-pass 24 dB
         eq.frequencyA = 22000;
-        automate(eq, { prop: "frequencyA", param: "Occlusion", points: [[0, 22000], [.5, 4000], [1, 900]] });
+        automate(eq, { prop: "frequencyA", param: "Occlusion", points: [[0, 22000], [.5, 2500], [1, 700]] });
     }
     if (e.markers) {
         var mt = ev.addMarkerTrack();
@@ -246,6 +255,7 @@ log("cleanup");
 attempt("cleanup", cleanup);
 attempt("params", makeParams);
 attempt("mixer", makeMixer);
+attempt("master limiter", masterLimiter, true);
 attempt("banks", makeBanks);
 var made = 0;
 SPEC.events.forEach(function (e) {

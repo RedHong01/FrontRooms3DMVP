@@ -2,7 +2,11 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public enum HunterState { Dormant, Listen, Hunt, Search, Chase, BreakDoor }
+/// <summary>
+/// The Relay's states. Wander was added last so the others keep their values:
+/// it roams without knowing where the player is; only seeing the player starts a Chase.
+/// </summary>
+public enum HunterState { Dormant, Listen, Hunt, Search, Chase, BreakDoor, Wander }
 
 /// <summary>Designer-facing numbers for the Relay. Edit them on the FrontRooms 3D object.</summary>
 [Serializable]

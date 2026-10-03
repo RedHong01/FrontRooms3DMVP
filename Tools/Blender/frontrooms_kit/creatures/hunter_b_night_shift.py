@@ -30,14 +30,16 @@ from mathutils import Euler, Matrix, Vector
 NAME = "Hunter_B_NightShift"
 TITLE = "Night Shift"
 PITCH = ("The building's night electrician went up into the ceiling and came back down wearing it: "
-         "a hooded figure in a faded work coverall whose face is a lit ceiling-light panel.")
+         "a figure in a faded work coverall, hood drawn tight round a narrow strip of lit ceiling lens "
+         "where his face should be.")
 EYE = 1.64            # lens centre after flooring; build() overwrites it with the measured value
 SMOOTH_ANGLE = 60.0
 LENS_GLOW = 3.0       # preview emission strength (Hunt state: dim, steady); 0 = Listen (off)
+PATCH_Z = 1.455       # name patch ray height before flooring (lands at ~1.44 m)
 
 TWILL = "Creature_TwillSpruce"
 LENS = "Creature_LensOpal"
-WHITE = "Prop_PlasticWhite"
+PAPER = "Prop_Paper"
 TAPE = "Creature_TapeSilver"
 GLOVE = "Prop_FabricChair"
 VINYL = "Prop_Vinyl"
@@ -178,66 +180,107 @@ def tris(obj):
 
 
 # ------------------------------------------------------------------ body parts
-def build_hood(kit, H, pitch, half, t_cut, lens, border, zc=0.0, recess=0.04, hem_r=0.012, peak=0.03,
-               round_=0.65, side_back=0.045, chin_back=0.03):
-    """Hood shell (TWILL) cut open at the face plane through H, recessed opening, rolled hem,
-    enamel lens door (WHITE) and the opal lens (LENS). The opening is then bent so its sides
-    and chin recede behind the brim (a hood's profile, not a visor's straight edge).
-    Returns a dict: lens, shell, centre, R, hem (world points)."""
+def rounded_rect(a, b, rc, count):
+    """`count` evenly spaced points round a rounded rectangle (half sizes a x b, corner radius
+    rc) in the head frame's x-z plane (y = 0), counter-clockwise seen from the front."""
+    pts = []
+    for cx, cz, a0 in ((a - rc, b - rc, 0.0), (rc - a, b - rc, 90.0), (rc - a, rc - b, 180.0), (a - rc, rc - b, 270.0)):
+        for k in range(13):
+            t = math.radians(a0 + 90.0 * k / 12)
+            pts.append(V(cx + rc * math.cos(t), 0.0, cz + rc * math.sin(t)))
+    return resample_loop(pts, count)
+
+
+def se_radius(theta, ax, az, m):
+    """Polar radius of the superellipse |x/ax|^m + |z/az|^m = 1 at angle theta."""
+    c, s = abs(math.cos(theta)) / ax, abs(math.sin(theta)) / az
+    return (c ** m + s ** m) ** (-1.0 / m)
+
+
+def build_hood(kit, H, pitch, half, lens, opening=(0.073, 0.138, 0.028), cy=0.062, zc=0.01, y_rim=0.015,
+               m=2.4, n=56, shell_rings=14, band_rings=6, puff=0.008, brim=0.008, pleats=9, pleat_amp=0.005,
+               lens_depth=0.02, recess=0.03, hem_r=0.012, peak=0.03):
+    """Work hood drawn tight round the lens. Head frame: origin H on the face plane at the lens
+    centre, +y back into the head, pitched `pitch` deg (front face down).
+
+    * The shell is a superellipsoid (half sizes `half`, centre (0, cy, zc)) built in rings
+      round the face axis, so its front can be gathered: a band of twill runs from the shell's
+      rim (plane y = y_rim) in to the drawcord opening, puffed forward a little (more under the
+      brim) and pleated where the cord pulls it.
+    * The opening is a rounded rectangle on the plane y = 0, with the rolled hem round it. It
+      is a hair smaller than the lens, so the hem overlaps the lens border: the dark twill is
+      the only frame. A short tunnel narrows behind it and buries the lens edges.
+    * The opal lens is flat, `lens_depth` behind the opening plane, parallel to it, so no
+      lens edge stands proud of the hood. No rim, no door, no bezel.
+    Returns a dict: lens, shell, centre, R, H, hem (world points)."""
     R = Euler((math.radians(pitch), 0, 0)).to_matrix()
     hx, hy, hz = half
-    cy = t_cut * hy
-    shell_loc = H + R @ V(0, cy, zc)
-    shell = kit.soft_box((2 * hx, 2 * hy, 2 * hz), shell_loc, TWILL, radius=2 * max(half),
-                         segments=28, rings=16, rot=(pitch, 0, 0), name="hood shell")
-    bm = bmesh.new()
-    bm.from_mesh(shell.data)
-    # Fabric, not a helmet: a soft peak at the back of the crown (the centre seam pulls it)
-    # and the lower back draped down into the shoulder yoke.
-    for v in bm.verts:
-        p = v.co.copy()
-        k = 1.0 / max(1e-6, math.sqrt((p.x / hx) ** 2 + (p.y / hy) ** 2 + (p.z / hz) ** 2))
-        v.co = p.lerp(p * k, round_)
-    for v in bm.verts:
-        fy, fz = v.co.y / hy, v.co.z / hz
-        if fy > -0.3 and fz > 0:
-            # parka peak: a soft ridge along the centre seam, highest just behind the crown,
-            # so the hood reads as a hood even in the black cut-out
-            f = smooth((fy + 0.3) * 0.9) * smooth(fz * 1.2) * max(0.0, 1 - abs(v.co.x / hx)) ** 1.5
-            v.co.y += peak * 0.7 * f
-            v.co.z += peak * f
-        if fy > 0 and fz < 0:
-            v.co.z -= 0.04 * smooth(fy) * smooth(-fz)
-    geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
-    bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=(0, -cy, 0), plane_no=(0, -1, 0), clear_outer=True)
-    edges = [e for e in bm.edges if e.is_boundary]
-    ring = {v for e in edges for v in e.verts}
-    loop = sorted((v.co.copy() for v in ring), key=lambda c: math.atan2(c.z, c.x))
-    cap = bmesh.ops.holes_fill(bm, edges=edges, sides=0)["faces"]
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bmesh.ops.inset_region(bm, faces=cap, thickness=0.004, depth=-recess, use_even_offset=True)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    A, B, rc = opening
+    O = rounded_rect(A, B, rc, n)
+    th = [math.atan2(o.z, o.x) for o in O]
+    rad = [se_radius(t, hx, hz, m) for t in th]
+    C = V(0, cy, zc)
 
-    def bend(co):
-        yh, zh = co.y + cy, co.z + zc            # head frame (the cut plane is yh = 0)
-        w = smooth((0.12 - yh) / 0.12)
-        dy = side_back * (co.x / hx) ** 2 + chin_back * max(0.0, -zh / hz) ** 2
-        return co + V(0, w * dy, 0)
-    for v in bm.verts:
-        v.co = bend(v.co)
-    bm.to_mesh(shell.data)
-    bm.free()
-    # Rolled drawcord hem on the cut edge (world space), evenly resampled.
-    pts = resample_loop([shell_loc + R @ bend(c) for c in loop], 40)
+    def shell_pt(i, alpha):
+        ca, sa = math.cos(alpha), math.sin(alpha)
+        s = abs(sa) ** (2.0 / m)
+        return V(rad[i] * math.cos(th[i]) * s, cy - hy * math.copysign(abs(ca) ** (2.0 / m), ca),
+                 zc + rad[i] * math.sin(th[i]) * s)
+
+    def deform(p):
+        """Fabric, not a helmet: a soft parka peak along the centre seam just behind the crown
+        (it keeps the hood a hood in the black cut-out), and the lower back draped into the yoke."""
+        q = p - C
+        fy, fz = q.y / hy, q.z / hz
+        if fy > -0.3 and fz > 0:
+            f = smooth((fy + 0.3) * 0.9) * smooth(fz * 1.2) * max(0.0, 1 - abs(q.x / hx)) ** 1.5
+            q.y += peak * 0.7 * f
+            q.z += peak * f
+        if fy > 0 and fz < 0:
+            q.z -= 0.04 * smooth(fy) * smooth(-fz)
+        return C + q
+
+    a_rim = math.acos(((cy - y_rim) / hy) ** (m / 2.0))
+    rings = []
+    for k in range(1, shell_rings + 1):                      # from the back pole to the rim
+        alpha = math.pi - (math.pi - a_rim) * k / shell_rings
+        rings.append([deform(shell_pt(i, alpha)) for i in range(n)])
+    S = rings[-1]
+    for j in range(1, band_rings + 1):                       # gathered band: rim -> opening
+        g = 1 - (1 - j / band_rings) ** 1.6
+        w = smooth(g / 0.45) * smooth((1 - g) / 0.25)
+        ring = []
+        for i in range(n):
+            p = S[i].lerp(O[i], g)
+            top = max(0.0, math.sin(th[i]))
+            bulge = (puff + brim * top * top) * math.sin(math.pi * g) ** 0.8
+            p.y = S[i].y * (1 - g) - bulge - pleat_amp * w * math.cos(2 * math.pi * pleats * i / n)
+            ring.append(p)
+        rings.append(ring)
+    for d, yy in ((0.008, 0.012), (0.016, recess)):          # tunnel behind the hem
+        rings.append([V(o.x * (1 - d / o.length), yy, o.z * (1 - d / o.length)) for o in O])
+
+    def W(p):
+        return H + R @ p
+    bm = bmesh.new()
+    pole = bm.verts.new(W(deform(V(0, cy + hy, zc))))
+    vr = [[bm.verts.new(W(p)) for p in ring] for ring in rings]
+    floor = bm.verts.new(W(V(0, recess, 0)))
+    for i in range(n):
+        j = (i + 1) % n
+        bm.faces.new((pole, vr[0][j], vr[0][i]))
+        for r0, r1 in zip(vr, vr[1:]):
+            bm.faces.new((r0[i], r0[j], r1[j], r1[i]))
+        bm.faces.new((vr[-1][i], vr[-1][j], floor))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    shell = kit._new_object("hood shell", bm, TWILL, "metres", "xz")
+    # Rolled drawcord hem round the opening, overlapping the lens border.
+    pts = [W(V(o.x, -0.003, o.z)) for o in rounded_rect(A, B, rc, 44)]
     loop_tube(kit, pts, hem_r, TWILL, R @ V(0, -1, 0), verts=8, name="hood hem")
-    # Lens door rim and the flat opal lens, set in the opening.
     lw, lh = lens
-    # The lens door sits at the floor of the recess: a light deep inside a drawn hood.
-    kit.frame((lw + 2 * border, lh + 2 * border), (lw, lh), 0.06, H + R @ V(0, recess + 0.02, 0), WHITE,
-              bevel=0.003, rot=(pitch, 0, 0), name="lens door")
-    lens_obj = kit.bulged_panel(lw, lh, 0.008, H + R @ V(0, recess - 0.008, 0), LENS, segments=12,
+    lens_obj = kit.bulged_panel(lw, lh, 0.006, W(V(0, lens_depth, 0)), LENS, segments=12,
                                 rot=(pitch, 0, 0), name="opal lens")
-    return {"lens": lens_obj, "shell": shell, "centre": shell_loc, "R": R, "hem": pts}
+    return {"lens": lens_obj, "shell": shell, "centre": W(C), "R": R, "H": H, "hem": pts}
 
 
 def build_glove(kit, cl, wrist_in, wrist, d, toward_body, name):
@@ -318,8 +361,9 @@ def build_boot(kit, cl, fp, shaft_top, yaw, pitch, name):
 
 
 def lens_glow(kit, strength):
-    """Preview-only: opal lens emission with two lamp bands behind the diffuser and the
-    shadow of a face pressed against it from inside (the tell, 02 S3)."""
+    """Preview-only: opal lens emission with two lamp bands behind the diffuser and ONE soft
+    shadow over one of them: a strip of a face pressed against the opal from inside, off
+    centre, so the narrow lens shows only part of it (the tell, §4). Not a picture of a face."""
     mat = kit._material(LENS)
     nt = mat.node_tree
     N, L = nt.nodes, nt.links
@@ -355,24 +399,24 @@ def lens_glow(kit, strength):
         mr.inputs["To Max"].default_value = 0.0
         return mr.outputs["Result"]
 
-    # Shadow of a face pressed against the opal from inside: a soft head oval and sharper,
-    # darker contact patches (brow, cheekbones, nose, lips, chin). No eyes: it is a shadow.
-    terms = [(blob(0.50, 0.50, 0.30, 0.38, 0.8), 0.34),
-             (blob(0.50, 0.72, 0.17, 0.07, 0.6), 0.20),
-             (blob(0.34, 0.52, 0.06, 0.045, 0.7), 0.16), (blob(0.66, 0.52, 0.06, 0.045, 0.7), 0.16),
-             (blob(0.50, 0.46, 0.04, 0.08, 0.6), 0.24)]
+    # UV: u across the 0.13 m lens (u = 1 on the figure's left), v up the 0.26 m.
+    # One soft shadow: a head pressed against the opal off to one side, half of it past the
+    # lens edge, with a narrow, darker contact strip where brow, nose and lip touch it.
+    terms = [(blob(0.76, 0.55, 0.42, 0.30, 0.9), 0.40),
+             (blob(0.66, 0.53, 0.07, 0.15, 0.6), 0.20)]
     shadow = None
     for sock, w in terms:
         s = m("MULTIPLY", sock, w)
         shadow = s if shadow is None else m("ADD", shadow, s)
-    lit = m("SUBTRACT", 1.0, m("MINIMUM", shadow, 0.8))
-    # Two lamps behind the opal: vertical bright bands, hidden where the head blocks them.
+    lit = m("SUBTRACT", 1.0, m("MINIMUM", shadow, 0.75))
+    # Two lamps behind the opal: vertical bright bands; the head shadows the one on the
+    # figure's left (u 0.73, image right in the front view).
     band = None
-    for c in (0.2, 0.8):
-        b = m("SUBTRACT", 1.0, m("DIVIDE", m("ABSOLUTE", m("SUBTRACT", u, c)), 0.10), clamp=True)
+    for c in (0.27, 0.73):
+        b = m("SUBTRACT", 1.0, m("DIVIDE", m("ABSOLUTE", m("SUBTRACT", u, c)), 0.14), clamp=True)
         b = m("POWER", b, 0.6)
         band = b if band is None else m("ADD", band, b)
-    glow = m("MULTIPLY", lit, m("ADD", 0.25, m("MULTIPLY", band, 1.6)))
+    glow = m("MULTIPLY", lit, m("ADD", 0.22, m("MULTIPLY", band, 1.6)))
     L.new(m("MULTIPLY", glow, strength), bsdf.inputs["Emission Strength"])
     bsdf.inputs["Emission Color"].default_value = (1.0, 0.92, 0.78, 1.0)
     base = N.new("ShaderNodeMixRGB")
@@ -452,9 +496,10 @@ def build(kit, cl):
     build_boot(kit, cl, fl, lerp(knee_l, fl["ankle"], 0.78), yaw_l, 0.0, "boot l")
     build_boot(kit, cl, fr, lerp(knee_r, fr["ankle"], 0.78), yaw_r, pitch_r, "boot r")
 
-    # ---- hood + lens door
+    # ---- hood drawn tight round the lens (no rim: the hood edge is the frame)
     H = V(0, -0.305, 1.635)
-    hd = build_hood(kit, H, 18.0, (0.145, 0.155, 0.188), 0.4, (0.18, 0.25), 0.012, zc=0.01)
+    LENS_W, LENS_H = 0.13, 0.26          # the ceiling lens's 1 : 2, long axis vertical (§4, C1)
+    hd = build_hood(kit, H, 18.0, (0.145, 0.155, 0.188), (LENS_W, LENS_H))
     lens_obj, hood, hood_c, HR = hd["lens"], hd["shell"], hd["centre"], hd["R"]
 
     # ---- tape cuffs (wrists, ankles): strips of the sleeve / trouser leg, pushed out
@@ -476,15 +521,18 @@ def build(kit, cl):
 
     # ---- drawcords: leave the hem at the opening's lower corners and lie on the chest
     # (a work hood, not a sealed suit), each ending in a metal aglet.
+    HT = HR.transposed()
     for sx in (1, -1):
-        corner = min(hd["hem"], key=lambda q: (HR.transposed() @ (q - hood_c) - V(sx * 0.10, 0, -0.17)).length)
-        start = corner + HR @ V(-sx * 0.003, -0.006, 0)
-        e_hit, e_nor = ray([torso_obj], V(start.x + sx * 0.018, -1.0, start.z - 0.15), V(0, 1, 0))
+        corner = min(hd["hem"], key=lambda q: (HT @ (q - H) - V(sx * 0.07, 0, -0.135)).length)
+        start = corner + HR @ V(-sx * 0.002, -0.012, 0)
+        # down the front of the gathered chin, clear of the twill, then onto the chest
+        chin = start + HR @ V(sx * 0.006, -0.010, -0.055)
+        e_hit, e_nor = ray([torso_obj], V(start.x + sx * 0.022, -1.0, start.z - 0.17), V(0, 1, 0))
         end = e_hit + e_nor * 0.008
-        m_hit, m_nor = ray([torso_obj], V((start.x + end.x) / 2, -1.0, start.z - 0.07), V(0, 1, 0))
+        m_hit, m_nor = ray([torso_obj], V((chin.x + end.x) / 2, -1.0, (chin.z + end.z) / 2), V(0, 1, 0))
         mid = m_hit + m_nor * 0.008
-        mid = V(mid.x, min(mid.y, (start.y + end.y) / 2 - 0.004), mid.z)   # sag a little off the cloth
-        kit.tube([start, mid, end], 0.0055, VINYL, verts=8, name="drawcord")
+        mid = V(mid.x, min(mid.y, (chin.y + end.y) / 2 - 0.004), mid.z)   # sag a little off the cloth
+        kit.tube([start, chin, mid, end], 0.0055, VINYL, verts=8, name="drawcord")
         tip = end + (end - mid).normalized() * 0.012
         kit.cylinder(0.0075, 0.026, tip, TAPE, verts=10, rot=deg(frame_z(end - mid)), name="aglet")
 
@@ -547,23 +595,25 @@ def build(kit, cl):
         kit.box((0.016, 0.003, 0.05), kc + dirn * 0.045, TAPE, bevel=0.001,
                 rot=deg(frame_z(-dirn, tang)), name="key %d" % k)
 
-    # ---- blank oval name patch on the left chest, below the hood
-    hit, nor = ray([torso_obj], V(0.15, -1.0, 1.415), V(0, 1, 0))
-    patch = kit.cylinder(0.044, 0.004, hit + nor * 0.002, WHITE, verts=24, rot=deg(frame_z(nor, V(1, 0, 0))),
+    # ---- blank oval name patch (Prop_Paper) on the left chest at ~1.44 m (after flooring)
+    hit, nor = ray([torso_obj], V(0.15, -1.0, PATCH_Z), V(0, 1, 0))
+    patch = kit.cylinder(0.044, 0.004, hit + nor * 0.002, PAPER, verts=24, rot=deg(frame_z(nor, V(1, 0, 0))),
                          name="name patch")
     patch.scale = (1.0, 0.58, 1.0)
 
-    # ---- diagnostics: the rim's lower edge must stand clear of the chest
-    R = Euler((math.radians(18.0), 0, 0)).to_matrix()
-    rim_lo = H + R @ V(0, 0.04, -0.137)
-    t_hit, _ = ray([torso_obj], V(0, -1.0, rim_lo.z), V(0, 1, 0))
-    print("[nightshift] rim bottom y %.3f z %.3f, chest front y %.3f (clearance %.3f)" % (
-        rim_lo.y, rim_lo.z, t_hit.y, t_hit.y - rim_lo.y))
+    # ---- diagnostics: the lens sits behind the hem (nothing stands proud), chin clears the chest
+    bpy.context.view_layer.update()
+    lens_y = [(HT @ (lens_obj.matrix_world @ v.co - H)).y for v in lens_obj.data.vertices]
+    hem_lo = H + HR @ V(0, -0.003, -0.138 - 0.012)
+    t_hit, _ = ray([torso_obj], V(0, -1.0, hem_lo.z), V(0, 1, 0))
+    print("[nightshift] lens face depth %.3f..%.3f behind the opening (hem front -0.015); "
+          "hem bottom y %.3f z %.3f, chest front y %.3f" % (min(lens_y), max(lens_y), hem_lo.y, hem_lo.z, t_hit.y))
 
     # ---- finish
     lens_z = lens_obj.location.z
     lo = cl.floor_parts(kit)
     EYE = round(lens_z - lo, 3)
+    print("[nightshift] name patch centre z %.3f after flooring" % (patch.location.z,))
     kit.no_collider()
     if LENS_GLOW > 0:
         lens_glow(kit, LENS_GLOW)

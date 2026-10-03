@@ -36,6 +36,7 @@ namespace FrontRooms.Audio
         FrontRoomsMapWorld map;
         FrontRoomsMapHunter relay;
         HunterState lastState = HunterState.Dormant;
+        bool relayRevealed;
         Transform listener;
         FrontRoomsPlayerFootsteps player;
         FrontRoomsRelaySound relayBody;
@@ -314,6 +315,7 @@ namespace FrontRooms.Audio
                     case HunterState.BreakDoor: stateWeight = .8f; break;
                     case HunterState.Search: stateWeight = .55f; break;
                     case HunterState.Hunt: stateWeight = .45f; break;
+                    case HunterState.Wander: stateWeight = .2f; break;   // roaming, not tracking you
                     default: stateWeight = .25f; break;
                 }
                 target = stateWeight * Mathf.Lerp(.5f, 1f, proximity);
@@ -354,6 +356,7 @@ namespace FrontRooms.Audio
             map = world;
             relay = hunter;
             lastState = HunterState.Dormant;
+            relayRevealed = false;
             if (!FrontRoomsFmod.Ready) return;
             if (!runIdsReady)
             {
@@ -450,8 +453,11 @@ namespace FrontRooms.Audio
             else if (state == HunterState.Chase && lastState != HunterState.BreakDoor) stinger = (int)SoundIds.RelayState.Chase;
             else if (state == HunterState.Listen && (lastState == HunterState.Search || lastState == HunterState.Chase)) stinger = (int)SoundIds.RelayState.Lost;
             if (stinger >= 0) FrontRoomsFmod.OneShot2D(SoundIds.RelayStinger, SoundIds.Param.RelayState, stinger);
-            if (state == HunterState.Hunt && lastState == HunterState.Dormant && relay != null)
-                FrontRoomsFmod.OneShot(SoundIds.RelayClicks, relay.Position + Vector3.up * 2f);   // first reveal: heard before seen
+            if (!relayRevealed && state != HunterState.Dormant && relay != null)
+            {
+                relayRevealed = true;                                   // first move after release: heard before seen
+                FrontRoomsFmod.OneShot(SoundIds.RelayClicks, relay.Position + Vector3.up * 2f);
+            }
             lastState = state;
         }
 

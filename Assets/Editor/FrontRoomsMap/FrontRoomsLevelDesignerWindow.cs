@@ -164,13 +164,12 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
                 }
         }
 
-        showRoom = EditorGUILayout.BeginFoldoutHeaderGroup(showRoom, "Room");
+        showRoom = Section(showRoom, "Room");
         if (showRoom)
         {
             FrontRoomsModuleGUI.Notes(module);
             FrontRoomsModuleGUI.Room(module, ref resizeFrom);
         }
-        EditorGUILayout.EndFoldoutHeaderGroup();
 
         EditorGUILayout.Space(4);
         EditorGUILayout.LabelField("Plan (north up)", EditorStyles.boldLabel);
@@ -179,31 +178,29 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
             ? "Click to place " + plan.ArmedKit + " (Shift: keep placing). Esc stops."
             : "Click a prop to select (again: the one under it), drag to move, R turns, Delete removes, Esc deselects. Click an edge: wall → arch → open. Right-click a cell: lamp.", EditorStyles.wordWrappedMiniLabel);
 
-        showPalette = EditorGUILayout.BeginFoldoutHeaderGroup(showPalette, "Palette");
+        showPalette = Section(showPalette, "Palette");
         if (showPalette) Palette();
-        EditorGUILayout.EndFoldoutHeaderGroup();
 
-        showProps = EditorGUILayout.BeginFoldoutHeaderGroup(showProps, "Props (" + module.data.props.Length + ")");
+        showProps = Section(showProps, "Props (" + module.data.props.Length + ")");
         if (showProps)
         {
             PropList();
             FrontRoomsModuleGUI.SelectedProp(module, plan);
         }
-        EditorGUILayout.EndFoldoutHeaderGroup();
 
-        showPreview = EditorGUILayout.BeginFoldoutHeaderGroup(showPreview, "Preview");
+        showPreview = Section(showPreview, "Preview");
         if (showPreview) PreviewControls(preview);
-        EditorGUILayout.EndFoldoutHeaderGroup();
 
-        showGenerator = EditorGUILayout.BeginFoldoutHeaderGroup(showGenerator, "Generator");
+        showGenerator = Section(showGenerator, "Generator");
         if (showGenerator) Generator();
-        EditorGUILayout.EndFoldoutHeaderGroup();
 
-        showChecks = EditorGUILayout.BeginFoldoutHeaderGroup(showChecks, "Checks");
+        showChecks = Section(showChecks, "Checks");
         if (showChecks) FrontRoomsModuleGUI.Checks(module);
-        EditorGUILayout.EndFoldoutHeaderGroup();
         EditorGUILayout.EndScrollView();
     }
+
+    /// <summary>A section header that folds (a plain foldout: header groups break when a control exits the GUI pass inside them).</summary>
+    static bool Section(bool show, string title) => EditorGUILayout.Foldout(show, title, true, EditorStyles.foldoutHeader);
 
     // ---------- Modules ----------
 

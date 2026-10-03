@@ -17,7 +17,7 @@ stream, and pressing Space noclips the player into the maze.
    - The HUD shows the zone name and meta line, the Relay state and distance, the prompt and hold bar, and the stamina segments under the crosshair. The hint card is timed: the first-run hint, then only flashes.
 4. **Relay** (`FrontRoomsMapHunter`, the same `HunterTuning` as before):
    - **Release:** 3 s after the noclip, in a built cell 9–15 cells of walking away that the player cannot see, preferably behind them.
-   - **States:** Listen → Hunt (breadth-first route through built cells) → Search, and Chase on sight. Sight is a 12 m ray at eye height; walls, shut doors and pillars block it.
+   - **States:** it does not know where the player is. Listen → **Wander** to a random place 6–14 cells away (at 80 % of hunt speed, keeping to shut doors) → Listen … It **chases only once it sees the player**: a 12 m ray at eye height that walls, shut doors and columns block. A noise sends it walking to that spot (Hunt) to Search there, without running. Losing sight in a chase, it hunts the last place it saw the player.
    - **Doors and glass:** it breaks shut doors (2.5 s of blows) and cannot pass unbroken glass.
    - **Noise:** it walks to sprint steps (26 m), door moves (14 m) and breaking glass (40 m).
    - **Leash:** if it ends up off the built map or more than 30 cells behind, it relays itself closer, out of sight.

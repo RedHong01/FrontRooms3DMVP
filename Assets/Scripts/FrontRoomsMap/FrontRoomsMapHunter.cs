@@ -6,12 +6,15 @@ using UnityEngine;
 /// <summary>
 /// The Relay on the generated map. It keeps the Listen → Hunt → Search →
 /// Chase → BreakDoor states of the stream hunter, re-expressed for an open
-/// grid:
+/// grid, and adds Wander:
 /// - it is released after a short grace period, in a built cell 9–15 cells of
 ///   walking away that the player cannot see, preferably behind them;
+/// - it does not know where the player is: between noises it wanders to
+///   random reachable places (Listen → Wander), keeping to shut doors;
+/// - it chases only once it sees the player (a ray at eye height). A noise it
+///   hears it walks to and searches (Hunt), without running;
 /// - it paths through built cells with a breadth-first search, breaks shut
-///   doors, and cannot pass unbroken glass;
-/// - it sees with a ray at eye height and walks to the last noise it heard;
+///   doors on a hunt or a chase, and cannot pass unbroken glass;
 /// - if the chase leaves it too far behind, it relays itself closer, unseen;
 /// - it has a body (<see cref="ModuleUnits.RelayRadius"/>): it walks straight
 ///   while the way is clear and plans a detour on a 0.25 m grid around the
@@ -33,7 +36,10 @@ public sealed class FrontRoomsMapHunter
     const float DoorFallSeconds = .25f;
     const float ReplanSeconds = .35f;
     const float LeashCheckSeconds = 1f;
-    const int SpawnMinCells = 9, SpawnMaxCells = 15, LeashCells = 30, SearchRadiusCells = 3;
+    const int SpawnMinCells = 9, SpawnMaxCells = 15, LeashCells = 30;
+    // Wandering: a random reachable spot this many cells of walking away, at this share of hunt speed.
+    const int WanderMinCells = 6, WanderMaxCells = 14;
+    const float WanderPace = .8f;
 
     static readonly GridCoord[] Steps = { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
 
@@ -153,8 +159,15 @@ public sealed class FrontRoomsMapHunter
         switch (State)
         {
             case HunterState.Listen:
-                // It hears the general area, not the exact spot.
-                if (StateTime > tuning.listenSeconds) HuntToward(NearCell(playerCell), null);
+                // It does not know where the player is: after listening it wanders on.
+                if (StateTime > tuning.listenSeconds) Wander(myCell);
+                break;
+            case HunterState.Wander:
+                if (Follow(tuning.huntSpeed * WanderPace, dt) || Stalled(dt))
+                {
+                    ResetSteering();
+                    SetState(HunterState.Listen);
+                }
                 break;
             case HunterState.Hunt:
                 if (Follow(tuning.huntSpeed, dt)) SetState(HunterState.Search);
@@ -232,7 +245,7 @@ public sealed class FrontRoomsMapHunter
     bool Arrive(Vector3 playerFeet, Vector3 playerEye, Vector3 playerForward)
     {
         var start = world.CellOf(playerFeet);
-        Search(start, SpawnMaxCells, false);
+        Search(start, SpawnMaxCells, true);
         candidates.Clear();
         GridCoord fallback = start;
         var haveFallback = false;
@@ -258,20 +271,32 @@ public sealed class FrontRoomsMapHunter
         return true;
     }
 
-    /// <summary>A random reachable cell within a few cells of the given one.</summary>
-    GridCoord NearCell(GridCoord around)
+    /// <summary>
+    /// Walk to a random place 6–14 cells away that it can reach without
+    /// breaking a door; nowhere to go, it keeps listening where it is.
+    /// </summary>
+    void Wander(GridCoord from)
     {
-        Search(around, SearchRadiusCells, true);
+        Search(from, WanderMaxCells, false);
         candidates.Clear();
-        foreach (var pair in depth) candidates.Add(pair.Key);
-        return candidates.Count == 0 ? around : candidates[(int)(Next() % (uint)candidates.Count)];
+        foreach (var pair in depth) if (pair.Value >= WanderMinCells) candidates.Add(pair.Key);
+        if (candidates.Count == 0) foreach (var pair in depth) if (pair.Value >= 2) candidates.Add(pair.Key);
+        if (candidates.Count == 0)
+        {
+            SetState(HunterState.Listen);
+            return;
+        }
+        var to = candidates[(int)(Next() % (uint)candidates.Count)];
+        Plan(from, to, world.CellCenter(to), false);
+        SetState(HunterState.Wander);
     }
 
     /// <summary>
     /// Breadth-first search over built cells. Doors count as passable (the
     /// Relay breaks them); unbroken glass and walls do not.
     /// </summary>
-    void Search(GridCoord start, int maxDepth, bool forRelay)
+    /// <param name="throughDoors">Shut doors count as passable (it breaks them); off for wandering.</param>
+    void Search(GridCoord start, int maxDepth, bool throughDoors)
     {
         cameFrom.Clear();
         depth.Clear();
@@ -289,6 +314,7 @@ public sealed class FrontRoomsMapHunter
                 if (depth.ContainsKey(next) || !world.IsBuilt(next)) continue;
                 var passage = world.PassageBetween(cell, next);
                 if (passage == FrontRoomsMapWorld.Passage.Wall || passage == FrontRoomsMapWorld.Passage.Glass) continue;
+                if (!throughDoors && passage == FrontRoomsMapWorld.Passage.ClosedDoor) continue;
                 depth[next] = d + 1;
                 cameFrom[next] = cell;
                 frontier.Enqueue(next);
@@ -302,13 +328,13 @@ public sealed class FrontRoomsMapHunter
         return depth.TryGetValue(to, out var d) ? d : int.MaxValue;
     }
 
-    void Plan(GridCoord from, GridCoord to, Vector3 finalPoint)
+    void Plan(GridCoord from, GridCoord to, Vector3 finalPoint, bool throughDoors = true)
     {
         goal = finalPoint;
         path.Clear();
         pathIndex = 0;
         if (from == to) return;
-        Search(from, 64, true);
+        Search(from, 64, throughDoors);
         if (!depth.ContainsKey(to)) return;
         for (var c = to; c != from; c = cameFrom[c]) path.Add(c);
         path.Reverse();

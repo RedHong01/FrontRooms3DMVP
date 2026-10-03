@@ -588,6 +588,8 @@ def rec(rel):
     return REC + rel
 
 
+OCCLUSION_DB = [[0, 0], [.55, -6], [.85, -10], [1, -12]]   # walls cost level, not only top end
+
 DAMP = {  # Dampness 0-1 on the player's step layers; 0.4 = ordinary Level 0 carpet
     "moist": [[0, -80], [.15, -40], [.4, -14], [.7, -6], [1, -3]],
     "peel": [[0, -80], [.3, -40], [.5, -16], [.8, -8], [1, -6]],
@@ -637,8 +639,8 @@ SPEC = {
         # ---------------------------------------------------------- ambience
         dict(path="Ambience/HumBed", bus="Hum", bank="Ambience", params=["Tension"], ahdsr=[1500, 2000],
              note="Room-tone hum. Global Tension fades in a detuned layer (120 vs 118.5 Hz) whose beating is the danger cue.",
-             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_hum_bed_loop.wav")], loop=True, volume=-10)]),
-                     dict(name="Beat", sounds=[dict(files=[rec("Ambience/amb_hum_beat_loop.wav")], loop=True, volume=-10)],
+             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_hum_bed_loop.wav")], loop=True, volume=-14)]),
+                     dict(name="Beat", sounds=[dict(files=[rec("Ambience/amb_hum_beat_loop.wav")], loop=True, volume=-14)],
                           auto=[dict(prop="volume", param="Tension", points=[[0, -60], [.35, -20], [1, -1]])])]),
         dict(path="Ambience/AirBed", bus="Air", bank="Ambience", params=["Zone"], ahdsr=[2000, 2000],
              note="Recorded room tone (50 Hz mains notched out so it never beats against the 120 Hz hum). "
@@ -649,14 +651,14 @@ SPEC = {
                           auto=[dict(prop="volume", param="Zone", points=[[0, -40], [1, -24], [2, 0], [3, -40]])])]),
         dict(path="Ambience/Fixture", spatial=True, min=.5, max=9.0, bus="Hum", bank="Ambience", params=["Level"],
              ahdsr=[40, 120], note="One per lit fixture near the listener. Level = the lamp's brightness this frame.",
-             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_fixture_close_loop.wav")], loop=True, volume=-8)],
+             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_fixture_close_loop.wav")], loop=True, volume=-16)],
                           auto=[dict(prop="volume", param="Level", points=[[0, -60], [.05, -30], [1, 0]])])]),
         dict(path="Ambience/FixtureEvent", spatial=True, min=.5, max=14.0, bus="Hum", bank="Ambience",
              params=["FixtureEvent"],
-             tracks=[dict(name="Strike", sounds=[dict(files=lib("Ambience/amb_fixture_strike"), randPitch=.6,
+             tracks=[dict(name="Strike", sounds=[dict(files=lib("Ambience/amb_fixture_strike"), randPitch=.6, volume=-4,
                                                       cond=[["FixtureEvent", "Strike"]])]),
                      dict(name="Tick", sounds=[dict(files=lib("Ambience/amb_fixture_tick"), randPitch=1,
-                                                    cond=[["FixtureEvent", "Tick"]], volume=-4)]),
+                                                    cond=[["FixtureEvent", "Tick"]], volume=-6)]),
                      dict(name="Pop", sounds=[dict(files=files("Ambience/amb_fixture_pop", 2),
                                                    cond=[["FixtureEvent", "Pop"]])])]),
         # ---------------------------------------------------------- door modules
@@ -749,25 +751,27 @@ SPEC = {
              tracks=[dict(name="Cloth", sounds=[dict(files=lib("Foley/plr_cloth_move"), volume=-6, randPitch=1)])]),
         dict(path="Foley/Player/KeyPickup", bus="Foley", bank="SFX",
              note="Diegetic key ring. The motif hook (first two notes) gets layered here once the motif is chosen.",
-             tracks=[dict(name="Keys", sounds=[dict(files=lib("Foley/plr_key_pickup"), volume=-3, randPitch=.6)])]),
+             tracks=[dict(name="Keys", sounds=[dict(files=lib("Foley/plr_key_pickup"), volume=1, randPitch=.6)])]),
         # ---------------------------------------------------------- the Relay
         dict(path="Relay/Footstep", spatial=True, min=1.5, max=42.0, rolloff=3, bus="Relay", bank="SFX",
              params=["RelayGait", "Occlusion", "Dampness"], occlusion=True,
              note="Driven by the rig's foot contacts. Occlusion 0-1 comes from the walls between. Hard soles on "
                   "damp carpet, slowed 2-4 st; the player's damp layers pitched down follow Dampness.",
+             masterAuto=[dict(prop="volume", param="Occlusion", points=OCCLUSION_DB)],
              tracks=[dict(name="Walk", sounds=[dict(files=lib("Relay/rly_step_carpet_walk_body"), cond=[["RelayGait", "Walk"]],
-                                                    randPitch=1, randVol=1.5, volume=-2)]),
+                                                    randPitch=1, randVol=1.5, volume=9)]),
                      dict(name="Run", sounds=[dict(files=lib("Relay/rly_step_carpet_run_body"), cond=[["RelayGait", "Run"]],
-                                                   randPitch=1, randVol=1.5)]),
+                                                   randPitch=1, randVol=1.5, volume=10)]),
                      dict(name="Drag", sounds=[dict(files=lib("Relay/rly_step_carpet_drag_body"), cond=[["RelayGait", "Drag"]],
-                                                    volume=-2, randPitch=1)]),
-                     dict(name="Moist", sounds=[dict(files=lib("Foley/plr_step_damp_any_moist"), pitch=-5, volume=-10,
+                                                    volume=9, randPitch=1)]),
+                     dict(name="Moist", sounds=[dict(files=lib("Foley/plr_step_damp_any_moist"), pitch=-5, volume=1,
                                                      randPitch=1.5, auto=[dict(prop="volume", param="Dampness",
                                                                                points=DAMP["moist"])])]),
-                     dict(name="Squish", sounds=[dict(files=lib("Foley/plr_step_soaked_any_squish"), pitch=-4, volume=-8,
+                     dict(name="Squish", sounds=[dict(files=lib("Foley/plr_step_soaked_any_squish"), pitch=-4, volume=3,
                                                       auto=[dict(prop="volume", param="Dampness", points=DAMP["squish"])])])]),
         dict(path="Relay/Presence", spatial=True, min=2.0, max=30.0, bus="Relay", bank="SFX",
              params=["Proximity", "Occlusion"], occlusion=True, ahdsr=[800, 1500],
+             masterAuto=[dict(prop="volume", param="Occlusion", points=OCCLUSION_DB)],
              tracks=[dict(name="Drone", sounds=[dict(files=["Relay/relay_presence_loop.wav"], loop=True, volume=-6)],
                           auto=[dict(prop="volume", param="Proximity", points=[[0, -50], [.5, -14], [1, 0]])])]),
         dict(path="Relay/Clicks", spatial=True, min=1.0, max=30.0, bus="Relay", bank="SFX",

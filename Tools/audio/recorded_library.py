@@ -71,6 +71,10 @@ TITLES = {  # Freesound titles, for attribution
     187617: "wet_soggy_squishy_footsteps.wav",
     341512: "roomtone emptymall indoors 04 160327_00.wav",
 }
+CHANGES = {  # what was done to each attributed source (CC-BY asks for it)
+    187617: "Cut into single steps, band-limited, denoised and level-matched",
+    341512: "Cut, 50 Hz mains hum notched out, filtered, looped and level-matched",
+}
 
 
 def url(sid, user):
@@ -793,12 +797,14 @@ def credits():
     for e in CATALOG:
         if e[3].startswith("CC-BY"):
             lines.append('- "%s" by %s, %s, licensed under %s (https://creativecommons.org/licenses/by/%s/). '
-                         'Cut, filtered, denoised and level-matched for FrontRooms.' %
-                         (TITLES[e[0]], e[1], url(e[0], e[1]), e[3], e[3].split()[-1]))
+                         '%s for FrontRooms.' % (TITLES[e[0]], e[1], url(e[0], e[1]), e[3], e[3].split()[-1],
+                                                 CHANGES[e[0]]))
     lines += ["", "### All sources", "", "| Freesound ID | Author | Licence | Folder | Used for |", "| --- | --- | --- | --- | --- |"]
     for e in CATALOG:
         lines.append("| [%d](%s) | %s | %s | %s | %s |" % (e[0], url(e[0], e[1]), e[1], e[3], e[4], e[5]))
-    lines += ["", "CC0 sources need no credit; they are listed for provenance. Nothing here is from the BBC "
+    lines += ["", "The BigSoundBank creak above (CC0) also supplies `Door/door_swing_creak_loop` and "
+                  "`Door/door_stop_soft_03`.", "",
+              "CC0 sources need no credit; they are listed for provenance. Nothing here is from the BBC "
                   "Sound Effects library (non-commercial licence), the A24 film, or any game.", ""]
     with open(path, "w") as f:
         f.write(text.rstrip("\n") + "\n" + "\n".join(lines))
