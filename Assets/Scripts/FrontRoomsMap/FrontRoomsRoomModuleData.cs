@@ -295,7 +295,23 @@ namespace FrontRooms.Map
                 warnings.Add("Fill " + fill + " furnishes the room as one open space: the Office kit or a pile may stand in an inner wall or block an inner doorway. Use Fill None with inner walls.");
             if (fill == ModuleFill.Pile && (width < 4 || depth < 4)) warnings.Add("A pile needs a hall of 4 x 4 cells to look right.");
 
-            // Props: inside the clear floor, under the ceiling, off the openings.
+            // Columns run floor to ceiling: the corners where one stands, or may stand in a turn the generator can use.
+            var columnAt = new List<(int i, int j, float size, string what)>();
+            var autoSize = theme == ZoneTheme.Office || height == ZoneHeight.Tall ? ModuleUnits.ColumnLarge : ModuleUnits.ColumnSmall;
+            for (var j = 1; j < depth; j++)
+            for (var i = 1; i < width; i++)
+            {
+                if (columns == ModuleColumns.Custom)
+                {
+                    foreach (var c in customColumns)
+                        if (c.x == i && c.y == j) { columnAt.Add((i, j, c.large ? ModuleUnits.ColumnLarge : ModuleUnits.ColumnSmall, "a column stands")); break; }
+                    continue;
+                }
+                for (var t = 0; t < (allowRotate ? 4 : 1); t++)
+                    if (AutoColumnAt(i, j, t)) { columnAt.Add((i, j, autoSize, t == 0 ? "an Auto column may stand" : "an Auto column may stand when the room is turned " + t * 90 + "°")); break; }
+            }
+
+            // Props: inside the clear floor, under the ceiling, off the openings and columns.
             var clearMin = ModuleUnits.WallHalf;
             for (var k = 0; k < props.Length; k++)
             {
@@ -308,9 +324,20 @@ namespace FrontRooms.Map
                 if (x0 < clearMin - .01f || z0 < clearMin - .01f || x1 > WidthMetres - clearMin + .01f || z1 > DepthMetres - clearMin + .01f)
                     errors.Add(label + ": stands in or beyond a wall.");
                 if (p.y + f[4] > ceiling - ModuleUnits.CeilingClearance) errors.Add(label + ": reaches " + (p.y + f[4]).ToString("0.00") + " m, the ceiling is " + ceiling.ToString("0.0") + " m.");
+                foreach (var c in columnAt)
+                {
+                    float cx = c.i * MapGrid.CellSize, cz = c.j * MapGrid.CellSize, r = c.size * .5f;
+                    if (x0 < cx + r && cx - r < x1 && z0 < cz + r && cz - r < z1) { warnings.Add(label + ": stands where " + c.what + " (corner " + c.i + ", " + c.j + ")."); break; }
+                }
                 if (p.y > ModuleUnits.RelayHeight) continue; // wall pieces up high leave the floor free
+                // The map keeps these strips clear when it builds (FrontRoomsMapWorld.KeepClear): a prop with a collider there is left out.
                 foreach (var strip in EntryStrips())
-                    if (x0 < strip[2] && strip[0] < x1 && z0 < strip[3] && strip[1] < z1) { warnings.Add(label + ": blocks the floor inside an opening (keep " + ModuleUnits.EntryClearDepth.ToString("0.0") + " m clear)."); break; }
+                {
+                    if (!(x0 < strip[2] && strip[0] < x1 && z0 < strip[3] && strip[1] < z1)) continue;
+                    if (p.noCollider) warnings.Add(label + ": stands in the floor kept clear inside an opening (" + ModuleUnits.EntryClearDepth.ToString("0.0") + " m).");
+                    else errors.Add(label + ": blocks the floor inside an opening (keep " + ModuleUnits.EntryClearDepth.ToString("0.0") + " m clear); the map leaves it out of the build. Move it, or tick No collider for clutter.");
+                    break;
+                }
                 foreach (var strip in InnerStrips())
                 {
                     if (!(x0 < strip[2] && strip[0] < x1 && z0 < strip[3] && strip[1] < z1)) continue;
@@ -322,6 +349,30 @@ namespace FrontRooms.Map
 
             // Can the player get from every opening to every other, and into every cell, past the props and inner walls?
             if (errors.Count == 0 && openings > 0 && !Walkable(footprint, out var problem)) errors.Add(problem);
+        }
+
+        /// <summary>
+        /// True if the map's column rule (FrontRoomsMapGenerator.PlaceColumns) may put an
+        /// Auto column on inner corner (i, j) with the room placed <paramref name="turns"/>
+        /// quarter turns clockwise. The generator lands an Auto-column module on the world
+        /// 6 m grid phase of its turned footprint centred in a chunk, as the preview shows it,
+        /// so an odd side moves the columns to the other corners in odd turns. Never in Low
+        /// rooms, rooms under <paramref name="minCells"/> a side, or where inner walls or doorways meet.
+        /// </summary>
+        public bool AutoColumnAt(int i, int j, int turns, int minCells = 3)
+        {
+            if (columns != ModuleColumns.Auto || height == ZoneHeight.Low || width < minCells || depth < minCells) return false;
+            if (i <= 0 || j <= 0 || i >= width || j >= depth) return false;
+            if (EdgeAt(i - 1, j, 1, 0) != ModuleEdge.Open || EdgeAt(i - 1, j - 1, 1, 0) != ModuleEdge.Open
+                || EdgeAt(i - 1, j - 1, 0, 1) != ModuleEdge.Open || EdgeAt(i, j - 1, 0, 1) != ModuleEdge.Open) return false;
+            int w = width, d = depth, ci = i, cj = j;
+            for (var t = 0; t < ((turns % 4) + 4) % 4; t++)
+            {
+                // Clockwise: corner (x, y) of a w x d room goes to (y, w - x) of the d x w room.
+                (ci, cj) = (cj, w - ci);
+                (w, d) = (d, w);
+            }
+            return ((MaxCells - w) / 2 + ci) % 2 == 0 && ((MaxCells - d) / 2 + cj) % 2 == 0;
         }
 
         /// <summary>

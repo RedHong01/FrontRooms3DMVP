@@ -305,15 +305,16 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     Vector3 StreamCenter => StreamFocus ?? player.position;
 
     /// <summary>
-    /// The chunks within <paramref name="rings"/> of the streaming centre are
-    /// built and none of their rooms is still waiting to be furnished.
+    /// Every chunk within the build radius of the streaming centre is built
+    /// (nothing unbuilt within sight), and none of the rooms within
+    /// <paramref name="rings"/> chunks of it is still waiting to be furnished.
     /// </summary>
     public bool ReadyAround(int rings)
     {
         if (!begun || player == null) return false;
         var center = ChunkOf(StreamCenter);
-        for (var dy = -rings; dy <= rings; dy++)
-        for (var dx = -rings; dx <= rings; dx++)
+        for (var dy = -buildRadius; dy <= buildRadius; dy++)
+        for (var dx = -buildRadius; dx <= buildRadius; dx++)
             if (!built.ContainsKey(new GridCoord(center.x + dx, center.y + dy))) return false;
         foreach (var job in dressQueue)
         {
@@ -682,10 +683,12 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var eastKind = StartAreaEdge(data.east[index], cell, east, false, ref eastHeight, ref eastA, ref eastB);
             var northKind = StartAreaEdge(data.north[index], cell, north, true, ref northHeight, ref northA, ref northB);
             // A wall's ends reach half a thickness past its corner, except into the start area.
+            // The start area's side walls also stop on the door line, where the stream room's end wall closes the corner.
+            var startSide = InStartArea(cell) != InStartArea(east);
             BuildEdge(chunk, eastKind, cell, east, new Vector3((i + 1) * cs, 0f, j * cs), Vector3.forward,
                 eastHeight, eastA, eastB, BlockOf(i, j, eastHeight), Get, Solid, origin,
                 !BothInStartArea(new GridCoord(cell.x, cell.y - 1), new GridCoord(cell.x + 1, cell.y - 1)),
-                !BothInStartArea(new GridCoord(cell.x, cell.y + 1), new GridCoord(cell.x + 1, cell.y + 1)));
+                !BothInStartArea(new GridCoord(cell.x, cell.y + 1), new GridCoord(cell.x + 1, cell.y + 1)) && !(startSide && cell.y + 1 == startArea.yMax));
             BuildEdge(chunk, northKind, cell, north, new Vector3(i * cs, 0f, (j + 1) * cs), Vector3.right,
                 northHeight, northA, northB, BlockOf(i, j, northHeight), Get, Solid, origin,
                 !BothInStartArea(new GridCoord(cell.x - 1, cell.y), new GridCoord(cell.x - 1, cell.y + 1)),
@@ -1234,13 +1237,15 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         var columns = Columns(data, room);
         var clear = new List<Rect>(KeepClear(data, room));
         var o = data.Origin;
+        Rect? doorway = null;
         if (hasStartArea)
         {
             // The stream room's door opens onto this room: keep its swing and the way in clear.
             if (room.Contains(startDoorCell.x - o.x, startDoorCell.y - o.y))
             {
                 var depth = ModuleUnits.DoorClearDepth + ModuleUnits.WallHalf;
-                clear.Add(new Rect((startDoorCell.x - o.x) * cs, (startDoorCell.y - o.y) * cs, cs, depth));
+                doorway = new Rect((startDoorCell.x - o.x) * cs, (startDoorCell.y - o.y) * cs, cs, depth);
+                clear.Add(doorway.Value);
             }
         }
         else
@@ -1258,7 +1263,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             // A module's own props go in first; the kits fill round them.
             var module = data.ModuleOf(r);
             var obstacles = new List<Rect>(columns);
-            if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module, clear));
+            if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module, clear, doorway));
             var worked = obstacles.Count > columns.Count;
             var fill = module == null ? ModuleFill.Auto : module.fill;
             var office = fill == ModuleFill.Office || (fill == ModuleFill.Auto && zone.theme == ZoneTheme.Office);
@@ -1312,7 +1317,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     /// A module's props, placed with the visual chat's kit library at their
     /// module positions. Returns their footprints in chunk-local metres.
     /// </summary>
-    List<Rect> PlaceProps(BuiltChunk chunk, CellRect room, RoomModuleData module, List<Rect> clear)
+    /// <param name="doorway">The stream door's opening and swing, when it opens onto this room: nothing goes there, at any height.</param>
+    List<Rect> PlaceProps(BuiltChunk chunk, CellRect room, RoomModuleData module, List<Rect> clear, Rect? doorway = null)
     {
         var footprints = new List<Rect>();
         if (module.props == null || module.props.Length == 0) return footprints;
@@ -1332,7 +1338,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
                 RoomModuleData.Bounds(p, f, out var x0, out var z0, out var x1, out var z1);
                 rect = Rect.MinMaxRect(ox + x0, oz + z0, ox + x1, oz + z1);
                 // The map may open a wall the module drew (a chunk-border gate, a reconnection): never block it.
-                if (onFloor && !p.noCollider && clear.Exists(s => s.Overlaps(rect)))
+                if ((onFloor && !p.noCollider && clear.Exists(s => s.Overlaps(rect))) || (doorway.HasValue && doorway.Value.Overlaps(rect)))
                 {
                     Debug.LogWarning("[FrontRoomsMap] Module prop " + p.kit + " at (" + p.x.ToString("0.00") + ", " + p.z.ToString("0.00") + ") would block an opening of chunk " + chunk.root.name + "; left out.");
                     continue;
@@ -1414,8 +1420,11 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         }
     }
 
-    // The stream rooms keep their own look: no Office grade over the start area.
-    bool OfficeGraded(GridCoord cell) => !InStartArea(cell) && Cache.ZoneOf(cell).theme == ZoneTheme.Office;
+    // The stream rooms keep their own look: no Office grade over the start area,
+    // nor over the cells beside it (a grade blends in 2.5 m before its box).
+    bool OfficeGraded(GridCoord cell) =>
+        !(hasStartArea && cell.x >= startArea.xMin - 1 && cell.x <= startArea.xMax && cell.y >= startArea.yMin - 1 && cell.y <= startArea.yMax)
+        && Cache.ZoneOf(cell).theme == ZoneTheme.Office;
 
     /// <summary>Footprints of the columns inside a room, in chunk-local metres.</summary>
     List<Rect> Columns(MapChunk data, CellRect room)

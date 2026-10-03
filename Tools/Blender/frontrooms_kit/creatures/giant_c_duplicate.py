@@ -50,7 +50,7 @@ PAPER = "Prop_Paper"          # shirt, collar, cuffs, face, hands, neck, ears (w
 TONER = "Creature_Toner"      # head and hair, print ink, tie, trousers, belt, shoes, pen, creases, cut faces
 
 # ------------------------------------------------------------------ rest body (the upright print, giant metres)
-TRUNK_STRETCH = 1.12                   # the page slipped: the trunk above the belly is drawn out 12 % more
+TRUNK_STRETCH = 1.25                   # the page slipped: the trunk above the belly is drawn out 25 % more
 
 
 def _rz(z):
@@ -62,35 +62,44 @@ def _rz(z):
 # length, ~1.45x in width (shoulders 0.93 m across the cloth), ~1.6x in depth: a heavy, deep trunk,
 # straight-sided from the belt, opening under the sleeves into the level, square-cornered shoulder block.
 TRUNK = [
-    (0.180, 0.300, -0.200, 0.230),     # hem, tucked inside the belt
-    (0.210, 0.330, -0.250, 0.255),
-    (0.280, 0.345, -0.300, 0.272),
-    (0.380, 0.352, -0.340, 0.280),
-    (0.500, 0.355, -0.360, 0.286),     # paunch
-    (0.620, 0.356, -0.362, 0.296),
-    (0.740, 0.358, -0.352, 0.316),
-    (0.860, 0.362, -0.335, 0.346),     # a heavy, rounded upper back
-    (0.960, 0.368, -0.318, 0.370),     # shoulder blades
-    (1.020, 0.385, -0.310, 0.378),     # armpit: the block opens out behind the sleeve tops
-    (1.060, 0.436, -0.304, 0.375),
-    (1.090, 0.461, -0.300, 0.368),
-    (1.120, 0.468, -0.296, 0.355),     # from here up the flank is plumb, flush with the sleeve
-    (1.220, 0.470, -0.285, 0.315),
-    (1.320, 0.470, -0.272, 0.255),
-    (1.380, 0.470, -0.262, 0.215),     # start of the shoulder corner
+    (0.180, 0.330, -0.215, 0.240),     # hem, tucked inside the belt
+    (0.210, 0.365, -0.270, 0.265),
+    (0.280, 0.385, -0.325, 0.285),
+    (0.380, 0.395, -0.368, 0.295),
+    (0.500, 0.398, -0.392, 0.300),     # paunch
+    (0.620, 0.398, -0.394, 0.308),
+    (0.740, 0.397, -0.382, 0.336),
+    (0.860, 0.396, -0.360, 0.380),     # a heavy, rounded upper back
+    (0.960, 0.398, -0.338, 0.410),     # shoulder blades
+    (1.020, 0.410, -0.326, 0.415),     # armpit: the block opens out behind the sleeve tops
+    (1.060, 0.448, -0.316, 0.408),
+    (1.090, 0.466, -0.310, 0.396),
+    (1.120, 0.472, -0.304, 0.378),     # from here up the flank is plumb, flush with the sleeve
+    (1.220, 0.474, -0.290, 0.327),
+    (1.320, 0.474, -0.276, 0.257),
+    (1.380, 0.474, -0.265, 0.217),     # start of the shoulder corner
 ]
 TRUNK = [(_rz(r[0]),) + r[1:] for r in TRUNK]
 SHOULDER_R = 0.050                     # corner radius seen from the front
 SHOULDER_TOP = _rz(1.430)                  # the level shoulder line
 COLLAR_RING = (0.165, _rz(1.455), -0.255, -0.020)   # half-width, z, front y, back y
-SECTION_N = 2.6                        # superellipse exponent of the trunk sections (2 = ellipse)
+SECTION_N = (2.6, 2.15)                # superellipse exponent of the trunk sections: boxy page at the belly,
+                                       # a rounder back over the shoulder blades (2 = ellipse)
 ROW_STEP = 0.021                       # rest spacing of the lofted rows (the folded back stretches 3-4x)
 # The line the trunk bends about, (rest z, rest y): centred in the pelvis, near the chest front higher up,
 # so a forward fold creases the chest and stretches the back round the fold.
 BEND_AXIS = [(-0.6, 0.0), (0.42, 0.0), (0.95, -0.06), (2.0, -0.06)]
 
-HIP_REST = (0.165, 0.060, 0.0)         # hip joints in the trunk's rest frame (mirrored for the right)
-WAIST_REST = (0.125, 0.090, 0.215)     # trouser roots, behind the belt
+# Printed tension creases on the back of the shirt, design (x, z) polylines (z before the stretch).
+CREASES = [   # (polyline, width, taper)
+    ([(0.0, 0.600), (0.0, 0.900), (0.0, 1.200), (0.0, 1.400)], 0.013, 0.6),                    # centre-back fold over the spine
+    ([(-0.33, 0.990), (-0.15, 1.070), (0.0, 1.090), (0.16, 1.065), (0.34, 0.985)], 0.018, 0.75),  # strain, armpit
+    ([(-0.29, 0.870), (-0.11, 0.935), (0.04, 0.950), (0.19, 0.925), (0.32, 0.860)], 0.016, 0.75), # to armpit
+    ([(-0.36, 1.180), (-0.24, 1.140), (-0.12, 1.080)], 0.014, 0.8),                              # pulled from
+    ([(0.36, 1.180), (0.24, 1.140), (0.12, 1.080)], 0.014, 0.8),                                 # the sleeves
+]
+HIP_REST = (0.190, 0.060, 0.0)         # hip joints in the trunk's rest frame (mirrored for the right)
+WAIST_REST = (0.140, 0.090, 0.215)     # trouser roots, behind the belt
 SHOULDER_REST = (0.392, -0.030, _rz(1.290)) # shoulder joints, inside the shoulder block
 NECK_REST = (0.0, -0.135, _rz(1.385))      # neck base, inside the collar
 THIGH, SHIN = 0.660, 0.620
@@ -98,7 +107,7 @@ ANKLE_H = 0.220                        # ankle joint above the sole (flat shoe)
 UPPER_ARM, FOREARM = 0.600, 0.580      # fingertips at mid-thigh when it stands
 NECK_LEN = (0.160, 0.150)
 HEAD_S = 1.55                          # the base head and its printed face, enlarged (0.42 m tall)
-HEAD_NECK = Vector((0.0, -0.075, 0.075))   # head centre from the neck end, head-local (the neck enters the nape)
+HEAD_NECK = Vector((0.0, -0.130, -0.070))  # head centre from the neck end, head-local: the craned neck enters high on the back of the skull, so the head hangs
 
 # ------------------------------------------------------------------ the poses (one parameter set each)
 # root: pelvis centre (world); yaw: body yaw; pelvis: (pitch, roll); spine: (z0, z1, pitch, roll, yaw)
@@ -107,18 +116,51 @@ HEAD_NECK = Vector((0.0, -0.075, 0.075))   # head centre from the neck end, head
 # leg: ankle target, knee pole, foot yaw, heel lift; ceiling: the tiles the pose presses (None = free).
 POSE = {
     "std": {
-        "root": (0.0, 0.22, 1.37), "yaw": 0.0, "pelvis": (-2.0, 0.0),
-        "spine": [(0.00, 0.42, 4.0, 0.0, 0.0), (0.42, 0.95, 22.0, 0.0, 0.0),
-                  (0.95, 1.32, 62.0, 0.0, 0.0), (1.32, 1.62, 68.0, 0.0, 0.0)],
-        "shoulder": (0.395, 0.0, _rz(1.27)),
-        "neck": ((168.0, 0.0, 0.0), (140.0, 0.0, 0.0)), "head": (20.0, 6.0, 0.0),
-        "arm_l": {"wrist": (0.50, -0.66, 1.74), "pole": (1.0, 0.45, 0.25), "down": (-0.30, -0.45, -1.0),
+        # Lopsided: the trunk folds forward and over to its right under the tiles, the left shoulder jammed
+        # into the ceiling, the head forced down beside the low shoulder and tipped, face to the player.
+        "root": (0.24, 0.22, 1.30), "yaw": 0.0, "pelvis": (-2.0, -2.0),
+        "spine": [(0.00, 0.42, 3.0, -6.0, 0.0), (0.42, 1.02, 24.0, -20.0, 0.0),
+                  (1.02, 1.43, 58.0, -36.0, 0.0), (1.43, 1.74, 30.0, -20.0, 0.0)],
+        "shoulder": (0.400, 0.070, 1.30),
+        "neck": ((160.0, 0.0, -36.0), (140.0, 0.0, -26.0)), "head": (18.0, -30.0, 0.0),
+        "arm_l": {"wrist": (0.50, -0.55, 1.60), "pole": (1.0, 0.6, 0.0), "down": (-0.2, -0.3, -1.0),
                   "palm": (-1.0, 0.3, 0.0), "curl": 40.0},
-        "arm_r": {"wrist": (-0.53, -0.58, 1.66), "pole": (-1.0, 0.45, 0.20), "down": (0.25, -0.40, -1.0),
-                  "palm": (1.0, 0.3, 0.0), "curl": 55.0},
-        "leg_l": {"ankle": (0.46, 0.02, ANKLE_H), "pole": (0.65, -1.0, 0.0), "yaw": 20.0, "heel": 0.0},
-        "leg_r": {"ankle": (-0.44, 0.46, ANKLE_H + 0.03), "pole": (-0.60, -1.0, 0.0), "yaw": -18.0, "heel": 12.0},
-        "ceiling": 2.90, "tie": "hang", "crop": 0.10,
+        "arm_r": {"wrist": (-0.40, -0.66, 1.50), "pole": (-0.7, 0.6, 0.0), "down": (0.15, -0.3, -1.0),
+                  "palm": (1.0, 0.3, 0.0), "curl": 50.0},
+        "leg_l": {"ankle": (0.44, 0.02, ANKLE_H), "pole": (0.55, -1.0, 0.0), "yaw": 18.0, "heel": 0.0},
+        "leg_r": {"ankle": (-0.40, 0.46, ANKLE_H + 0.03), "pole": (-0.60, -1.0, 0.0), "yaw": -18.0, "heel": 12.0},
+        "ceiling": 2.90, "tie": "hang",
+    },
+    "tall": {
+        # The reveal under a 5.4 m ceiling: it straightens its legs and back, still round-shouldered,
+        # the head pushed forward to look down at the player. The page shirt shows whole for once.
+        "root": (0.0, 0.10, 1.32), "yaw": 0.0, "pelvis": (-3.0, 0.0),
+        "spine": [(0.00, 0.42, 2.0, 0.0, 0.0), (0.42, 1.02, 6.0, 0.0, 0.0),
+                  (1.02, 1.43, 20.0, 2.0, 0.0), (1.43, 1.74, 12.0, 2.0, 0.0)],
+        "neck": ((30.0, 0.0, 0.0), (18.0, 0.0, 0.0)), "head": (18.0, 4.0, 0.0),
+        "arm_l": {"wrist": (0.50, -0.20, 1.40), "pole": (0.6, 1.0, 0.0), "down": (-0.05, -0.15, -1.0),
+                  "palm": (-1.0, 0.2, 0.0), "curl": 20.0},
+        "arm_r": {"wrist": (-0.50, -0.12, 1.38), "pole": (-0.6, 1.0, 0.0), "down": (0.05, -0.10, -1.0),
+                  "palm": (1.0, 0.2, 0.0), "curl": 25.0},
+        "leg_l": {"ankle": (0.36, -0.06, ANKLE_H), "pole": (0.35, -1.0, 0.0), "yaw": 12.0, "heel": 0.0},
+        "leg_r": {"ankle": (-0.34, 0.30, ANKLE_H), "pole": (-0.35, -1.0, 0.0), "yaw": -10.0, "heel": 0.0},
+        "ceiling": None, "tie": "lie", "collar": (0.075, 0.105),
+    },
+    "low": {
+        # Under the 2.4 m Low ceiling: squatting, knees up and out, folded forward and over to its right,
+        # both hands braced on the knees (elbows out), the head hung low under the shoulders.
+        "root": (0.16, 0.30, 1.00), "yaw": 0.0, "pelvis": (12.0, -3.0),
+        "spine": [(0.00, 0.42, 8.0, -5.0, 0.0), (0.42, 1.02, 26.0, -16.0, 0.0),
+                  (1.02, 1.43, 52.0, -30.0, 0.0), (1.43, 1.74, 26.0, -16.0, 0.0)],
+        "shoulder": (0.400, 0.070, 1.30),
+        "neck": ((160.0, 0.0, -30.0), (135.0, 0.0, -20.0)), "head": (14.0, -26.0, 0.0),
+        "arm_l": {"wrist": (0.56, -0.30, 1.12), "pole": (1.0, 0.6, 0.3), "down": (0.05, -0.75, -0.65),
+                  "palm": (-0.2, 0.3, -1.0), "curl": 35.0},
+        "arm_r": {"wrist": (-0.44, -0.18, 1.08), "pole": (-1.0, 0.5, 0.3), "down": (0.0, -0.75, -0.65),
+                  "palm": (0.2, 0.3, -1.0), "curl": 40.0},
+        "leg_l": {"ankle": (0.44, 0.00, ANKLE_H), "pole": (0.55, -1.0, 0.2), "yaw": 22.0, "heel": 0.0},
+        "leg_r": {"ankle": (-0.40, 0.30, ANKLE_H + 0.05), "pole": (-0.55, -1.0, 0.2), "yaw": -20.0, "heel": 18.0},
+        "ceiling": 2.40, "tie": "hang", "collar": (0.07, 0.19),
     },
 }
 
@@ -431,7 +473,7 @@ class Body:
         return obj
 
 
-def _squasher(body, ceiling, w=0.07, gap=0.042, bulge=0.08):
+def _squasher(body, ceiling, w=0.08, gap=0.050, bulge=0.05):
     """Soft ceiling: points pushed into the tiles are pressed into a flat band just under them,
     and spread sideways a little (the body would be bigger if the room let it)."""
     if ceiling is None:
@@ -532,10 +574,10 @@ def _trunk_rows():
 
 def _trunk(kit, n_around=28):
     rows = _trunk_rows()
-    e = 2.0 / SECTION_N
     bm = bmesh.new()
     rings = []
     for z, w, f, b in rows:
+        e = 2.0 / (SECTION_N[0] + (SECTION_N[1] - SECTION_N[0]) * _smooth(_rz(0.80), _rz(1.10), z))
         yc, hd = (f + b) / 2, (b - f) / 2
         ring = []
         for i in range(n_around):
@@ -556,7 +598,7 @@ def _head_parts(kit):
     """The base head, head-local and at the base's scale: toner skull + hair, paper ears, the paper face
     and its print, the drum streak. Returns (parts, face point)."""
     bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=34, v_segments=20, radius=1.0)
+    bmesh.ops.create_uvsphere(bm, u_segments=28, v_segments=16, radius=1.0)
     for v in bm.verts:
         x, y, z = v.co
         x *= HEAD_HX
@@ -591,7 +633,7 @@ def _head_parts(kit):
         parts["ears"].append(e)
     face = _face_outline()
     paper_y = -HEAD_FRONT - 0.0001
-    parts["face"] = kit.extrude(face, 0.0024, (0, paper_y, 0), PAPER, plane="xz", name="face_paper")
+    parts["face"] = kit.extrude(face, 0.0024, (0, paper_y, 0), PAPER, plane="xz", bevel=0.0, name="face_paper")
     ink_y = -HEAD_FRONT - 0.0018
     fz = FACE_Z
     ink = []
@@ -605,13 +647,13 @@ def _head_parts(kit):
                         (0.026, fz - 0.064)], 0.006, 0.5))
     ink.append(_ellipse(0.0, fz - 0.073, 0.022, 0.006, n=10))
     for k, outline in enumerate(ink):
-        parts["print"].append(kit.extrude(outline, 0.0010, (0, ink_y, 0), TONER, plane="xz", bevel=0.0003,
+        parts["print"].append(kit.extrude(outline, 0.0010, (0, ink_y, 0), TONER, plane="xz", bevel=0.0,
                                           name="print_%d" % k))
     v0, v1 = _v_range(face, STREAK_X)
     sw = STREAK_W / 2
     parts["print"].append(kit.extrude([(STREAK_X - sw, v0 + 0.002), (STREAK_X + sw, v0 + 0.002),
                                        (STREAK_X + sw, v1 - 0.002), (STREAK_X - sw, v1 - 0.002)],
-                                      0.0010, (0, ink_y, 0), TONER, plane="xz", bevel=0.0003, name="streak_face"))
+                                      0.0010, (0, ink_y, 0), TONER, plane="xz", bevel=0.0, name="streak_face"))
     return parts, Vector((0, paper_y, FACE_Z))
 
 
@@ -671,7 +713,7 @@ def _cuff(kit, end, axis, radius, name):
     return _bake(band), _bake(seam)
 
 
-def _collar(kit, base, axis, lat, r=0.118, h_front=0.060, h_back=0.150, n=28):
+def _collar(kit, base, axis, lat, r=0.128, h_front=0.070, h_back=0.185, n=28):
     """The shirt collar round the neck base, shoved up at the back by the folded trunk: a band whose
     top edge rises from h_front at the throat to h_back at the nape, flaring a little."""
     axis = Vector(axis).normalized()
@@ -738,20 +780,29 @@ def build(kit, cl, pose="std"):
     if len(sh) >= 3:
         rest_parts.append(_strip(kit, [h[0] + h[1] * 0.0012 for h in sh], [0.030] * len(sh), [h[1] for h in sh],
                                  0.0016, TONER, "streak_shirt"))
-    # printed tension creases across the back: armpit to armpit, arching over the shoulder blades
-    for k, (zc, arch) in enumerate(((0.84, 0.05), (0.93, 0.07), (1.02, 0.08), (1.10, 0.06))):
+    # printed tension creases: pulled from the collar to the shoulder corners across the yoke, and
+    # strained armpit to armpit across the shoulder blades (a copy prints a fold as a dark line)
+    for k, (line, cw, taper) in enumerate(CREASES):
         pts, nrm = [], []
-        for i in range(17):
-            x = -0.36 + 0.72 * i / 16
-            z = zc + arch * (1 - (abs(x) / 0.36) ** 1.6) + 0.012 * k * (x / 0.36)
-            hit = _back(tree, x, _rz(z))
-            if hit:
-                pts.append(hit[0] + hit[1] * 0.0012)
-                nrm.append(hit[1])
+        for (x0, z0), (x1, z1) in zip(line, line[1:]):
+            for i in range(6):
+                t = i / 6
+                hit = _back(tree, x0 + (x1 - x0) * t, _rz(z0 + (z1 - z0) * t))
+                if hit:
+                    pts.append(hit[0] + hit[1] * 0.0012)
+                    nrm.append(hit[1])
+        hit = _back(tree, line[-1][0], _rz(line[-1][1]))
+        if hit:
+            pts.append(hit[0] + hit[1] * 0.0012)
+            nrm.append(hit[1])
         if len(pts) >= 3:
-            sides = [Vector((0, 0, 1))] * len(pts)
-            rest_parts.append(_strip(kit, pts, [0.016 - 0.003 * abs(k - 1.5)] * len(pts), nrm, 0.0016, TONER,
-                                     "crease_%d" % k, side=sides))
+            sides = []
+            for i in range(len(pts)):
+                d = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+                sides.append(nrm[i].cross(d).normalized())
+            n = len(pts)
+            widths = [cw * (1 - taper * abs(2 * i / (n - 1) - 1) ** 2) for i in range(n)]
+            rest_parts.append(_strip(kit, pts, widths, nrm, 0.0016, TONER, "crease_%d" % k, side=sides))
     # the tie knot sits at the throat of the print
     kn = _front(tree, 0.0, _rz(1.40))
     knot = None
@@ -795,13 +846,13 @@ def build(kit, cl, pose="std"):
         E, W = _ik(S, A["wrist"], UPPER_ARM, FOREARM, A["pole"])
         up, fo = (E - S).normalized(), (W - E).normalized()
         j = {
-            "sh": (tuple(S), 0.112), "u1": (tuple(S.lerp(E, 0.45)), 0.104),
-            "b1": (tuple(S.lerp(E, 0.80)), 0.112), "b2": (tuple(S.lerp(E, 0.92)), 0.104),
-            "el": (tuple(E), 0.106), "b3": (tuple(E.lerp(W, 0.12)), 0.110), "b4": (tuple(E.lerp(W, 0.26)), 0.099),
-            "f1": (tuple(E.lerp(W, 0.55)), 0.092), "sl": (tuple(E.lerp(W, 0.86)), 0.084),
+            "sh": (tuple(S), 0.140), "u1": (tuple(S.lerp(E, 0.45)), 0.128),
+            "b1": (tuple(S.lerp(E, 0.78)), 0.135), "b2": (tuple(S.lerp(E, 0.91)), 0.122),
+            "el": (tuple(E), 0.125), "b3": (tuple(E.lerp(W, 0.12)), 0.130), "b4": (tuple(E.lerp(W, 0.27)), 0.114),
+            "f1": (tuple(E.lerp(W, 0.55)), 0.105), "sl": (tuple(E.lerp(W, 0.86)), 0.094),
         }
         sleeve = _skin(kit, cl, j, [("sh", "u1"), ("u1", "b1"), ("b1", "b2"), ("b2", "el"), ("el", "b3"), ("b3", "b4"),
-                                    ("b4", "f1"), ("f1", "sl")], PAPER, "sleeve_" + s, max_tris=900)
+                                    ("b4", "f1"), ("f1", "sl")], PAPER, "sleeve_" + s, max_tris=820)
         sleeves.append(sleeve)
         sl = E.lerp(W, 0.86)
         r_meas = _tube_radius(sleeve, sl - fo * 0.06, fo)
@@ -811,16 +862,7 @@ def build(kit, cl, pose="std"):
         hj = _hand_joints(W, M, A.get("curl", 0.0), s == "r")
         hj["handin"] = (tuple(E.lerp(W, 0.80)), 0.054)
         hands.append(_skin(kit, cl, hj, [("handin", "wrist"), ("wrist", "knuckle"), ("knuckle", "fing"), ("fing", "tip"),
-                                         ("thumb0", "thumb1"), ("thumb1", "thumb2")], PAPER, "hand_" + s, max_tris=900))
-        crop = P.get("crop")
-        if crop and s == "l":
-            # the page ended here: the outer point of the left elbow is cut off flat
-            out = (E - S.lerp(W, 0.5))
-            out = (out - fo * out.dot(fo)).normalized()
-            out = Vector((out.x, out.y, 0.0)).normalized()
-            co = E + out * (0.106 - crop)
-            sleeve.data.materials.append(kit._material(TONER))
-            _cut(sleeve, co, out, 1)
+                                         ("thumb0", "thumb1"), ("thumb1", "thumb2")], PAPER, "hand_" + s, max_tris=720))
 
     # --- legs: toner trousers (two chains from behind the belt), soft office shoes
     leg_j = {}
@@ -832,9 +874,10 @@ def build(kit, cl, pose="std"):
         K, A = _ik(Hj, L["ankle"], THIGH, SHIN, L["pole"])
         down = (A - K).normalized()
         leg_j.update({
-            "waist_" + s: (tuple(Wj), (0.215, 0.200)), "hip_" + s: (tuple(Hj), 0.212),
-            "thigh_" + s: (tuple(Hj.lerp(K, 0.55)), 0.182), "knee_" + s: (tuple(K), 0.148),
-            "calf_" + s: (tuple(K.lerp(A, 0.40)), 0.138), "ankle_" + s: (tuple(A), 0.104),
+            "waist_" + s: (tuple(Wj), (0.245, 0.225)), "hip_" + s: (tuple(Hj), 0.258),
+            "thigh_" + s: (tuple(Hj.lerp(K, 0.50)), 0.225), "knee_" + s: (tuple(K), 0.172),
+            "bunch_" + s: (tuple(K.lerp(A, 0.14)), 0.178),
+            "calf_" + s: (tuple(K.lerp(A, 0.42)), 0.160), "ankle_" + s: (tuple(A), 0.112),
             "cuff_" + s: (tuple(A + down * 0.068), 0.108),
         })
         Rs = _rot(L.get("heel", 0.0), 0, L.get("yaw", 0.0) + P.get("yaw", 0.0))
@@ -843,9 +886,9 @@ def build(kit, cl, pose="std"):
         sock = A + Rs @ Vector((0, -0.018, -0.120))
         _skin(kit, cl, {"shin": (tuple(K.lerp(A, 0.72)), 0.077), "sock": (tuple(sock), 0.084)}, [("shin", "sock")],
               TONER, "upper_" + s)
-    trousers = _skin(kit, cl, leg_j, [("waist_l", "hip_l"), ("hip_l", "thigh_l"), ("thigh_l", "knee_l"), ("knee_l", "calf_l"),
+    trousers = _skin(kit, cl, leg_j, [("waist_l", "hip_l"), ("hip_l", "thigh_l"), ("thigh_l", "knee_l"), ("knee_l", "bunch_l"), ("bunch_l", "calf_l"),
                                       ("calf_l", "ankle_l"), ("ankle_l", "cuff_l"),
-                                      ("waist_r", "hip_r"), ("hip_r", "thigh_r"), ("thigh_r", "knee_r"), ("knee_r", "calf_r"),
+                                      ("waist_r", "hip_r"), ("hip_r", "thigh_r"), ("thigh_r", "knee_r"), ("knee_r", "bunch_r"), ("bunch_r", "calf_r"),
                                       ("calf_r", "ankle_r"), ("ankle_r", "cuff_r")], TONER, "trousers", max_tris=2400)
 
     # --- neck (paper) out of the collar, craned down; the head hung on it
@@ -870,11 +913,26 @@ def build(kit, cl, pose="std"):
     top_axis = (body.frame(SHOULDER_TOP)[1] @ Vector((0, 0, 1)))
     c_axis = (top_axis + d1).normalized()
     cb = body.map((0.0, (COLLAR_RING[2] + COLLAR_RING[3]) / 2, COLLAR_RING[1] - 0.03))
-    collar = _collar(kit, cb, c_axis, lat)
+    hf, hb = P.get("collar", (0.070, 0.185))
+    collar = _collar(kit, cb, c_axis, lat, h_front=hf, h_back=hb)
 
     for obj in kit.parts:
         _bake(obj)
     lo = cl.floor_parts(kit)
+    cut = P.get("cut")
+    if cut:
+        # The enlargement ran past the page: whatever the tiles would have to make room for is simply
+        # not printed. Everything above the page edge is cut off flat, the cut face toner-black.
+        for obj in list(kit.parts):
+            _bake(obj)
+            if max(v.co.z for v in obj.data.vertices) > cut:
+                mats = [m.name for m in obj.data.materials]
+                if TONER not in mats:
+                    obj.data.materials.append(kit._material(TONER))
+                    mats.append(TONER)
+                _cut(obj, Vector((0, 0, cut)), Vector((0, 0, 1)), mats.index(TONER))
+    DEBUG.setdefault("_knees", {})[pose] = {k: tuple(round(c - (lo if i == 2 else 0), 2) for i, c in enumerate(v[0]))
+                                             for k, v in leg_j.items() if k.startswith("knee")}
     global EYE
     eye = (Mh @ face_pt).z - lo
     EYE = dict(EYE) if isinstance(EYE, dict) else {}

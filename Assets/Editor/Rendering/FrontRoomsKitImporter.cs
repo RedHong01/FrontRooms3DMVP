@@ -12,11 +12,12 @@ using UnityEngine;
 sealed class FrontRoomsKitImporter : AssetPostprocessor
 {
     const string Folder = "Assets/Resources/Props/Models/";
+    const string CreatureFolder = "Assets/Resources/Creatures/";
     const string SurfaceFolder = "Assets/Resources/Surfaces/";
 
     void OnPreprocessModel()
     {
-        if (!assetPath.StartsWith(Folder)) return;
+        if (!assetPath.StartsWith(Folder) && !assetPath.StartsWith(CreatureFolder)) return;
         var importer = (ModelImporter)assetImporter;
         importer.globalScale = 1f;
         importer.useFileScale = true;
@@ -50,9 +51,22 @@ sealed class FrontRoomsKitImporter : AssetPostprocessor
     /// set the switch heights from the research spec: LOD1 below 10 % of the
     /// screen, culled below 2 % (large pieces) or 3 % (desk props).
     /// </summary>
+    /// <summary>A re-exported kit model or sidecar (or a surface material) invalidates
+    /// FrontRoomsKitLibrary's caches in the editor.</summary>
+    static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
+    {
+        foreach (var list in new[] { imported, deleted, moved, movedFrom })
+            foreach (var path in list)
+                if (path.StartsWith(Folder) || path.StartsWith("Assets/Resources/Surfaces/"))
+                {
+                    FrontRoomsKitLibrary.ClearCache();
+                    return;
+                }
+    }
+
     void OnPostprocessModel(GameObject root)
     {
-        if (!assetPath.StartsWith(Folder)) return;
+        if (!assetPath.StartsWith(Folder) && !assetPath.StartsWith(CreatureFolder)) return;
         var group = root.GetComponent<LODGroup>();
         if (group == null) return;
         var lods = group.GetLODs();

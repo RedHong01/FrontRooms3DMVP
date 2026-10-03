@@ -5,8 +5,9 @@ namespace FrontRooms.Map
 {
     /// <summary>
     /// Writes a room module into a generated chunk. The one way modules reach
-    /// the map: the Level Designer preview uses it now, the generator will use
-    /// it to place modules (P3), so what the designer sees is what the game builds.
+    /// the map: the Level Designer preview and the generator's module placement
+    /// (FrontRoomsMapGenerator.PlaceModules) both use it, so what the designer
+    /// sees is what the game builds.
     ///
     /// It keeps the map's guarantees:
     /// - only edges inside the chunk change: chunk borders are shared with the

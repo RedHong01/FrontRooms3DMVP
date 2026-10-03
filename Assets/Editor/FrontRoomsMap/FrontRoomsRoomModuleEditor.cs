@@ -20,10 +20,25 @@ public sealed class FrontRoomsRoomModuleEditor : Editor
 
     FrontRoomsRoomModule Module => (FrontRoomsRoomModule)target;
 
-    void OnEnable() => plan = new FrontRoomsModulePlanView(Repaint);
+    void OnEnable()
+    {
+        plan = new FrontRoomsModulePlanView(Repaint);
+        FrontRoomsRoomModule.Changed += OnModuleChanged;
+    }
 
-    // A drag ended outside the Inspector: let the preview catch up.
-    void OnDisable() => plan?.EndDrag();
+    void OnDisable()
+    {
+        FrontRoomsRoomModule.Changed -= OnModuleChanged;
+        // A drag ended outside the Inspector: let the preview catch up.
+        plan?.EndDrag();
+        FrontRoomsModuleGUI.Release(true);
+    }
+
+    // Edits made in the window or the Scene view show here at once.
+    void OnModuleChanged(FrontRoomsRoomModule changed)
+    {
+        if (changed == target) Repaint();
+    }
 
     public override void OnInspectorGUI()
     {
@@ -62,13 +77,18 @@ public sealed class FrontRoomsRoomModuleEditor : Editor
         }
         FrontRoomsModuleGUI.SelectedProp(module, plan);
 
-        // ---------- Generator (P3) ----------
+        // ---------- Generator ----------
         EditorGUILayout.Space(6);
         showGenerator = EditorGUILayout.Foldout(showGenerator, "Where the generator may use it", true);
-        if (showGenerator) FrontRoomsModuleGUI.GeneratorFields(module);
+        if (showGenerator)
+        {
+            FrontRoomsModuleGUI.GeneratorFields(module);
+            FrontRoomsModuleGUI.Fit(module, FrontRoomsLevelProfiles.Resolve());
+        }
 
         // ---------- Checks ----------
         EditorGUILayout.Space(6);
         FrontRoomsModuleGUI.Checks(module);
+        FrontRoomsModuleGUI.Release();
     }
 }

@@ -1,5 +1,40 @@
 """Giant D — "Delivery" as a squeezed giant (Documentation/research/hunter/11_squeezed_giant.md;
-direction D in 10_hunter_directions.md §6). Placeholder header; rewritten below once the poses settle.
+direction D in 10_hunter_directions.md §6; human-scale base: hunter_d_delivery.py).
+
+A mover ~1.75x a person (3.13 m in the `tall` reveal), heavy, folded under the moving-blanket bundle he
+never sets down. Under the 2.4 / 2.9 m ceilings the BUNDLE is what presses the tiles: it is squashed flat
+against them, bellies out front and back, and buckles in soft horizontal folds just under the contact;
+the rope and straps on top are pressed flat between pad and tiles. He is folded under it: knees bent, back
+humped, neck craned down so the face hangs at the player's eye line, elbows out, one glove up holding the
+bundle off his neck.
+
+Kept from the base: the charcoal knit watch cap with its ecru cuff (the face's light band), the charcoal
+face in plain planes, the brown duck-canvas jacket (banded hem, open collar), charcoal trousers, oversized
+pale cotton gloves, steel-toe boots, and the tell: black cargo straps that run INTO the tops of his
+shoulders (the canvas puckers) and come back out across the chest in an X with a chrome buckle. The
+head, glove, boot, collar, hem and strap helpers are copied and scaled (head 1.62x, gloves 1.5x, boots
+1.7x, garments ~1.65x) so they read as a person's things blown up.
+
+Changed: the crisp strapped slab read as a modern food-delivery backpack, so the load is now a 1990
+moving-blanket bundle: a soft-cornered wrap (r 0.17) over something lumpy (a chair-back hump at its left
+end, a slumped right end, a hard corner low at the front right; nothing pokes out), tied with pale cotton
+rope (two turns round the girth, one loop the long way, a knot with a hanging shipping tag), diamond
+quilting as stitch grooves on a grid aligned to them, radial gathers where the rope pulls, the blanket's
+overlapping edge stepping across the front face under its pale binding, and its loose corner hanging off
+the front right. Strain: compression creases across the back, pull creases from the armpits, sleeves
+bunched inside the elbow, the collar pushed up at the back.
+
+One parameter set per pose (POSE[pose]) drives a small FK/IK skeleton (skeleton()): pelvis position and
+yaw, relative pelvis/spine/neck/head rotations, boot placements (legs by two-bone IK) and wrist targets
+with a hand pose (arms by IK). Every garment, strap and crease is built on that skeleton and the load is
+placed in the top-of-chest frame (in the world for the door), so the costume follows the body.
+
+Coordinates: metres, Z up, facing -Y, feet on z = 0. Rotations: Blender XYZ Euler degrees; X pitches
+(+ = forward), Y rolls (+ lowers his left), Z yaws. Door plane y = 0, the far room on -Y.
+
+Slots (6): PadNavy (bundle, loose corner), CanvasBrown (jacket, collar, creases, pockets, puckers),
+FabricCharcoal (trousers, cap, face, neck), Paper (gloves, cap cuff, binding, rope, label, tag), Vinyl
+(boots, straps, print, buttons), Chrome (buckle).
 """
 
 import math
@@ -11,8 +46,9 @@ from mathutils.bvhtree import BVHTree
 
 NAME = "Giant_D_Delivery"
 TITLE = "Delivery (giant)"
-PITCH = ("A mover the size of the room, folded under a rope-tied moving-blanket bundle that is jammed against "
-         "the ceiling tiles; the straps run into his shoulders and his face hangs in its shadow at your eye line.")
+PITCH = ("A mover too big for the room, folded under a rope-tied moving-blanket bundle that is jammed against "
+         "the ceiling tiles, its straps running into his shoulders and his face hanging in its shadow at your "
+         "eye line.")
 SMOOTH_ANGLE = 60.0
 POSES = {"low": {"top": 2.37, "halfWidth": 0.80}, "std": {"top": 2.86, "halfWidth": 0.80},
          "door": {"top": 2.9, "door": True}, "tall": {"top": 3.30, "halfWidth": 0.85}}
@@ -79,7 +115,6 @@ BODY = {
     "neck": 0.17, "head": (0.0, -0.035, 0.17),
     "upper": 0.54, "fore": 0.48,
 }
-G = 1.65            # the base mover's costume, blown up with him (sleeves, trousers, collar, straps)
 GH = 1.5            # gloves: ~0.32 m wrist to fingertip
 GB = 1.7            # boots: ~0.45 m long
 HS = 1.62           # head: 0.38 m tall in the cap (a small head on a massive frame)
@@ -87,7 +122,6 @@ HS = 1.62           # head: 0.38 m tall in the cap (a small head on a massive fr
 # Per-pose parameters. Rotations are degrees (X pitch forward +, Y roll: + lowers his left, Z yaw).
 #   root    pelvis centre (world); yaw turns the whole body; pelvis/spine/neck/head are relative rotations
 #   feet    side -> ((x, y), yaw, pitch, roll) of each boot sole (world)
-#   arms    side -> wrist placement and hand pose (see _arm_targets)
 #   load    rel: offset/rotation in the top-of-chest frame; or world: loc/rot
 #   arms    thigh: wrist on top of that side's thigh (t along hip->knee); hang: wrist = shoulder + offset
 #           (body axes); point: wrist at a body-axes point; dir/palm: finger and curl directions (body axes)
@@ -97,7 +131,7 @@ POSE = {
     "std": {
         "root": (0.0, 0.22, 1.24), "yaw": 0.0, "pelvis": (50, 0, 0),
         "spine": ((8, 0, 0), (8, 1, 0), (4, 0, 0)),
-        "neck": (30, 0, 0), "head": (-80, 0, 6), "shrug": 0.08,
+        "neck": (34, 0, 0), "head": (-82, 0, 6), "shrug": 0.08,
         "feet": {"l": ((0.30, -0.52), -10, 0, 0), "r": ((-0.30, 0.62), 12, 16, 0)},
         "knee_out": {"l": 0.5, "r": 0.35},
         "arms": {"l": {"thigh": 0.95, "up": 0.0, "out": 0.04, "pole": (0.55, 0.5, 0.75), "curl": 0.6},
@@ -123,20 +157,37 @@ POSE = {
     # A 5.4 m zone: he straightens. Nearly upright, a slight stoop, the bundle riding high on his
     # shoulders and tipped forward over his head (the base's carry, at full size).
     "tall": {
-        "root": (0.0, 0.04, 1.60), "yaw": 0.0, "pelvis": (6, 0, 0),
-        "spine": ((5, 0, 0), (5, 0, 0), (4, 0, 0)),
-        "neck": (8, 0, 0), "head": (-14, 0, 4), "shrug": 0.04,
+        "root": (0.0, 0.04, 1.615), "yaw": 0.0, "pelvis": (3, 0, 0),
+        "spine": ((3, 0, 0), (3, 0, 0), (4, 0, 0)),
+        "neck": (10, 0, -4), "head": (-18, 4, 6), "shrug": 0.04,
         "feet": {"l": ((0.24, -0.16), -8, 0, 0), "r": ((-0.24, 0.12), 8, 6, 0)},
         "knee_out": {"l": 0.2, "r": 0.2},
         "arms": {"l": {"hang": (0.10, -0.10, -0.98), "dir": (0.05, -0.1, -1), "palm": (-1, 0, 0),
                        "pole": (1.0, 0.6, 0.0), "curl": 0.35},
                  "r": {"hang": (-0.10, -0.08, -0.98), "dir": (-0.05, -0.1, -1), "palm": (1, 0, 0),
                        "pole": (-1.0, 0.6, 0.0), "curl": 0.35}},
-        "load": {"rel": (0.05, 0.55, -0.15), "rot": (14, -6, 0)},
-        "ceiling": None, "wall": None,
+        "load": {"rel": (0.10, 0.60, -0.39), "rot": (10, -10, 0)},
+        "ceiling": None, "wall": None, "flap": False,
     },
 }
-POSE["door"] = dict(POSE["std"])
+# Squeezing through the 1.0 x 2.1 m door (plane y = 0, the far room on -Y): turned 75 deg so his right
+# shoulder leads, knees folded, the torso bent down and over toward the opening. His head and right
+# shoulder are through; the bundle cannot follow and is jammed into the corner of wall and ceiling
+# above the frame on his side, its straps dragging at both shoulders. Right glove flat on the far face of
+# the wall past the jamb; left glove up under the bundle, holding it off his neck. Points/poles here are world ("world": True).
+POSE["door"] = {
+    "root": (-0.22, 0.42, 0.88), "yaw": 75.0, "pelvis": (20, -14, 0),
+    "spine": ((4, -10, 0), (4, -10, 3), (3, -8, 3)),
+    "neck": (45, 0, -45), "head": (-45, 0, -20), "shrug": 0.06,
+    "feet": {"l": ((-0.10, 0.92), 70, 18, 0), "r": ((0.05, -0.48), 15, 0, 0)},
+    "knee_pole": {"l": (0.9, 0.3, 0.0), "r": (0.5, -0.9, 0.1)},
+    "arms": {"r": {"world": True, "point": (0.52, -0.36, 1.42), "dir": (0.6, 0.0, 0.8), "palm": (0, 1, 0),
+                   "pole": (0.0, -0.5, -1.0), "pole_world": True, "curl": 0.2},
+             "l": {"world": True, "point": (0.32, 0.42, 1.97), "dir": (0.0, 0.4, 1.0), "palm": (0, 1, 0.2),
+                   "pole": (0.2, 1.0, -0.5), "pole_world": True, "curl": 0.3}},
+    "load": {"loc": (-0.08, 0.58, 2.29), "rot": (-6, 6, -4)},
+    "ceiling": 2.85, "wall": 0.21, "flap": False,
+}
 
 
 def _ik(a, target, l1, l2, pole):
@@ -225,7 +276,7 @@ def skeleton(P):
             d = (ax * 0.75 - up * 0.25).normalized()
             m = -up
         else:
-            Y = yaw.to_3x3()
+            Y = yaw.to_3x3() if not a.get("world") else Matrix.Identity(3)
             if "hang" in a:
                 wrist = j["shoulder_" + s] + Y @ V(a["hang"])
             elif "point" in a:
@@ -326,8 +377,8 @@ LH = V((0.64, 0.40, 0.47))
 LRAD = 0.17
 L_PUFF = 0.035
 Q_CELL = 0.30            # diamond quilting: stitch lines every Q_CELL along u+v and u-v
-Q_DEPTH = 0.034
-Q_W = 0.045
+Q_DEPTH = 0.05
+Q_W = 0.04
 STEP = 0.022             # the blanket's overlapping edge: the top layer stands this proud
 # The edge on the front face, as a polyline in (x, z); the layer on its -x side lies over the other.
 EDGE = [(0.16, 0.62), (0.06, 0.30), (-0.16, 0.06), (-0.34, -0.22), (-0.48, -0.60)]
@@ -511,6 +562,8 @@ class Load:
         out = self.W(pw) + nw2 * off
         if self.W.T is not None:
             out.z = min(out.z, self.W.T + CEIL_GAP - 0.004 - clear)
+        if self.W.Y is not None:
+            out.y = max(out.y, 0.155 + clear)
         return out, nw2
 
     def to_local(self, p):
@@ -674,7 +727,7 @@ def _flap(kit, L, q0, q1, length, sway, name):
         for r in range(nrow):
             bm.faces.new((grid[i][r], grid[i + 1][r], grid[i + 1][r + 1], grid[i][r + 1]))
     bm.normal_update()
-    edge_pts = [grid[0][r].co.copy() for r in range(nrow + 1)] + edge[1:]
+    edge_pts = [grid[0][r].co.copy() for r in range(nrow // 2, nrow + 1)] + edge[1:]
     obj = kit._new_object(name, bm, PAD, "metres", "xz")
     sol = obj.modifiers.new("solid", "SOLIDIFY")
     sol.thickness = 0.05
@@ -687,23 +740,11 @@ def _flap(kit, L, q0, q1, length, sway, name):
         t = (b - a).normalized()
         side = t.cross(V((0, 0, 1)))
         nrm.append(side.normalized() if side.length > 1e-4 else V((1, 0, 0)))
-    _ribbon(kit, edge_pts, nrm, 0.07, 0.045, LIGHT, name + " binding", round_=True)
+    _ribbon(kit, edge_pts, nrm, 0.06, 0.05, LIGHT, name + " binding", round_=True)
     return obj
 
 
 # ================================================================== garments (base helpers)
-def _section(obj, centre, axis, slab=0.03, rmax=0.35):
-    ex = V((1, 0, 0))
-    ey = axis.cross(ex).normalized()
-    rx = ry = 0.0
-    for v in obj.data.vertices:
-        d = v.co - centre
-        if abs(d.dot(axis)) < slab and (d - axis * d.dot(axis)).length < rmax:
-            rx = max(rx, abs(d.dot(ex)))
-            ry = max(ry, abs(d.dot(ey)))
-    return rx, ry
-
-
 def _tube_open(kit, top, bot, r_top, r_bot, slot, name, verts=20, wall=0.01):
     axis = (top - bot).normalized()
     ex = V((1, 0, 0))
@@ -1015,15 +1056,16 @@ def build(kit, cl, pose):
         kit.box((w, 0.004, 0.012 if dz > -0.05 else 0.05), tuple(tc + tr @ V((0, -0.006, dz))), DARK, bevel=0.0,
                 segments=1, rot=(0, 0, tyaw), name="tag print")
     # shipping label on the front face (the face over his head), askew
-    lab = (0.17, -0.25)
-    _patch(kit, L, 1, -1, lab, (0.30, 0.22), -8.0, 0.010, LIGHT, "label")
+    lab = (0.22, 0.17)
+    _patch(kit, L, 1, -1, lab, (0.26, 0.20), -8.0, 0.010, LIGHT, "label")
     ca, sa = math.cos(math.radians(-8)), math.sin(math.radians(-8))
-    for du, dv, su, sv in ((-0.03, 0.065, 0.20, 0.02), (-0.05, 0.03, 0.16, 0.018), (-0.03, -0.002, 0.18, 0.018),
-                           (0.0, -0.065, 0.22, 0.06)):
+    for du, dv, su, sv in ((-0.03, 0.06, 0.17, 0.018), (-0.045, 0.028, 0.14, 0.016), (-0.03, -0.003, 0.16, 0.016),
+                           (0.0, -0.06, 0.19, 0.055)):
         _patch(kit, L, 1, -1, (lab[0] + du * ca - dv * sa, lab[1] + du * sa + dv * ca), (su, sv), -8.0, 0.017,
                DARK, "label print", n=3)
-    # the loose corner of the blanket hanging off the left end
-    _flap(kit, L, (-0.45, -h.y, -h.z), (-0.63, -h.y * 0.4, -h.z), 0.36, (0.03, -0.04, 0.0), "blanket corner")
+    # the loose corner of the blanket hanging off the front right
+    if P.get("flap", True):
+        _flap(kit, L, (-0.45, -h.y, -h.z), (-0.63, -h.y * 0.4, -h.z), 0.34, (0.03, -0.04, 0.0), "blanket corner")
 
     # shoulder straps: up the back of the load, over the top, down its front and INTO the shoulders
     sleeve_tree = _bvh(sleeves)
@@ -1126,5 +1168,14 @@ def build(kit, cl, pose):
     for o in kit.parts:
         key = o.name.rstrip(".0123456789")
         wide[key] = max(wide.get(key, 0.0), max(abs((o.matrix_world @ v.co).x) for v in o.data.vertices))
+    slab = {}
+    for o in kit.parts:
+        key = o.name.rstrip(".0123456789")
+        for v in o.data.vertices:
+            w = o.matrix_world @ v.co
+            if abs(w.y) < 0.15 and (w.z > 2.08 or abs(w.x) > 0.48):
+                slab[key] = max(slab.get(key, 0.0), max(w.z - 2.08, abs(w.x) - 0.48))
+    if slab and P.get("wall") is not None:
+        print("[giant_d] door-slab offenders: " + ", ".join("%s %.3f" % kv for kv in sorted(slab.items(), key=lambda kv: -kv[1])))
     print("[giant_d] widest: " + ", ".join("%s %.3f" % kv for kv in sorted(wide.items(), key=lambda kv: -kv[1])[:6]))
     kit.no_collider()

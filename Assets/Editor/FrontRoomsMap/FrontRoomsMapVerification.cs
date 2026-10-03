@@ -33,16 +33,21 @@ public static class FrontRoomsMapVerification
         var path = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", "map-verification-latest.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, JsonUtility.ToJson(report, true));
-        var summary = "[FrontRoomsMap] " + (report.failed == 0 ? "PASS" : "FAIL") + " · " + report.passed + "/" + report.seedCount
-            + " seeds · " + (RadiusChunks * 2) + "×" + (RadiusChunks * 2) + " chunks each · " + modules.Count + " room modules, " + report.seeds.Sum(x => x.modulesPlaced) + " placed · profile " + (AssetDatabase.GetAssetPath(profile) is string p && p.Length > 0 ? p : "code defaults") + " · " + path;
-        if (report.failed == 0) Debug.Log(summary);
+        var placed = report.seeds.Sum(x => x.modulesPlaced);
+        // A library the generator never uses over 100 seeds is a broken setup, not a pass.
+        var unused = modules.Count > 0 && profile.generation != null && profile.generation.moduleChance > 0f && placed == 0;
+        var pass = report.failed == 0 && !unused;
+        var summary = "[FrontRoomsMap] " + (pass ? "PASS" : "FAIL") + " · " + report.passed + "/" + report.seedCount
+            + " seeds · " + (RadiusChunks * 2) + "×" + (RadiusChunks * 2) + " chunks each · " + modules.Count + " room modules, " + placed + " placed · profile " + (AssetDatabase.GetAssetPath(profile) is string p && p.Length > 0 ? p : "code defaults") + " · " + path;
+        if (pass) Debug.Log(summary);
         else
         {
             foreach (var seed in report.seeds)
                 if (!seed.passed) { Debug.LogError("[FrontRoomsMap] seed " + seed.seed + ": " + string.Join(" | ", seed.errors)); break; }
+            if (unused) Debug.LogError("[FrontRoomsMap] the profile lists " + modules.Count + " room modules with module chance " + profile.generation.moduleChance + " but no seed placed one: check their height, theme, tier range, weight and size.");
             Debug.LogError(summary);
         }
-        if (throwOnFailure && report.failed > 0) throw new Exception(summary);
+        if (throwOnFailure && !pass) throw new Exception(summary);
         return summary;
     }
 }

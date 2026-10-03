@@ -35,7 +35,7 @@ SMOOTH_ANGLE = 60.0
 POSES = {"low": {"top": 2.37, "halfWidth": 0.80}, "std": {"top": 2.86, "halfWidth": 0.80},
          "door": {"top": 2.9, "door": True}, "tall": {"top": 3.30, "halfWidth": 0.85}}
 SIL_FRAME = (2.4, 3.6)
-EYE = {"low": 1.45, "std": 1.72, "door": 1.45, "tall": 2.95}   # lens centre; build() writes the measured value
+EYE = {"low": 1.42, "std": 1.782, "door": 1.447, "tall": 2.919}   # lens centre after flooring; build() rewrites it
 LENS_GLOW = 3.0       # preview emission strength (Hunt: dim, steady); 0 = Listen (off)
 
 TWILL = "Creature_TwillSpruce"
@@ -75,7 +75,7 @@ POSE = {
         feet=dict(l=((0.50, -0.34), 24.0, 0.0), r=((-0.48, 0.26), -20.0, 10.0)),
         knee=dict(l=(1.3, -1.0, 0.0), r=(-1.3, -1.0, 0.0)),
         lens=(0.0, -0.78, 1.78), hood=(26.0, 0.0, 0.0),
-        wrist=dict(l=(0.47, -0.56, 1.58), r=(-0.38, -0.86, 2.765)),
+        wrist=dict(l=(0.47, -0.56, 1.58), r=(-0.40, -0.76, 2.765)),
         elbow=dict(l=(1.0, 0.25, 0.1), r=(-0.5, -0.1, -0.85)),
         hand=dict(l=((0.05, -0.25, -1.0), 0.55, (-1.0, 0.3, 0.0), (0.0, -1.0, 0.0)),
                   r=((-0.35, -1.0, 0.0), 1.0, (0.0, 0.0, 1.0), (1.0, 0.0, 0.0), 0.15, 1.35)),
@@ -112,12 +112,12 @@ POSE = {
         world=True,
         pelvis=(0.0, 0.0, 0.74),
         spine=((12, -12), (16, -26), (20, -38), (50, -70)),
-        feet=dict(l=((-0.05, 0.95), 95.0, 16.0), r=((0.08, -0.42), 40.0, 0.0)),   # ball (x, y), yaw, heel lift
+        feet=dict(l=((-0.06, 0.76), 95.0, 16.0), r=((0.08, -0.42), 40.0, 0.0)),   # ball (x, y), yaw, heel lift
         knee=dict(l=(1.0, 0.2, 0.2), r=(0.7, -0.7, 0.3)),
         lens=(0.04, -0.46, 1.45), hood=(10.0, -12.0, 15.0),
-        wrist=dict(l=(0.78, 0.31, 1.30), r=(0.84, -0.37, 1.52)),
+        wrist=dict(l=(0.64, 0.30, 1.06), r=(0.84, -0.37, 1.52)),
         elbow=dict(l=(0.6, 0.3, -0.4), r=(0.3, -0.4, 1.0)),
-        hand=dict(l=((0.0, 0.0, 1.0), 0.9, (0.0, -1.0, 0.0), (-1.0, 0.0, 0.0), 0.5, 1.3),
+        hand=dict(l=((0.7, 0.0, 0.7), 0.9, (0.0, -1.0, 0.0), (-0.7, 0.0, 0.7), 0.4, 1.35),
                   r=((-1.0, 0.0, 0.0), 0.95, (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), 0.8)),
         ceiling=None,
         xform=(80.0, -0.15, 0.62),
@@ -927,6 +927,7 @@ def build(kit, cl, pose="std"):
     shoulder_w = (max(w.x for w in band) - min(w.x for w in band)) if band else 0.0
     crown = max((w for o, w in ws if o is hood), key=lambda w: w.z)
     log("top %.3f (%s), half-width %.3f (%s), lens centre %.3f, hood crown %.3f" % (top, topname, hw, hwname, eye, crown.z))
+    log("y extent %.3f..%.3f (silhouette canvas +-%.2f)" % (min(w.y for _, w in ws), max(w.y for _, w in ws), SIL_FRAME[0] / 2))
     log("neck length %.3f, shoulders across %.3f, pressed verts %d, floor shift %.3f" % (neck_len, shoulder_w, pressed, lo))
     log("fingertips z l %.2f r %.2f; mid-thigh l %.2f; knees z l %.2f r %.2f; hips z %.2f" % (
         tips["l"].z - lo, tips["r"].z - lo, (lerp(hips["l"], knees["l"], 0.5)).z - lo, knees["l"].z - lo,
@@ -945,17 +946,33 @@ def build(kit, cl, pose="std"):
                 log("  slab violation %s: %d verts, max z %.3f, max |x| %.3f, y %.3f..%.3f" % (
                     nme, len(wl), max(w.z for w in wl), max(abs(w.x) for w in wl), min(w.y for w in wl), max(w.y for w in wl)))
         log("lens world (%.2f, %.2f, %.2f)" % tuple(lens_obj.matrix_world @ V(0, 0, 0)))
+        for s_ in ("l", "r"):
+            q = Mx @ sockets[s_]
+            log("socket %s world (%.2f, %.2f, %.2f)" % (s_, q.x, q.y, q.z - lo))
     total = sum(tris(o) for o in kit.parts)
     log("parts %d, tris (pre-modifier) %d, eye %.3f" % (len(kit.parts), total, eye))
 
 
-# DESIGN (giant pass, 2026-10-02; see the hand-off notes)
+# DESIGN (giant pass, 2026-10-02)
 # * Kept from the base: the hood (superellipsoid shell, pleated drawn band, gathered hem, cords
 #   from the lower corners, centre seam, parka peak), the flat rimless opal lens with decal UVs
-#   and the one-shadow tell, tape cuffs at wrists and ankles, tool belt + pouch + tool handles,
-#   key ring, Prop_Paper name patch, black gloves, rubber-soled boots, zip placket, pocket
-#   flaps, action-back yoke and pleats, the shrug as the torso's own top, 6 slots.
-# * New for the squeeze: the shrug is pressed flat on the ceiling (press_parts), the neck
-#   cranes out of the front of the shrug inside a sleeve of hood twill, the coverall collar is
-#   shoved up round it, strain creases fan across the back, the sleeves bunch at the elbows,
-#   the cords hang plumb from the bowed hood.
+#   (0..1 across the panel's own x-z, so the troffer texture maps once) and the one-shadow tell,
+#   tape cuffs at wrists and ankles, tool belt + pouch + two tool handles, key ring, Prop_Paper
+#   name patch, black gloves, rubber-soled boots, zip placket, pocket flaps, action-back yoke and
+#   pleats, the shrug as the torso's own top, the same 6 slots.
+# * Scale: body ~1.65-1.75x (spine 1.42 m pelvis->shrug, thigh/shin 0.76/0.68, arm 0.60/0.64,
+#   shoulders 0.92-0.97 m across); gloves x1.65 (~0.33 m hand), boots x1.45 (~0.45 m), hood
+#   details x1.45 round a 0.20 x 0.40 m lens; belt, pouch, tools, keys, patch, cords, tape x1.6.
+# * The squeeze: press_parts() squashes everything above the ceiling into a flat contact patch
+#   (std 2.845, low 2.355), so the shrug reads as jammed against the tiles. The neck cranes out of
+#   the front of the shrug in a tapered sleeve of hood twill (bull neck, not a stalk) with the
+#   hood seam carried down it and the coverall collar rolled up round its root; the hood hangs
+#   at eye level, cords plumb. Sleeves bunch at the elbows (skin rolls), strain creases fan over
+#   the shoulder blades. std: right glove flat on the ceiling tiles (the electrician feeling the
+#   ceiling), left elbow out. low: deep bow-legged squat, arms dangling between the knees, head
+#   cocked. door: turned 80 deg, half-kneeling on the trailing knee, torso bent sideways so the
+#   hood and leading shoulder go through under the lintel, right glove on the jamb casing, left
+#   glove flat on the wall behind. tall: the base silhouette at 3.27 m, hood up on the shrug.
+# * Open: the neck is 0.94 (std) / 0.83 (low) / 0.40 (door) / 0.26 (tall) m from the shrug root
+#   into the hood: it telescopes out of the shrug when the room is low. A production rig needs a
+#   stretch bone (a deliberate monster trait) or std/low accept the face ~0.3 m higher.

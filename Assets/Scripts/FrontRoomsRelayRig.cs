@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 /// <summary>
@@ -15,8 +16,44 @@ public sealed class FrontRoomsRelayRig : MonoBehaviour
         Walk,
         Run,
         BreakDoor,
-        Stagger
+        Stagger,
+        /// <summary>Stationary sweep after losing the player (latched head turns toward ListenTarget).</summary>
+        Search
     }
+
+    // ------------------------------------------------------------------ hooks
+    // The contract with the map's Relay (FrontRoomsMapHunter / FrontRooms3DGame).
+    // All optional: a caller that never uses them gets today's behaviour.
+
+    /// <summary>A foot planted: (0 = left, 1 = right, world position of the foot). Raised
+    /// from the gait phase while moving, so footstep audio matches the animation.</summary>
+    public event Action<int, Vector3> Step;
+
+    /// <summary>True: this rig raises <see cref="Step"/>; timer-driven step Foley can stop.</summary>
+    public bool RaisesSteps => true;
+
+    /// <summary>World point the head turns toward in Listen and Search (the last noise); null clears.</summary>
+    public void SetListenTarget(Vector3? worldPoint) => listenTarget = worldPoint;
+
+    /// <summary>Call at the impact moment of each door blow (0-based); the last one is the break-through.</summary>
+    public void DoorBlow(int blow, int blowCount)
+    {
+        blowImpulse = 1f;
+        finalBlow = blow >= blowCount - 1;
+    }
+
+    /// <summary>Ceiling height of the room the Relay is in (2.4 / 2.9 / 5.4 m). The squeezed-giant
+    /// rig blends its low / std / tall poses from it; the prototype rig ignores it.</summary>
+    public float CeilingHeight { get; set; } = 2.9f;
+
+    /// <summary>0..1 while crossing a 1.0 x 2.1 m doorway (0 outside). The squeezed-giant rig
+    /// blends into its door-squeeze pose; the prototype rig ignores it.</summary>
+    public float DoorSqueeze { get; set; }
+
+    Vector3? listenTarget;
+    float blowImpulse;
+    bool finalBlow;
+    float lastGait;
 
     [Header("Materials")]
     [SerializeField] Material bodyMaterial;
@@ -120,8 +157,32 @@ public sealed class FrontRoomsRelayRig : MonoBehaviour
         }
         if (spine != null) spine.localRotation = Quaternion.Euler(-9f - crouch * 22f, 0f, gait * 1.8f);
         if (chest != null) chest.localRotation = Quaternion.Euler(-4f - crouch * 18f, 0f, -gait * 1.5f);
-        if (neck != null) neck.localRotation = Quaternion.Euler(0f, Mathf.Sin(animationTime * 1.8f) * (state == MotionState.IdleListen ? 7f : 2.5f), 0f);
-        if (head != null) head.localRotation = Quaternion.Euler(state == MotionState.BreakDoor ? -8f : 0f, Mathf.Sin(animationTime * 1.65f) * (state == MotionState.IdleListen ? 9f : 3f), 0f);
+        var listening = state == MotionState.IdleListen || state == MotionState.Search;
+        var targetYaw = 0f;
+        if (listening && listenTarget.HasValue)
+        {
+            // Latched turn toward the noise: quantised to 15 deg steps (held poses, snapped turns).
+            var local = transform.InverseTransformPoint(listenTarget.Value);
+            targetYaw = Mathf.Clamp(Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg, -70f, 70f);
+            targetYaw = Mathf.Round(targetYaw / 15f) * 15f;
+        }
+        var sway = listening && !listenTarget.HasValue ? 1f : .3f;
+        if (neck != null) neck.localRotation = Quaternion.Euler(0f, targetYaw * .4f + Mathf.Sin(animationTime * 1.8f) * (state == MotionState.IdleListen ? 7f : 2.5f) * sway, 0f);
+        if (head != null) head.localRotation = Quaternion.Euler(state == MotionState.BreakDoor ? -8f : 0f, targetYaw * .6f + Mathf.Sin(animationTime * 1.65f) * (state == MotionState.IdleListen ? 9f : 3f) * sway, 0f);
+        // Door blow: a forward chest snap that decays; the final blow carries through further.
+        if (blowImpulse > 0f)
+        {
+            if (chest != null) chest.localRotation *= Quaternion.Euler(blowImpulse * (finalBlow ? 22f : 14f), 0f, 0f);
+            blowImpulse = Mathf.Max(0f, blowImpulse - deltaTime * (finalBlow ? 2.2f : 4f));
+        }
+        // Foot plants from the gait phase: a zero crossing of the stride sine.
+        if (moving && deltaTime > 0f && Step != null && Mathf.Sign(gait) != Mathf.Sign(lastGait) && lastGait != 0f)
+        {
+            var foot = gait > 0f ? 1 : 0;
+            var footBone = foot == 0 ? footL : footR;
+            Step(foot, footBone != null ? footBone.position : transform.position);
+        }
+        lastGait = moving ? gait : 0f;
 
         if (armL != null) armL.localRotation = Quaternion.Euler(gait * armSwing, 0f, -7f);
         if (armR != null) armR.localRotation = Quaternion.Euler(opposite * armSwing, 0f, 7f);

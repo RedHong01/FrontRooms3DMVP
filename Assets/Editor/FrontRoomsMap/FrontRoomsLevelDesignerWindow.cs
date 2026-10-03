@@ -49,11 +49,8 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
         var window = inspector != null
             ? GetWindow<FrontRoomsLevelDesignerWindow>("Level Designer", true, inspector)
             : GetWindow<FrontRoomsLevelDesignerWindow>("Level Designer", true);
-        if (target != null && target != window.module)
-        {
-            window.module = target;
-            window.plan.Select(-1, false);
-        }
+        // As a switch in the window: a rename draft or a selection of the old module goes.
+        if (target != null && target != window.module) window.SetModule(target);
         window.Repaint();
         return window;
     }
@@ -84,6 +81,7 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
     {
         if (open == this) open = null;
         plan.EndDrag();
+        FrontRoomsModuleGUI.Release(true);
         FrontRoomsRoomModule.Changed -= OnModuleChanged;
         Undo.undoRedoPerformed -= Repaint;
         EditorApplication.projectChanged -= OnProjectChanged;
@@ -154,16 +152,17 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
         var preview = FrontRoomsDesignerSceneTools.ScenePreview();
 
         scroll = EditorGUILayout.BeginScrollView(scroll);
-        if (preview == null || preview.module != module)
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+            EditorGUILayout.HelpBox("Play mode: the Scene view tools and the preview controls are off. Edits go to the module and show in the preview when Play ends.", MessageType.Info);
+        else if (preview == null || preview.module != module)
         {
             EditorGUILayout.HelpBox(preview == null ? "The designer scene is not open: the Scene view tools and the preview controls need it." : "The preview shows another module.", MessageType.Info);
-            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
-                if (GUILayout.Button(preview == null ? "Open the designer scene on this module" : "Preview this module"))
-                {
-                    // Scene changes and save prompts must not run inside a GUI pass.
-                    var target = module;
-                    EditorApplication.delayCall += () => FrontRoomsLevelDesigner.Open(target);
-                }
+            if (GUILayout.Button(preview == null ? "Open the designer scene on this module" : "Preview this module"))
+            {
+                // Scene changes and save prompts must not run inside a GUI pass.
+                var target = module;
+                EditorApplication.delayCall += () => FrontRoomsLevelDesigner.Open(target);
+            }
         }
 
         showRoom = Section(showRoom, "Room");
@@ -199,6 +198,7 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
         showChecks = Section(showChecks, "Checks");
         if (showChecks) FrontRoomsModuleGUI.Checks(module);
         EditorGUILayout.EndScrollView();
+        FrontRoomsModuleGUI.Release();
     }
 
     /// <summary>A section header that folds (a plain foldout: header groups break when a control exits the GUI pass inside them).</summary>
@@ -267,6 +267,8 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
             GUI.Label(r, (used ? "generator · " : "") + size, rowNote);
             if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
             {
+                // Out of the search and number fields, so R, Delete and Esc reach the plan.
+                GUIUtility.keyboardControl = 0;
                 if (m != module) SetModule(m);
                 e.Use();
             }
@@ -368,6 +370,7 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
                 GUI.Label(r, (k + 1) + "  " + FrontRoomsModuleEditing.Short(p.kit) + "   (" + p.x.ToString("0.00") + ", " + p.z.ToString("0.00") + ")" + (p.y > 0f ? " ↑" + p.y.ToString("0.00") : "") + "  " + p.yaw.ToString("0") + "°");
                 if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
                 {
+                    GUIUtility.keyboardControl = 0;
                     plan.Select(k);
                     e.Use();
                 }
@@ -443,6 +446,7 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
         EditorGUILayout.Space(2);
         EditorGUILayout.LabelField("This module", EditorStyles.miniBoldLabel);
         FrontRoomsModuleGUI.GeneratorFields(module);
+        FrontRoomsModuleGUI.Fit(module, profile);
         var m = module.data;
         if (used && (g.moduleTier < m.minTier || g.moduleTier > m.maxTier))
             EditorGUILayout.HelpBox("The level's module tier (" + g.moduleTier + ") is outside this module's range (" + m.minTier + "–" + m.maxTier + "): the generator will not use it.", MessageType.Warning);

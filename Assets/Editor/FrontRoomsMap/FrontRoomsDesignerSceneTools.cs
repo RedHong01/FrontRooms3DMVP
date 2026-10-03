@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FrontRooms.Map;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -11,18 +12,19 @@ using UnityEngine.SceneManagement;
 /// - a kit dragged from the palette onto the floor becomes a prop there;
 /// - a prop moved or turned with the usual tools (or its Transform fields)
 ///   writes its new x, z and yaw back to the module as it goes; the preview
-///   rebuilds once nothing has moved for 0.3 s with no handle held, and the
-///   rebuilt prop is selected again;
-/// - Delete on selected props removes them from the module;
+///   rebuilds once nothing has moved for 0.3 s with no handle held and no
+///   field being typed in, and the rebuilt prop is selected again;
+/// - Delete on selected props removes them from the module, Duplicate adds
+///   copies of them to it;
 /// - the room's outline and openings are drawn on the floor.
 /// Clicking a prop selects the whole kit, not a mesh inside it, and props
 /// stay selected across every rebuild.
 ///
 /// Moves are seen through Undo.postprocessModifications, which Unity calls
 /// for the preview's DontSave props as for any scene object. The module is
-/// written on the next editor update, not inside that callback: an Undo
-/// record made there is lost (both checked in batch, see LEVEL_DESIGNER.md),
-/// and the write joins the move's undo step.
+/// written on the next editor update, not inside that callback, because an
+/// Undo record made there is lost; the write joins the move's undo step.
+/// FrontRoomsLevelDesignerTests checks both.
 /// </summary>
 [InitializeOnLoad]
 public static class FrontRoomsDesignerSceneTools
@@ -98,17 +100,37 @@ public static class FrontRoomsDesignerSceneTools
         return tag != null ? tag.index : -1;
     }
 
-    /// <summary>Select the props with these indices in the Scene view, now or, if the map is older than the module, after the rebuild that is on its way.</summary>
-    public static void SelectProps(FrontRoomsModulePreview preview, int[] indices)
+    /// <summary>
+    /// Select the props with these indices in the Scene view: after the
+    /// rebuild on its way if the map is older than the module (a prop added,
+    /// removed or swapped), else now. Props the map left out (blocking an
+    /// opening, a kit without a model) have nothing to select.
+    /// </summary>
+    public static void SelectProps(FrontRoomsModulePreview preview, int[] indices) => SelectProps(preview, indices, false);
+
+    static void SelectProps(FrontRoomsModulePreview preview, int[] indices, bool rebuilt)
     {
         if (preview == null || preview.World == null || preview.module == null) return;
-        var tags = preview.World.GetComponentsInChildren<FrontRoomsModulePropTag>(true).Where(t => TagOf(t.gameObject, preview) == t && indices.Contains(t.index)).ToList();
-        if (tags.Count < indices.Length)
+        if (!rebuilt && Stale(preview))
         {
             reselect = indices;
             return;
         }
+        // Applied: an older request must not override it at the next rebuild.
+        reselect = null;
+        var tags = preview.World.GetComponentsInChildren<FrontRoomsModulePropTag>(true).Where(t => TagOf(t.gameObject, preview) == t && indices.Contains(t.index));
         Selection.objects = tags.Select(t => (Object)t.gameObject).ToArray();
+    }
+
+    /// <summary>The map was stamped from other props than the module has now (their number or kits), so its tags no longer match.</summary>
+    static bool Stale(FrontRoomsModulePreview preview)
+    {
+        var stamped = preview.Stamped;
+        var props = preview.module.data.props;
+        if (stamped == null || stamped.props.Length != props.Length) return true;
+        for (var k = 0; k < props.Length; k++)
+            if (stamped.props[k].kit != props[k].kit) return true;
+        return false;
     }
 
     /// <summary>Let go of this preview's props in the Scene selection (the preview is about to show another module).</summary>
@@ -146,7 +168,7 @@ public static class FrontRoomsDesignerSceneTools
         var indices = reselect;
         reselect = null;
         if (moved == preview) moved = null;
-        if (indices != null && indices.Length > 0) SelectProps(preview, indices);
+        if (indices != null && indices.Length > 0) SelectProps(preview, indices, true);
     }
 
     // ---------- Moving props in the Scene ----------
@@ -168,8 +190,8 @@ public static class FrontRoomsDesignerSceneTools
     static void Update()
     {
         Sync();
-        // Rebuilding while a handle is held would destroy the object being dragged.
-        if (moved != null && GUIUtility.hotControl == 0 && EditorApplication.timeSinceStartup - lastMove >= Settle) Commit(moved);
+        // Rebuilding while a handle is held, or a Transform field is typed in, would destroy the object being edited.
+        if (moved != null && GUIUtility.hotControl == 0 && !EditorGUIUtility.editingTextField && EditorApplication.timeSinceStartup - lastMove >= Settle) Commit(moved);
     }
 
     /// <summary>
@@ -253,15 +275,44 @@ public static class FrontRoomsDesignerSceneTools
         return true;
     }
 
+    /// <summary>Add copies of the selected props to the module (Duplicate in the Scene view), one undo step; they are selected after the rebuild. False if none is selected.</summary>
+    public static bool DuplicateSelected(FrontRoomsModulePreview preview)
+    {
+        // All indices first: once a copy is added, the map no longer matches the module and no tag counts.
+        var indices = SelectedTags(preview).Select(t => t.index).OrderBy(i => i).ToArray();
+        if (indices.Length == 0) return false;
+        var group = Undo.GetCurrentGroup();
+        reselect = indices.Select(i => FrontRoomsModuleEditing.DuplicateProp(preview.module, i)).ToArray();
+        Undo.CollapseUndoOperations(group);
+        return true;
+    }
+
     // ---------- Dropping kits ----------
 
-    /// <summary>The module point (unturned metres) where a ray meets the preview's floor, if it is in or next to the room.</summary>
-    public static bool FloorPoint(FrontRoomsModulePreview preview, Ray ray, out Vector2 at)
+    /// <summary>
+    /// The module point (unturned metres) where a dropped kit lands, if it is
+    /// in or next to the room: where the ray meets the floor or, for a
+    /// desk-top kit, the first prop top it crosses on the way (seen at a
+    /// slant, the floor behind a desk lies well past the desk).
+    /// </summary>
+    public static bool FloorPoint(FrontRoomsModulePreview preview, Ray ray, string kit, out Vector2 at)
     {
         at = default;
         if (!preview.FloorPlane.Raycast(ray, out var distance)) return false;
         at = preview.WorldToModule(ray.GetPoint(distance));
         var m = preview.module.data;
+        if (FrontRoomsModuleEditing.Placement(kit) == "DeskTop")
+            foreach (var p in m.props)
+            {
+                var top = FrontRoomsModuleEditing.TopHeight(p);
+                if (top == null) continue;
+                var plane = new Plane(preview.transform.up, preview.transform.TransformPoint(Vector3.up * top.Value));
+                if (!plane.Raycast(ray, out var d) || d >= distance) continue;
+                var q = preview.WorldToModule(ray.GetPoint(d));
+                if (!FrontRoomsModuleEditing.OnTop(p, q, out _)) continue;
+                distance = d;
+                at = q;
+            }
         const float reach = .5f;
         return at.x > -reach && at.y > -reach && at.x < m.WidthMetres + reach && at.y < m.DepthMetres + reach;
     }
@@ -278,19 +329,22 @@ public static class FrontRoomsDesignerSceneTools
 
     static void OnSceneGUI(SceneView view)
     {
+        // Prefab Mode keeps the designer scene active: the tools belong to the main stage only.
+        if (StageUtility.GetCurrentStageHandle() != StageUtility.GetMainStageHandle()) return;
         var preview = ActivePreview();
         if (preview == null) return;
         var e = Event.current;
 
-        var kit = DragAndDrop.GetGenericData(FrontRoomsModuleEditing.DragKey) as string;
+        var kit = FrontRoomsModuleEditing.DraggedKit();
         if (kit != null && (e.type == EventType.DragUpdated || e.type == EventType.DragPerform))
         {
-            var onFloor = FloorPoint(preview, HandleUtility.GUIPointToWorldRay(e.mousePosition), out var at);
+            var onFloor = FloorPoint(preview, HandleUtility.GUIPointToWorldRay(e.mousePosition), kit, out var at);
             DragAndDrop.visualMode = onFloor ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
             ghost = onFloor ? (kit, at) : ((string, Vector2)?)null;
             if (onFloor && e.type == EventType.DragPerform)
             {
                 DragAndDrop.AcceptDrag();
+                FrontRoomsModuleEditing.DragDone();
                 Drop(preview, kit, at);
                 ghost = null;
             }
@@ -308,6 +362,12 @@ public static class FrontRoomsDesignerSceneTools
             && SelectedTags(preview).Count > 0)
         {
             if (e.type == EventType.ExecuteCommand) RemoveSelected(preview);
+            e.Use();
+        }
+        // Duplicate: the copies join the module (Unity's own would go at the next rebuild).
+        if ((e.type == EventType.ValidateCommand || e.type == EventType.ExecuteCommand) && e.commandName == "Duplicate" && SelectedTags(preview).Count > 0)
+        {
+            if (e.type == EventType.ExecuteCommand) DuplicateSelected(preview);
             e.Use();
         }
 

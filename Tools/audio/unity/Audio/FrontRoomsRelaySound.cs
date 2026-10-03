@@ -4,24 +4,19 @@ using UnityEngine;
 namespace FrontRooms.Audio
 {
     /// <summary>
-    /// The Relay's body sound. Foot contacts come from the rig's own legs: a
-    /// heel strike is the moment a foot reaches its forward-most point, so the
-    /// footfall can never drift from the animation. Occlusion counts walls on
-    /// the line from the listener, so a Relay in the same room is full-band
-    /// and one behind walls is muffled (FMOD low-pass on the event).
+    /// The Relay's body sound. Footsteps come from the rig's own Step event (a foot
+    /// plant from the gait phase), so the footfall can never drift from the
+    /// animation. Occlusion counts walls on the line from the listener, so a Relay
+    /// in the same room is full-band and one behind walls is muffled and quieter
+    /// (FMOD low-pass + level on the event).
     /// </summary>
     public sealed class FrontRoomsRelaySound : MonoBehaviour
     {
-        const float LegReach = .9f;
-        const float MinStepGap = .16f;
-
         public FrontRoomsMapHunter hunter;
         public Transform listener;
         public System.Func<Vector3, float> dampnessAt;
 
         FrontRoomsRelayRig rig;
-        Transform legL, legR;
-        float prevL, prevR, slopeL, slopeR, lastStepL, lastStepR;
         Vector3 lastPosition;
         float speed, occlusion, nextOcclusionCheck;
         readonly RaycastHit[] hits = new RaycastHit[12];
@@ -35,8 +30,18 @@ namespace FrontRooms.Audio
         void Awake()
         {
             rig = GetComponent<FrontRoomsRelayRig>();
-            if (rig != null) { legL = rig.LegLeft; legR = rig.LegRight; }
             lastPosition = transform.position;
+        }
+
+        void OnEnable()
+        {
+            if (rig != null) rig.Step += OnStep;
+        }
+
+        void OnDisable()
+        {
+            if (rig != null) rig.Step -= OnStep;
+            FrontRoomsFmod.Stop(ref presence, true);
         }
 
         void Update()
@@ -49,42 +54,18 @@ namespace FrontRooms.Audio
             lastPosition = p;
             if (delta.magnitude > 3f) return;                         // relayed / teleported closer
             speed = Mathf.Lerp(speed, delta.magnitude / dt, 1f - Mathf.Exp(-dt * 10f));
-
-            var released = hunter != null && hunter.Released;
-            if (released) DetectContacts(dt);
             UpdateOcclusion();
-            UpdatePresence(released);
+            UpdatePresence(hunter != null && hunter.Released);
         }
 
-        float Reach(Transform leg)
+        void OnStep(int foot, Vector3 position)
         {
-            var foot = leg.TransformPoint(new Vector3(0f, -LegReach, 0f));
-            return Vector3.Dot(foot - transform.position, transform.forward);
-        }
-
-        void DetectContacts(float dt)
-        {
-            if (legL == null || legR == null) return;
-            var moving = speed > .25f;
-            var l = Reach(legL);
-            var r = Reach(legR);
-            var sl = l - prevL;
-            var sr = r - prevR;
-            var now = Time.time;
-            if (moving && slopeL > 0f && sl <= 0f && l > .05f && now - lastStepL > MinStepGap) { lastStepL = now; Step(legL); }
-            if (moving && slopeR > 0f && sr <= 0f && r > .05f && now - lastStepR > MinStepGap) { lastStepR = now; Step(legR); }
-            slopeL = sl; slopeR = sr; prevL = l; prevR = r;
-        }
-
-        void Step(Transform leg)
-        {
-            if (!FrontRoomsFmod.Ready) return;
+            if (hunter != null && !hunter.Released) return;
             var gait = SoundIds.RelayGait.Walk;
             if (hunter != null && hunter.State == HunterState.Chase) gait = SoundIds.RelayGait.Run;
             else if (speed < 1.2f) gait = SoundIds.RelayGait.Drag;
-            var foot = leg.TransformPoint(new Vector3(0f, -LegReach, 0f));
-            var damp = dampnessAt != null ? dampnessAt(foot) : .4f;
-            FrontRoomsFmod.OneShot(SoundIds.RelayFootstep, foot,
+            var damp = dampnessAt != null ? dampnessAt(position) : .4f;
+            FrontRoomsFmod.OneShot(SoundIds.RelayFootstep, position,
                 SoundIds.Param.RelayGait, (float)gait, SoundIds.Param.Occlusion, occlusion, SoundIds.Param.Dampness, damp);
         }
 
@@ -130,7 +111,5 @@ namespace FrontRooms.Audio
             presence.setParameterByID(occlusionId, occlusion);
             FrontRoomsFmod.Move(presence, transform.position + Vector3.up * 1.2f);
         }
-
-        void OnDisable() => FrontRoomsFmod.Stop(ref presence, true);
     }
 }

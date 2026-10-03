@@ -3,11 +3,17 @@ direction A in 10_hunter_directions.md §3). Early concept blockout, not product
 
 The furniture store's display figure in its padded-yoke power suit, blown up to a
 ~3.2 m giant that never fits the room: the yoke presses the ceiling tiles, the pale
-shell head hangs below it down to the player's eye line, the clasped mannequin hands
-are huge. Four poses from one parameter set each (POSE_PARAMS): low, std, door, tall.
+CRT-faced shell head hangs below it down to the player's eye line, and the clasped
+mannequin hands are huge. Four poses from one parameter set each (POSE_PARAMS).
 
 Build (headless, from the Unity project root):
   Blender -b --factory-startup --python Tools/Blender/frontrooms_kit/build_creature.py -- giant_a_floor_sample [--pose std]
+
+Envelope after flooring (2026-10-02 build; 17.4 k tris and 6 slots in every pose):
+  low   top 2.355 (yoke 4 cm under the 2.4 m tiles), face 1.46, half-width 0.77
+  std   top 2.840 (6 cm under 2.9), face 1.72, half-width 0.68
+  door  door-plane top 2.02, |x| 0.42 at the plane, face 1.32, figure top 2.33
+  tall  top 3.18, face 2.83, half-width 0.73
 
 Construction
 * The costume is the human-scale module's (hunter_a_floor_sample.py, copied, not
@@ -15,19 +21,23 @@ Construction
   buttons, pocket flaps, back seam/vent, badge and lanyard. All of it is still written in
   the base figure's coordinates and passes through one map per pose:
     base space --G--> giant torso space (x, y, s) --T--> world
-  G scales the base torso up (length x1.70, depth x1.62, width x1.55 with the pads
-  compressed to a 0.95 m yoke); T bends the torso along a spine curve (pitch, lateral
-  roll and twist accumulate along s, like a real spine) and soft-clamps it under the
-  ceiling, so the yoke flattens where it presses the tiles. Every jacket detail follows
-  the body because it goes through the same map.
+  G scales the base torso up (length x1.80, depth x1.80, width x1.62, the pads
+  compressed so the yoke is 0.95 m across). T bends the torso along a spine curve: roll
+  (lateral) and pitch (forward) accumulate along s like a real spine, applied roll-first
+  so the shoulder line stays lateral. T also soft-clamps the torso under the ceiling, so
+  the yoke and upper back flatten and spread where they press the tiles. Every jacket
+  detail follows the body because it goes through the same map.
 * Limbs are Skin-modifier chains between joints solved per pose with two-bone IK and
-  fixed bone lengths (upper arm 0.62, forearm 0.64, thigh 0.78, shin 0.74), so the four
-  poses are targets for one rig.
-* Rigid parts scale with the body so they read as a person's things blown up: head
-  x1.40 (0.38 m tall), hands x1.60 (0.32 m), oxfords x1.40 (0.46 m), swing tag x1.6.
-* Strain: the yoke flattens against the ceiling, ripples bunch the sleeves at the
-  elbows, ridges pull across the back and fan out from the buttons, and a navy stand
-  collar is pushed up round the neck.
+  fixed bone lengths (upper arm 0.66, forearm 0.70 (A's long forearm), thigh 0.72,
+  shin 0.68), so the four poses are targets for one rig.
+* Rigid parts scale with the body, so they read as a person's things blown up: head
+  x1.50 (0.405 m tall), hands x1.70 (0.335 m), oxfords x1.40 (0.46 m), swing tag x1.6.
+* The craned neck is sleeved by the navy jacket collar, pushed up it in accordion folds,
+  then the white shirt collar, then a short mannequin neck peg with a black seam at
+  each end. A bare long neck read as a pipe, or as the Coil-head's spring.
+* Strain: the yoke flattens and spreads against the ceiling, folds bunch in the crook
+  of each elbow, creases pull across the upper back, and folds fan out from the top
+  button.
 """
 
 import math
@@ -50,7 +60,7 @@ POSES = {
     "tall": {"top": 3.30, "halfWidth": 0.85},
 }
 SIL_FRAME = (2.4, 3.6)
-EYE = {"low": 1.45, "std": 1.70, "door": 1.45, "tall": 2.85}   # re-measured in build()
+EYE = {"low": 1.459, "std": 1.724, "door": 1.32, "tall": 2.831}   # CRT face centre; re-measured in build()
 
 SUIT = "Prop_FabricNavy"
 SHELL = "Creature_ShellSatin"
@@ -609,83 +619,94 @@ def _report(kit):
 
 
 # ------------------------------------------------------------------ pose parameters
+# One parameter set per pose drives the whole body; the costume follows it.
 # Body frame: x = the figure's left, y = back (it faces -y), z = height; yaw/root place it.
 # pelvis: body-frame point of the torso's hip line (s = 0).
 # pitch/roll/twist: (base deg, [(s0, s1, deg), ...]) accumulating along the spine.
-# ceiling: soft clamp height for the jacket (None = free).
-# neck: body-frame offsets from the neck base: mid joint and head centre.
+# ceiling/squash/bulge: soft clamp height for the torso, the band it squashes into, and
+#   how much the squashed padding spreads sideways (None = free).
+# neck_z: base-space height of the neck root under the yoke; neck: offsets from it to
+#   the Bezier control point (mid) and the head centre (body frame, or world if world=True).
 # head: (pitch, roll, yaw) degrees, yaw relative to the body; attach: neck entry in head space.
-# arms: wrist target (body frame), elbow pole (body-frame direction), hand tip target, palm-toward.
-# legs: heel (body-frame x, y), shoe yaw (relative), heel lift pitch, knee pole.
+# arms: wrist target, elbow pole direction, hand tip target, palm-toward (body frame, or
+#   world if world=True).
+# legs: heel (x, y), shoe yaw (relative), heel-lift pitch, knee pole (body frame or world).
 POSE_PARAMS = {
     "std": dict(
         yaw=0.0, root=(0.0, 0.0),
-        pelvis=(0.0, 0.30, 1.45),
-        pitch=(2.0, [(0.6, 1.2, 30.0), (1.05, 1.6, 46.0)]),
+        pelvis=(0.0, 0.30, 1.36),
+        pitch=(-2.0, [(0.6, 1.2, 22.0), (1.05, 1.6, 40.0)]),
         ceiling=2.84, squash=0.06, bulge=1.5,
         neck_z=1.68,
         neck=dict(mid=(0.0, -0.22, -0.12), head=(0.0, -0.30, -0.68)),
-        head=(25.0, -6.0, 0.0), attach=(0.0, 0.10, 0.03),
+        head=(20.0, -6.0, 0.0), attach=(0.0, 0.10, 0.03),
         arms={
-            "l": dict(wrist=(0.16, -0.58, 1.56), pole=(1.0, 0.15, 0.45), tip=(-0.05, -0.67, 1.41), palm=(0, 1, 0)),
-            "r": dict(wrist=(-0.15, -0.55, 1.58), pole=(-1.0, 0.15, 0.45), tip=(0.05, -0.64, 1.43), palm=(0, 1, 0)),
+            "l": dict(wrist=(0.16, -0.60, 1.55), pole=(1.0, 0.25, 0.5), tip=(-0.05, -0.69, 1.40), palm=(0, 1, 0)),
+            "r": dict(wrist=(-0.15, -0.57, 1.57), pole=(-1.0, 0.25, 0.5), tip=(0.05, -0.66, 1.42), palm=(0, 1, 0)),
         },
         legs={
-            "l": dict(heel=(0.36, 0.0), yaw=12.0, pitch=0.0, pole=(0.6, -1.0, 0.0)),
-            "r": dict(heel=(-0.36, 0.52), yaw=-12.0, pitch=14.0, pole=(-0.6, -1.0, 0.0)),
+            "l": dict(heel=(0.40, -0.02), yaw=14.0, pitch=0.0, pole=(0.7, -1.0, 0.0)),
+            "r": dict(heel=(-0.40, 0.50), yaw=-14.0, pitch=14.0, pole=(-0.7, -1.0, 0.0)),
         },
     ),
 }
 POSE_PARAMS["low"] = dict(
+    # Under the 2.4 m Low ceiling: deepest fold, a wide sumo squat, the back and yoke
+    # flattened on the tiles, the head hung between the splayed elbows, face tipped up.
     yaw=0.0, root=(0.0, 0.0),
-    pelvis=(0.0, 0.30, 1.00),
-    pitch=(8.0, [(0.3, 1.0, 30.0), (0.95, 1.6, 40.0)]),
+    pelvis=(0.0, 0.36, 0.90),
+    pitch=(4.0, [(0.3, 1.0, 20.0), (0.95, 1.6, 40.0)]),
     ceiling=2.36, squash=0.06, bulge=1.5,
     neck_z=1.68,
-    neck=dict(mid=(0.0, -0.22, -0.14), head=(0.0, -0.28, -0.62)),
-    head=(28.0, 5.0, 0.0), attach=(0.0, 0.10, 0.03),
+    neck=dict(mid=(0.0, -0.22, -0.10), head=(0.0, -0.30, -0.46)),
+    head=(2.0, 5.0, 0.0), attach=(0.0, 0.10, 0.03),
     arms={
         "l": dict(wrist=(0.15, -0.72, 0.98), pole=(1.0, 0.2, 0.3), tip=(-0.06, -0.80, 0.83), palm=(0, 1, 0)),
         "r": dict(wrist=(-0.14, -0.69, 1.00), pole=(-1.0, 0.2, 0.3), tip=(0.06, -0.77, 0.85), palm=(0, 1, 0)),
     },
     legs={
-        "l": dict(heel=(0.44, -0.02), yaw=22.0, pitch=0.0, pole=(0.9, -1.0, 0.2)),
-        "r": dict(heel=(-0.44, 0.08), yaw=-22.0, pitch=6.0, pole=(-0.9, -1.0, 0.2)),
+        "l": dict(heel=(0.46, 0.02), yaw=24.0, pitch=0.0, pole=(0.9, -1.0, 0.7)),
+        "r": dict(heel=(-0.46, 0.10), yaw=-24.0, pitch=6.0, pole=(-0.9, -1.0, 0.7)),
     },
 )
 POSE_PARAMS["door"] = dict(
-    yaw=-75.0, root=(0.10, 1.0),
-    pelvis=(0.0, 0.0, 0.85),
-    pitch=(5.0, [(0.3, 1.2, 15.0)]),
-    roll=(26.0, [(0.0, 0.9, 39.0), (0.95, 1.6, -45.0)]),
+    # Sideways through the 1.0 x 2.1 m door (plane y = 0), deep squat, the trunk laid over
+    # toward the room it is entering, the yoke tilted to pass leading (left) shoulder first.
+    yaw=-76.0, root=(0.11, 0.86),
+    pelvis=(0.0, 0.0, 0.73),
+    pitch=(6.6, [(0.1, 1.1, 9.9)]),
+    roll=(26.6, [(0.0, 0.9, 39.9), (0.95, 1.6, -44.5)]),
     ceiling=2.86, squash=0.06, bulge=1.0,
     neck_z=1.68,
-    neck=dict(mid=(0.12, -0.18, -0.10), head=(0.22, -0.24, -0.45)),
-    head=(20.0, 15.0, 45.0), attach=(0.0, 0.10, 0.03),
+    neck=dict(world=True, mid=(-0.10, -0.20, -0.02), head=(-0.16, -0.36, -0.08)),
+    head=(15.0, 20.0, 50.0), attach=(0.0, 0.10, 0.03),
     arms={
-        "l": dict(world=True, wrist=(-0.2, -0.6, 1.0), pole=(0, -1, 0), tip=(-0.2, -0.7, 0.8), palm=(0, 1, 0)),
-        "r": dict(world=True, wrist=(-0.3, 0.6, 1.0), pole=(0, 1, 0), tip=(-0.3, 0.7, 0.8), palm=(0, 1, 0)),
+        "l": dict(world=True, wrist=(-0.60, -0.24, 1.36), pole=(0.3, -0.8, -0.5), tip=(-0.72, -0.24, 1.66), palm=(0, 1, 0)),
+        # trailing hand braced flat on the wall above the header, behind the door
+        "r": dict(world=True, wrist=(-0.08, 0.26, 2.02), pole=(0.2, 1.0, 0.4), tip=(0.06, 0.26, 2.30), palm=(0, -1, 0)),
     },
     legs={
-        "l": dict(world=True, heel=(0.0, 0.25), yaw=-30.0, pitch=0.0, pole=(-0.6, -0.8, 0.3)),
-        "r": dict(world=True, heel=(0.25, 1.2), yaw=-10.0, pitch=16.0, pole=(-0.9, 0.3, 0.3)),
+        "l": dict(world=True, heel=(0.06, 0.40), yaw=-46.0, pitch=0.0, pole=(-0.6, -0.8, 0.3)),
+        "r": dict(world=True, heel=(0.36, 0.75), yaw=-26.0, pitch=16.0, pole=(-0.9, 0.3, 0.3)),
     },
 )
 POSE_PARAMS["tall"] = dict(
+    # The reveal in a 5.4 m Tall zone: nearly upright, a slight stoop, the head lifted out
+    # from under the yoke but still below its line, hands clasped at the belt.
     yaw=0.0, root=(0.0, 0.0),
-    pelvis=(0.0, 0.05, 1.54),
+    pelvis=(0.0, 0.05, 1.50),
     pitch=(2.0, [(0.6, 1.3, 7.0), (1.1, 1.6, 8.0)]),
     ceiling=None,
     neck_z=1.70,
-    neck=dict(mid=(0.0, -0.16, -0.02), head=(0.0, -0.32, -0.08)),
-    head=(20.0, -6.0, 0.0), attach=(0.0, 0.05, -0.05),
+    neck=dict(mid=(0.0, -0.20, 0.04), head=(0.0, -0.42, 0.14)),
+    head=(18.0, -6.0, 0.0), attach=(0.0, 0.05, -0.05),
     arms={
-        "l": dict(wrist=(0.20, -0.40, 1.62), pole=(1.0, 0.4, 0.2), tip=(-0.04, -0.47, 1.50), palm=(0, 1, 0)),
-        "r": dict(wrist=(-0.19, -0.37, 1.64), pole=(-1.0, 0.4, 0.2), tip=(0.04, -0.44, 1.52), palm=(0, 1, 0)),
+        "l": dict(wrist=(0.19, -0.44, 1.86), pole=(1.0, 0.4, 0.1), tip=(-0.05, -0.52, 1.72), palm=(0, 1, 0)),
+        "r": dict(wrist=(-0.18, -0.41, 1.88), pole=(-1.0, 0.4, 0.1), tip=(0.05, -0.49, 1.74), palm=(0, 1, 0)),
     },
     legs={
-        "l": dict(heel=(0.24, -0.20), yaw=8.0, pitch=0.0, pole=(0.3, -1.0, 0.0)),
-        "r": dict(heel=(-0.26, 0.28), yaw=-8.0, pitch=10.0, pole=(-0.3, -1.0, 0.0)),
+        "l": dict(heel=(0.24, -0.08), yaw=8.0, pitch=0.0, pole=(0.3, -1.0, 0.0)),
+        "r": dict(heel=(-0.26, 0.30), yaw=-8.0, pitch=10.0, pole=(-0.3, -1.0, 0.0)),
     },
 )
 
@@ -714,8 +735,8 @@ def build(kit, cl, pose="std"):
         j = {"shoulder": (sh, (0.150, 0.125))}
         bones, prev = [], "shoulder"
         # sleeve bunching: ripples above and below the elbow
-        for nm, t, seg, r in (("u1", 0.55, "u", (0.128, 0.120)), ("u2", 0.74, "u", (0.132, 0.126)),
-                              ("u3", 0.84, "u", (0.118, 0.112)), ("u4", 0.93, "u", (0.128, 0.124))):
+        for nm, t, r in (("u1", 0.55, (0.128, 0.120)), ("u2", 0.74, (0.132, 0.126)),
+                         ("u3", 0.84, (0.118, 0.112)), ("u4", 0.93, (0.128, 0.124))):
             j[nm] = (sh + ua * t, r)
             bones.append((prev, nm))
             prev = nm
@@ -739,7 +760,7 @@ def build(kit, cl, pose="std"):
         cl.decimate_to(cl.skin_body(kit, cj, [("cuffa_" + s, "cuffb_" + s)], WHITE, subdiv=2, name="cuff " + s), 260)
         side = 1 if s == "r" else -1
         L, N, W = _mitten(kit, wr, Wp(A["tip"]), Wd(A["palm"]), side, "hand " + s)
-        _loop_tube(kit, wr + L * (-0.006), W, N, 0.0272 * HAND_K, 0.0192 * HAND_K, 0.003, BLACK, "wrist seam " + s)
+        _loop_tube(kit, wr + L * (-0.006), W, N, 0.0272 * HAND_K, 0.0192 * HAND_K, 0.0042, BLACK, "wrist seam " + s)
         hands[s] = (wr, L, N, W)
 
     # --- trousers: one chain per leg from inside the jacket --------------------------
@@ -767,13 +788,14 @@ def build(kit, cl, pose="std"):
     nz = P.get("neck_z", 1.72)
     N0 = body.TB((0.0, -0.13, nz))
     NP = P["neck"]
-    HC = N0 + Bd(NP["head"])
+    Nd = (lambda q: Vector(q)) if NP.get("world") else Bd
+    HC = N0 + Nd(NP["head"])
     hp, hr, hy = P["head"]
     R = (body.Ryaw @ _rz(hy) @ _rx(hp) @ _ry(hr)).to_4x4()
     M = Matrix.Translation(HC) @ R @ Matrix.Scale(HEAD_K, 4)
     face = _head(kit, M)
     neck_end = M @ Vector(P["attach"])
-    ctrl = N0 + Bd(NP["mid"]) if NP.get("mid") is not None else N0.lerp(neck_end, 0.5)
+    ctrl = N0 + Nd(NP["mid"]) if NP.get("mid") is not None else N0.lerp(neck_end, 0.5)
 
     def npath(t):
         return N0 * (1 - t) ** 2 + ctrl * (2 * t * (1 - t)) + neck_end * (t * t)
@@ -911,9 +933,8 @@ def build(kit, cl, pose="std"):
            "tag eyelet", bevel=0.0)
 
     _report(kit)
-    for kk in sorted(dbg):
-        q = dbg[kk]
-        print("[giantA] %s %-12s (%.3f, %.3f, %.3f)" % (pose, kk, q.x, q.y, q.z))
+    print("[giantA] %s joints: " % pose + "; ".join("%s (%.2f, %.2f, %.2f)" % (kk, dbg[kk].x, dbg[kk].y, dbg[kk].z)
+                                                 for kk in sorted(dbg)))
     lo = cl.floor_parts(kit)
     EYE[pose] = round(face.z - lo, 3)
     bpy.context.view_layer.update()

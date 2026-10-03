@@ -29,7 +29,11 @@ public sealed class FrontRoomsModulePlanView
     readonly Action repaint;
     FrontRoomsRoomModule module;
     int selected = -1;
-    bool dragging;
+    // The props array the selection was last checked against, and the selected prop then (see Follow).
+    ModuleProp[] selectedIn;
+    ModuleProp selectedProp;
+    // A prop is held by the mouse, and whether the drag has moved it yet.
+    bool dragging, moved;
     Vector2 dragOffset;
     // The armed or dragged kit and the module point under the mouse, drawn where it would land.
     (string kit, Vector2 at)? ghost;
@@ -51,17 +55,39 @@ public sealed class FrontRoomsModulePlanView
     /// <summary>Select a prop (-1: none). <paramref name="notify"/> is false when the selection comes from the Scene view.</summary>
     public void Select(int index, bool notify = true)
     {
+        // Given by an edit that knows where its prop went: trusted as it is.
+        selectedIn = null;
         if (index == selected) return;
         selected = index;
         if (notify) SelectionChanged?.Invoke(index);
         repaint();
     }
 
-    /// <summary>Call when the panel closes: a drag cut short still reaches the preview.</summary>
+    /// <summary>Call when the panel closes: a move cut short still reaches the preview.</summary>
     public void EndDrag()
     {
-        if (dragging && module != null) FrontRoomsRoomModule.NotifyChanged(module);
-        dragging = false;
+        if (dragging && moved && module != null) FrontRoomsRoomModule.NotifyChanged(module);
+        dragging = moved = false;
+    }
+
+    /// <summary>
+    /// Keep the selection on its prop when the props array has been replaced:
+    /// props removed, reordered or added in the other panel or the Scene view,
+    /// or an undo. If the prop is gone, nothing is selected. Draw calls it first.
+    /// </summary>
+    public void Follow(RoomModuleData m)
+    {
+        if (selected >= 0 && selectedIn != null && !ReferenceEquals(selectedIn, m.props))
+        {
+            var at = Array.IndexOf(m.props, selectedProp);
+            // Not found, but the same kit where it was in a list as long: the prop itself was edited (an undone turn).
+            selected = at >= 0 ? at
+                : m.props.Length == selectedIn.Length && selected < m.props.Length && m.props[selected].kit == selectedProp.kit ? selected
+                : -1;
+        }
+        if (selected >= m.props.Length) selected = -1;
+        selectedIn = m.props;
+        if (selected >= 0) selectedProp = m.props[selected];
     }
 
     /// <summary>Draw the plan, as large as fits <paramref name="availableWidth"/>, and handle its events.</summary>
@@ -69,8 +95,7 @@ public sealed class FrontRoomsModulePlanView
     {
         module = target;
         var m = module.data;
-        // An undo can take the selected prop away.
-        if (selected >= m.props.Length) selected = -1;
+        Follow(m);
         var cell = Mathf.Clamp(Mathf.Floor(availableWidth / Mathf.Max(m.width, m.depth)), 24f, 64f);
         var size = new Vector2(m.width * cell, m.depth * cell);
         var area = GUILayoutUtility.GetRect(size.x + 2 * Edge, size.y + 2 * Edge, GUILayout.ExpandWidth(false));
@@ -102,7 +127,7 @@ public sealed class FrontRoomsModulePlanView
         // A kit dragged from the palette: show where it lands, add it on drop.
         if (e.type == EventType.DragUpdated || e.type == EventType.DragPerform)
         {
-            var dragged = DragAndDrop.GetGenericData(FrontRoomsModuleEditing.DragKey) as string;
+            var dragged = FrontRoomsModuleEditing.DraggedKit();
             if (dragged != null && inside)
             {
                 DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
@@ -110,6 +135,7 @@ public sealed class FrontRoomsModulePlanView
                 if (e.type == EventType.DragPerform)
                 {
                     DragAndDrop.AcceptDrag();
+                    FrontRoomsModuleEditing.DragDone();
                     Place(dragged, ToModule(e.mousePosition));
                     ghost = null;
                 }
@@ -155,6 +181,7 @@ public sealed class FrontRoomsModulePlanView
                 var at = hits.IndexOf(selected);
                 Select(at >= 0 ? hits[(at + 1) % hits.Count] : hits[0]);
                 dragging = true;
+                moved = false;
                 dragOffset = ToModule(e.mousePosition) - new Vector2(m.props[selected].x, m.props[selected].z);
                 Undo.IncrementCurrentGroup();
                 FrontRoomsModuleEditing.Record(module, "Move prop");
@@ -197,13 +224,14 @@ public sealed class FrontRoomsModulePlanView
                 EditorGUI.DrawRect(new Rect(a.x, a.y, b.x - a.x, b.y - a.y), StripColor);
             }
             foreach (var q in edges) DrawEdge(m, q.rect, q.i, q.j, q.dx, q.dy, q.vertical);
-            var turns = PreviewTurns();
+            var turns = PreviewTurns(module);
+            var minCells = FrontRoomsLevelProfiles.Resolve().generation?.columnMinRoomCells ?? 3;
             for (var j = 1; j < m.depth; j++)
             for (var i = 1; i < m.width; i++)
             {
                 var custom = m.customColumns.FirstOrDefault(k => k.x == i && k.y == j);
                 var has = m.columns == ModuleColumns.Custom && m.customColumns.Any(k => k.x == i && k.y == j);
-                var auto = m.columns == ModuleColumns.Auto && AutoColumnPossible(m, i, j, turns);
+                var auto = m.AutoColumnAt(i, j, turns, minCells);
                 if (!has && !auto) continue;
                 var w = (has && custom.large) || (auto && (m.theme == ZoneTheme.Office || m.height == ZoneHeight.Tall)) ? ModuleUnits.ColumnLarge : ModuleUnits.ColumnSmall;
                 var c = ToPlan(i * MapGrid.CellSize, j * MapGrid.CellSize);
@@ -227,21 +255,30 @@ public sealed class FrontRoomsModulePlanView
 
         if (dragging && selected >= 0 && e.type == EventType.MouseDrag)
         {
-            // Moves show in the plan at once; the preview rebuilds when the drag ends.
+            // Moves show in the plan at once; the preview rebuilds when the drag ends. An axis changes
+            // only once the mouse takes it to another snap step, so a wall unit slid along its wall keeps its exact gap.
             var to = ToModule(e.mousePosition) - dragOffset;
             var step = e.control || e.command ? .5f : FrontRoomsModuleEditing.Grid;
             var p = m.props[selected];
-            p.x = Mathf.Clamp(FrontRoomsModuleEditing.Snap(to.x, step), 0f, m.WidthMetres);
-            p.z = Mathf.Clamp(FrontRoomsModuleEditing.Snap(to.y, step), 0f, m.DepthMetres);
-            m.props[selected] = p;
-            EditorUtility.SetDirty(module);
+            var q = p;
+            var x = Mathf.Clamp(FrontRoomsModuleEditing.Snap(to.x, step), 0f, m.WidthMetres);
+            var z = Mathf.Clamp(FrontRoomsModuleEditing.Snap(to.y, step), 0f, m.DepthMetres);
+            if (x != Mathf.Clamp(FrontRoomsModuleEditing.Snap(p.x, step), 0f, m.WidthMetres)) q.x = x;
+            if (z != Mathf.Clamp(FrontRoomsModuleEditing.Snap(p.z, step), 0f, m.DepthMetres)) q.z = z;
+            if (q.x != p.x || q.z != p.z)
+            {
+                m.props[selected] = q;
+                moved = true;
+                EditorUtility.SetDirty(module);
+            }
             e.Use();
             repaint();
         }
         if (dragging && e.rawType == EventType.MouseUp)
         {
-            dragging = false;
-            Changed();
+            // A click that only selects leaves the preview as it is.
+            if (moved) Changed();
+            dragging = moved = false;
             e.Use();
         }
         // Keys only when no field is being typed in.
@@ -382,34 +419,16 @@ public sealed class FrontRoomsModulePlanView
         EditorGUI.DrawRect(r, c);
     }
 
-    /// <summary>The open preview's quarter turns (0 without one): auto columns are shown as it places the room.</summary>
-    static int PreviewTurns()
-    {
-        var preview = UnityEngine.Object.FindFirstObjectByType<FrontRoomsModulePreview>();
-        return preview != null ? ((preview.rotation % 4) + 4) % 4 : 0;
-    }
-
     /// <summary>
-    /// Where the map's own column rule could put a column (it also rolls per
-    /// room): the corner on the 6 m grid with the module turned and placed
-    /// as the open preview shows it.
+    /// The designer preview's quarter turns when it shows this module, else 0.
+    /// Auto columns (pale squares, RoomModuleData.AutoColumnAt) are drawn for
+    /// that turn: the generator lands Auto-column modules on the same 6 m grid
+    /// phase, so they match the game for it, and another turn can move them.
     /// </summary>
-    static bool AutoColumnPossible(RoomModuleData m, int i, int j, int turns)
+    static int PreviewTurns(FrontRoomsRoomModule module)
     {
-        if (m.width < 3 || m.depth < 3 || m.height == ZoneHeight.Low) return false;
-        int w = m.width, d = m.depth, ci = i, cj = j;
-        for (var t = 0; t < turns; t++)
-        {
-            // Clockwise: corner (x, y) of a w x d room goes to (y, w - x) of the d x w room.
-            var x = ci;
-            ci = cj;
-            cj = w - x;
-            var swap = w;
-            w = d;
-            d = swap;
-        }
-        int x0 = (MapGrid.ChunkCells - w) / 2, y0 = (MapGrid.ChunkCells - d) / 2;
-        return FrontRoomsMapGenerator.OnColumnGrid(new GridCoord(x0 + ci, y0 + cj));
+        var preview = FrontRoomsDesignerSceneTools.ScenePreview();
+        return preview != null && preview.module == module ? ((preview.rotation % 4) + 4) % 4 : 0;
     }
 
     static Vector2[] Corners(ModuleProp p, float[] f)

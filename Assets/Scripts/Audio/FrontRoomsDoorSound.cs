@@ -79,7 +79,6 @@ namespace FrontRooms.Audio
         {
             moving = true;
             stillTime = 0f;
-            if (!FrontRoomsFmod.Ready) return;
             var p = transform.position;
             if (mode == Mode.Automatic)
             {
@@ -92,7 +91,7 @@ namespace FrontRooms.Audio
                 FrontRoomsFmod.OneShot(SoundIds.DoorHandle, p);
                 FrontRoomsFmod.OneShot(SoundIds.DoorUnlatch, p);
             }
-            if (!idsReady)
+            if (!idsReady && FrontRoomsFmod.Ready)
             {
                 velocityId = FrontRoomsFmod.ParameterId(SoundIds.DoorSwing, SoundIds.Param.AngularVelocity);
                 opennessId = FrontRoomsFmod.ParameterId(SoundIds.DoorSwing, SoundIds.Param.Openness);

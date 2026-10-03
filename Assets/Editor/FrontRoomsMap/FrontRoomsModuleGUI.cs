@@ -12,6 +12,34 @@ using UnityEngine;
 /// </summary>
 public static class FrontRoomsModuleGUI
 {
+    // A slider is held: its module rebuilds the preview when it is let go, as after a plan drag.
+    static FrontRoomsRoomModule held;
+
+    /// <summary>After a field edit: let the preview follow now, or once the slider being dragged is let go.</summary>
+    static void Edited(FrontRoomsRoomModule module)
+    {
+        if (GUIUtility.hotControl == 0)
+        {
+            FrontRoomsModuleEditing.Changed(module);
+            return;
+        }
+        EditorUtility.SetDirty(module);
+        held = module;
+    }
+
+    /// <summary>
+    /// Once the held slider is let go, rebuild the preview. Each panel calls
+    /// it at the end of its GUI pass, and with <paramref name="force"/> when
+    /// it closes, so a slider drag cut short still reaches the preview.
+    /// </summary>
+    public static void Release(bool force = false)
+    {
+        if (held == null || (!force && GUIUtility.hotControl != 0)) return;
+        var module = held;
+        held = null;
+        FrontRoomsRoomModule.NotifyChanged(module);
+    }
+
     /// <summary>Free text for the team; the preview does not change.</summary>
     public static void Notes(FrontRoomsRoomModule module)
     {
@@ -55,7 +83,7 @@ public static class FrontRoomsModuleGUI
             m.fill = fill;
             m.columns = columns;
             m.Normalize();
-            FrontRoomsModuleEditing.Changed(module);
+            Edited(module);
         }
         if (GUIUtility.hotControl == 0) resizeFrom = null;
 
@@ -98,13 +126,14 @@ public static class FrontRoomsModuleGUI
             {
                 FrontRoomsModuleEditing.Record(module, "Edit prop");
                 var kit = picked != current ? options[picked] : p.kit;
-                var snap = FrontRoomsModuleEditing.Grid;
+                // Only a field that changed snaps (an untouched slider hands back the stored value), so a wall unit keeps its exact gap.
+                float Snapped(float v, float was) => v != was ? FrontRoomsModuleEditing.Snap(v) : was;
                 m.props[selected] = new ModuleProp
                 {
-                    kit = kit, x = FrontRoomsModuleEditing.Snap(x, snap), z = FrontRoomsModuleEditing.Snap(z, snap), y = FrontRoomsModuleEditing.Snap(y, snap),
+                    kit = kit, x = Snapped(x, p.x), z = Snapped(z, p.z), y = Snapped(y, p.y),
                     yaw = Mathf.Repeat(yaw, 360f), noCollider = noCollider,
                 };
-                FrontRoomsModuleEditing.Changed(module);
+                Edited(module);
             }
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -134,6 +163,45 @@ public static class FrontRoomsModuleGUI
             m.Normalize();
             EditorUtility.SetDirty(module);
         }
+    }
+
+    /// <summary>
+    /// The share of the generator's carved rooms of the module's height that
+    /// can take it in an allowed turn: each side of a carved room is rolled
+    /// from min to max cells (FrontRoomsMapGenerator.Rooms, clamped to the
+    /// chunk), and the module must fit inside it. -1 when that height carves no rooms.
+    /// </summary>
+    public static float FitShare(RoomModuleData m, MapSettings g, out int min, out int max)
+    {
+        int count;
+        switch (m.height)
+        {
+            case ZoneHeight.Low: count = g.lowRooms; min = g.lowRoomMin; max = g.lowRoomMax; break;
+            case ZoneHeight.Tall: count = g.tallRooms; min = g.tallRoomMin; max = g.tallRoomMax; break;
+            default: count = g.standardRooms; min = g.standardRoomMin; max = g.standardRoomMax; break;
+        }
+        min = Mathf.Clamp(min, 1, MapGrid.ChunkCells);
+        max = Mathf.Clamp(max, min, MapGrid.ChunkCells);
+        if (count <= 0) return -1f;
+        var fits = 0;
+        for (var w = min; w <= max; w++)
+        for (var h = min; h <= max; h++)
+            if ((m.width <= w && m.depth <= h) || (m.allowRotate && m.depth <= w && m.width <= h)) fits++;
+        return fits / (float)((max - min + 1) * (max - min + 1));
+    }
+
+    /// <summary>Whether the generator can place the module at all, and how often its rooms are big enough.</summary>
+    public static void Fit(FrontRoomsRoomModule module, FrontRoomsLevelProfile profile)
+    {
+        var m = module.data;
+        if (profile == null || profile.generation == null) return;
+        var share = FitShare(m, profile.generation, out var min, out var max);
+        var rooms = "carved " + m.height + (m.theme == ZoneTheme.Office ? " Office" : "") + " rooms (" + min + "–" + max + " cells a side)";
+        var size = m.width + " × " + m.depth;
+        if (share < 0f) EditorGUILayout.HelpBox("Never placed: the level carves no " + m.height + " rooms.", MessageType.Warning);
+        else if (share == 0f) EditorGUILayout.HelpBox("Never fits: " + rooms + " are all smaller than this " + size + " module.", MessageType.Warning);
+        else if (share < .25f) EditorGUILayout.HelpBox("Rarely fits: only " + (share * 100f).ToString("0") + " % of " + rooms + " can take this " + size + " module.", MessageType.Warning);
+        else EditorGUILayout.LabelField("Fits " + (share * 100f).ToString("0") + " % of " + rooms + ".", EditorStyles.miniLabel);
     }
 
     /// <summary>The module's errors and warnings, or that it is ready.</summary>

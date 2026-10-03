@@ -24,7 +24,7 @@ namespace FrontRooms.Audio
         [SerializeField] int fixtureVoices = 6;
         [SerializeField] float fixtureRadius = 10f;
 
-        bool started;
+        bool started, legacyRestored;
 #if UNITY_WEBGL && !UNITY_EDITOR
         bool webUnlocked;
 #endif
@@ -36,7 +36,7 @@ namespace FrontRooms.Audio
         FrontRoomsMapWorld map;
         FrontRoomsMapHunter relay;
         HunterState lastState = HunterState.Dormant;
-        bool relayRevealed;
+        bool relayRevealed, caught;
         Transform listener;
         FrontRoomsPlayerFootsteps player;
         FrontRoomsRelaySound relayBody;
@@ -124,15 +124,25 @@ namespace FrontRooms.Audio
         void Update()
         {
             UnlockWebAudio();
+            FrontRoomsFmod.EnsureStarted();
+            if (FrontRoomsFmod.Failed)
+            {
+                // FMOD broke mid-session: give the sound back to the legacy Unity audio rather than go silent.
+                if (started && muteLegacyUnityAudio && !legacyRestored) { AudioListener.volume = 1f; legacyRestored = true; }
+                return;
+            }
+            var now = Time.unscaledTime;
+            if (now >= nextDiscover) { nextDiscover = now + 1f; Discover(); }   // attach to the scene before FMOD is ready
             if (!FrontRoomsFmod.Ready) return;
             if (!started)
             {
                 started = true;
                 if (muteLegacyUnityAudio) AudioListener.volume = 0f;
                 StartRoomTone();
+                FrontRoomsFmod.Note("ready");
+                Debug.Log("[FrontRoomsAudio] FMOD ready: banks loaded, room tone on, legacy Unity audio muted.");
             }
-            var now = Time.unscaledTime;
-            if (now >= nextDiscover) { nextDiscover = now + 1f; Discover(); }
+            EnsureRunVoices();
             if (now >= nextFixtureUpdate) { nextFixtureUpdate = now + .2f; UpdateFixtures(); }
             UpdateGlobals(Time.unscaledDeltaTime);
             UpdateSubjective();
@@ -160,7 +170,8 @@ namespace FrontRooms.Audio
                 if (unityListener != null)
                 {
                     listener = unityListener.transform;
-                    if (listener.GetComponent<StudioListener>() == null) listener.gameObject.AddComponent<StudioListener>();
+                    if (!FrontRoomsFmod.Failed && listener.GetComponent<StudioListener>() == null)
+                        listener.gameObject.AddComponent<StudioListener>();
                 }
             }
 
@@ -351,7 +362,7 @@ namespace FrontRooms.Audio
 
         void UpdateSubjective()
         {
-            if (map == null) return;
+            if (map == null || caught) return;
             if (breath.isValid() && player != null) breath.setParameterByID(staminaId, player.Stamina01);
             if (relay == null || !relay.Released || listener == null) return;
             if (!heartbeat.isValid())
@@ -371,15 +382,10 @@ namespace FrontRooms.Audio
             relay = hunter;
             lastState = HunterState.Dormant;
             relayRevealed = false;
-            if (!FrontRoomsFmod.Ready) return;
-            if (!runIdsReady)
-            {
-                staminaId = FrontRoomsFmod.ParameterId(SoundIds.Breath, SoundIds.Param.Stamina);
-                heartProximityId = FrontRoomsFmod.ParameterId(SoundIds.Heartbeat, SoundIds.Param.Proximity);
-                stressProgressId = FrontRoomsFmod.ParameterId(SoundIds.WindowStress, SoundIds.Param.Progress);
-                runIdsReady = true;
-            }
-            StartRoomTone();
+            caught = false;
+            FrontRoomsFmod.Note("map run started");
+            // Hook the run first: whether FMOD has finished loading must never decide whether a run is heard.
+            if (started) StartRoomTone();
             map.GlassHold += OnGlassHold;
             map.GlassHoldReleased += OnGlassHoldReleased;
             map.GlassBroken += OnGlassBroken;
@@ -389,9 +395,25 @@ namespace FrontRooms.Audio
             relay.StateChanged += OnRelayState;
             relay.DoorBlow += OnDoorBlow;
             relay.Caught += OnCaught;
-            breath = FrontRoomsFmod.Create2D(SoundIds.Breath);
-            if (breath.isValid()) breath.start();
             if (relayBody != null) relayBody.hunter = relay;
+        }
+
+        /// <summary>Run voices and parameter ids, created once FMOD is ready (and again after a catch).</summary>
+        void EnsureRunVoices()
+        {
+            if (map == null) return;
+            if (!runIdsReady)
+            {
+                staminaId = FrontRoomsFmod.ParameterId(SoundIds.Breath, SoundIds.Param.Stamina);
+                heartProximityId = FrontRoomsFmod.ParameterId(SoundIds.Heartbeat, SoundIds.Param.Proximity);
+                stressProgressId = FrontRoomsFmod.ParameterId(SoundIds.WindowStress, SoundIds.Param.Progress);
+                runIdsReady = true;
+            }
+            if (!breath.isValid() && !caught)
+            {
+                breath = FrontRoomsFmod.Create2D(SoundIds.Breath);
+                if (breath.isValid()) breath.start();
+            }
         }
 
         void OnMapRunEnded()
@@ -477,6 +499,7 @@ namespace FrontRooms.Audio
 
         void OnCaught()
         {
+            caught = true;
             if (!FrontRoomsFmod.Ready) return;
             // Hard cut to silence, then a single ringing tone.
             StopRoomTone(true);

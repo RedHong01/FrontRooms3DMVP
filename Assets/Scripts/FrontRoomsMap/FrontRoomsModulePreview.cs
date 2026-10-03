@@ -6,7 +6,8 @@ using UnityEngine;
 /// The Level Designer's live preview (Assets/Scenes/FrontRoomsLevelDesigner.unity):
 /// it builds the real game map around one room module, with the same
 /// builder, lamps, kits and look as the game, and rebuilds whenever the
-/// module changes. In Play mode the walker spawns inside the room.
+/// module changes (not in Play, where the walker spawns inside the room
+/// and a rebuild would send it back to the entrance).
 ///
 /// The module is stamped into chunk (0, 0), centred, in a maze whose zones
 /// all take the module's height and theme, so the map's own rules (columns,
@@ -38,6 +39,9 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
 
     /// <summary>The map world currently built, or null.</summary>
     public FrontRoomsMapWorld World => world;
+
+    /// <summary>A rebuild is queued for the next editor tick (MarkDirty) and has not run yet.</summary>
+    public bool RebuildQueued => dirty;
 
     /// <summary>The module data the current map was stamped with (turned), or null. The props it placed carry this very object in their tag.</summary>
     public RoomModuleData Stamped { get; private set; }
@@ -128,7 +132,8 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
 
     void OnModuleChanged(FrontRoomsRoomModule changed)
     {
-        if (changed == module) MarkDirty();
+        // In Play a rebuild would put the walker back at the entrance: edits show when Play ends.
+        if (changed == module && !Application.isPlaying) MarkDirty();
     }
 
     /// <summary>Rebuild on the next editor tick (edits come in bursts while dragging).</summary>

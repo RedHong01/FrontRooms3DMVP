@@ -111,6 +111,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         // The terminal door swinging shut for good (CloseTerminalDoor). The
         // title's doors snap shut instead: its camera never looks back.
         public bool doorClosing;
+        // +1: the leaves swing into the next room (+Z); -1: back into this one,
+        // when an ended stream's door is opened from its far side.
+        public float doorSwing = 1f;
         // Broken by the Relay: the door stays open and never auto-closes.
         public bool doorBroken;
         public bool connected;
@@ -195,6 +198,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     bool frozen;
     int terminalSequence = int.MaxValue;
     bool terminalLocked;
+    // The next room's rear seal, kept standing behind the shut terminal door
+    // (its own room is put away) so the leaves' slits show a wall, not the void.
+    GameObject terminalSeal;
 
     /// <summary>Raised once per door, when its latch first releases.</summary>
     public event Action<int, Vector3> DoorOpeningStarted;
@@ -506,6 +512,14 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         isEntering = false;
         hasControl = true;
         transitionPoolIndex = -1;
+        var next = FindSequence(sequence + 1);
+        if (next?.rearSeal != null)
+        {
+            terminalSeal = next.rearSeal;
+            terminalSeal.transform.SetParent(terminal.root.transform, true);
+            terminalSeal.SetActive(true);
+            next.rearSeal = null;
+        }
         for (var i = 0; i < MaxRooms; i++)
         {
             var room = pool[i];
@@ -516,6 +530,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             room.root.SetActive(false);
         }
         BuildFacade(terminal, facadeHalfWidth);
+        // The door's map-side reveals now meet the facade and the map's walls,
+        // which take shadows: so do they.
+        foreach (var renderer in terminal.root.GetComponentsInChildren<Renderer>(true))
+            if (renderer.gameObject.name.EndsWith("/ far side", StringComparison.Ordinal)) renderer.receiveShadows = true;
     }
 
     /// <summary>
@@ -528,6 +546,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     public bool DisposeOneRoom()
     {
         if (!frozen || !terminalLocked) return false;
+        // Close the terminal room off at the back before the rooms behind it go,
+        // so the door's slits look into a shut room, not the void.
+        var last = FindSequence(terminalSequence);
+        if (last?.rearSeal != null && !last.rearSeal.activeSelf) last.rearSeal.SetActive(true);
         for (var i = 0; i < MaxRooms; i++)
         {
             var room = pool[i];
@@ -712,13 +734,16 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
             var mayOpen = !terminal || (!TerminalDoorHeld && !terminalLocked);
             // In play the player can come back to a door from its far side,
             // where the leaves swing: open it only while they are clear of the swing.
-            var inReach = frozen
-                ? (distance > 0f && distance < 4f) || (distance < -1.5f && distance > -4f)
-                : distance < 4f && distance > -1f;
+            var inReach = frozen ? distance > -4f && distance < 4f : distance < 4f && distance > -1f;
             if (!room.doorOpen && mayOpen && inReach)
             {
+                // An ended stream's door opened from its far side swings back,
+                // away from the player; it only turns while fully shut.
+                if (frozen && room.doorProgress <= 0f) room.doorSwing = distance < 0f ? -1f : 1f;
                 room.doorClosing = false;
                 BeginDoorOpening(room);
+                // The leaves swing through where the seal behind the terminal door stands.
+                if (terminal && terminalSeal != null) terminalSeal.SetActive(false);
             }
             if (room.doorOpening && room.doorProgress < 1f)
             {
@@ -880,6 +905,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         oldest.root.transform.position = new Vector3(centerX, 0f, oldest.startZ);
         AlignFixtures(oldest);
         oldest.doorProgress = 0f;
+        oldest.doorSwing = 1f;
         oldest.doorOpening = false;
         oldest.doorOpen = false;
         oldest.doorBroken = false;
@@ -1749,7 +1775,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         // Stop just shy of a right angle. This keeps a small construction
         // margin for the thin slab and avoids any floating-point sweep into
         // the side return while still reading fully open.
-        var angle = 88f * t;
+        var angle = 88f * t * room.doorSwing;
         room.leftDoor.localRotation = Quaternion.Euler(0f, -angle, 0f);
         room.rightDoor.localRotation = Quaternion.Euler(0f, angle, 0f);
     }

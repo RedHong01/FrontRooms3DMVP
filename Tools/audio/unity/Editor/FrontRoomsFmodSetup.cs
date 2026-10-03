@@ -13,6 +13,7 @@ using UnityEngine;
 public static class FrontRoomsFmodSetup
 {
     const string StudioProject = "FMOD/FrontRooms/FrontRooms.fspro";
+    const string BankPath = "FMOD/FrontRooms/Build";
 
     [MenuItem("FrontRooms/Audio/Configure FMOD (FrontRooms project)")]
     public static void Configure()
@@ -25,6 +26,9 @@ public static class FrontRoomsFmodSetup
         var settings = Settings.Instance;
         settings.HasSourceProject = true;
         settings.SourceProjectPath = StudioProject;
+        // The settings inspector derives this from the project path; setting the path from code
+        // does not, and with it empty FMOD for Unity finds no banks and loads nothing at runtime.
+        settings.SourceBankPath = BankPath;
         settings.ImportType = ImportType.StreamingAssets;
         settings.TargetSubFolder = "FMOD";
         settings.BankLoadType = BankLoadType.All;

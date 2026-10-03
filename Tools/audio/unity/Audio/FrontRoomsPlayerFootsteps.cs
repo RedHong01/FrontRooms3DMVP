@@ -87,7 +87,6 @@ namespace FrontRooms.Audio
 
         void Contact(SoundIds.Gait gait)
         {
-            if (!FrontRoomsFmod.Ready) return;
             var feet = Feet();
             var surface = surfaceAt != null ? surfaceAt(feet) : SoundIds.Surface.Carpet;
             shoe = Mathf.Max(shoe, dampnessAt != null ? dampnessAt(feet) : DefaultDampness);

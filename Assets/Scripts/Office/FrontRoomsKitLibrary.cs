@@ -113,6 +113,21 @@ public static class FrontRoomsKitLibrary
 
     static List<string> allNames;
 
+    /// <summary>
+    /// Forget every cached model, sidecar, name list and material. The editor calls
+    /// this when a kit FBX/JSON or a surface material is re-imported, so palettes,
+    /// footprints and Validate see the new export without a script reload.
+    /// </summary>
+    public static void ClearCache()
+    {
+        Models.Clear();
+        Infos.Clear();
+        MaterialSets.Clear();
+        Missing.Clear();
+        ProjectMaterials.Clear();
+        allNames = null;
+    }
+
     /// <summary>Every kit asset name in Resources/Props/Models, sorted (stable for seeding).</summary>
     public static IReadOnlyList<string> AllNames()
     {

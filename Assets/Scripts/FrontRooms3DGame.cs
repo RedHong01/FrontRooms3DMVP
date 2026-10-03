@@ -519,12 +519,14 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             Log("START · no shut stream door is loaded yet");
             return;
         }
+        var watch = System.Diagnostics.Stopwatch.StartNew();
         var profile = levelProfile != null ? levelProfile : FrontRoomsLevelProfile.Default;
         runSeed = profile.runSeed != 0 ? profile.runSeed : UnityEngine.Random.Range(1, int.MaxValue);
 #if UNITY_EDITOR
         if (autopilot && autopilotSeed != 0) runSeed = autopilotSeed;
 #endif
         map = FrontRoomsMapWorld.CreateEmbedded(transform, profile, runSeed);
+        var createMs = watch.Elapsed.TotalMilliseconds;
 
         // The door line is a map cell line and the stream centreline a cell
         // centre (BuildTitleCorridor, TitleCenterX), so the door opens onto
@@ -534,13 +536,15 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         var rearZ = roomStream.RoomStartZ(roomStream.OldestSequence);
         var rows = Mathf.RoundToInt((doorZ - rearZ) / MapGrid.CellSize);
         map.transform.SetPositionAndRotation(MapRootFor(map, centerX, doorZ, rows), Quaternion.identity);
+        var placeMs = watch.Elapsed.TotalMilliseconds - createMs;
         startDoorCell = map.CellOf(new Vector3(centerX, 0f, doorZ + MapGrid.CellSize * .5f));
         startDoorPoint = new Vector3(centerX, 0f, doorZ);
         startRearZ = rearZ;
         startDoorHeldFor = 0f;
         var rearCell = map.CellOf(new Vector3(centerX, 0f, rearZ + MapGrid.CellSize * .5f));
         map.SetStartArea(new RectInt(startDoorCell.x - StartAreaHalfCells, rearCell.y, StartAreaHalfCells * 2 + 1, startDoorCell.y - rearCell.y), startDoorCell);
-        roomStream.EndStreamAt(terminal, (StartAreaHalfCells + .5f) * MapGrid.CellSize + ModuleUnits.WallHalf);
+        // The facade ends inside the start area's side walls (centred on the cell lines), not on their faces.
+        roomStream.EndStreamAt(terminal, (StartAreaHalfCells + .5f) * MapGrid.CellSize + ModuleUnits.WallHalf - .01f);
         roomStream.TerminalDoorHeld = true;
 
         // The player is a capsule the camera rides on, standing where the
@@ -595,7 +599,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         SetPhase(Phase.Playing);
         Event("start", "map seed " + runSeed + ", stream room " + terminal);
         MapRunStarted?.Invoke(map, relay);
-        Log("START · in place in stream room " + terminal + " · maze seed " + runSeed + " behind its door, map root " + map.transform.position + ", door cell " + startDoorCell);
+        Log("START · in place in stream room " + terminal + " · maze seed " + runSeed + " behind its door, map root " + map.transform.position + ", door cell " + startDoorCell
+            + " · " + watch.Elapsed.TotalMilliseconds.ToString("0.0", CultureInfo.InvariantCulture) + " ms (map " + createMs.ToString("0.0", CultureInfo.InvariantCulture) + ", placing " + placeMs.ToString("0.0", CultureInfo.InvariantCulture) + ")");
     }
 
     /// <summary>
@@ -616,7 +621,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         var period = ModuleUnits.WorldPeriod;
         var probe = new Vector3(centerX, 0f, doorZ + MapGrid.CellSize * .5f);
         Vector3? reachable = null;
-        for (var ring = 0; ring <= 8; ring++)
+        for (var ring = 0; ring <= 24; ring++)
         for (var b = -ring; b <= ring; b++)
         for (var a = -ring; a <= ring; a++)
         {
@@ -1732,7 +1737,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (autoStartShutAt < 0f && streamFade >= 0f) autoStartShutAt = autoPlayClock;
         if (autoStreamRemovedAt < 0f && roomStream == null) autoStreamRemovedAt = autoPlayClock;
         // The seam, from both sides: the map through the open stream door, and the shut door from the maze.
-        if (!autoDoorShot && autoStartDoorAt >= 0f && autoPlayClock - autoStartDoorAt > 1f && inStartRooms)
+        if (!autoDoorShot && autoStartDoorAt >= 0f && autoPlayClock - autoStartDoorAt > .6f && inStartRooms)
         {
             autoDoorShot = true;
             AutopilotCapture((autoShots < 10 ? "0" : "") + autoShots + "_start_door");
