@@ -1,6 +1,6 @@
 # FrontRooms 3D — First-person MVP
 
-This is a separate first-person experiment built from the FrontRooms functional question: how much information is worth the seconds it costs to collect? It is a 3D greybox comparison for the 2D prototype in `/Users/redwang/Developer/Frontrooms2D`, inspired by the first-person pressure of Dark Deception and Escape the Backrooms.
+This is a first-person experiment built from the FrontRooms functional question: how much information is worth the seconds it costs to collect? It is a 3D greybox prototype inspired by the first-person pressure of Dark Deception and Escape the Backrooms.
 
 ## Run
 
@@ -12,9 +12,9 @@ The title opens on an empty corridor: the camera pushes forward, the brand mark 
 
 ## Scope
 
-This MVP tests first-person readability and pressure against the same room rule, note, key, door, window and noise systems as the 2D slice. It is a short route, not the deck's final 8–12 minute experience. It uses placeholder geometry and procedural audio; no final art or human playtest claim is attached.
+This MVP tests first-person readability and pressure through room rules, notes, keys, doors, windows and noise. It is a short route, not the deck's final 8–12 minute experience. It uses placeholder geometry and procedural audio; no final art or human playtest claim is attached.
 
-The original design guidance is the [FrontRooms deck](https://www.figma.com/deck/NmYGRYKlhfX6H4rbJ7QcSN). The 2D source and assignment documentation remain in `/Users/redwang/Developer/Frontrooms2D/Documentation/PROTOTYPE_BRIEF.md`.
+The original design guidance is the [FrontRooms deck](https://www.figma.com/deck/NmYGRYKlhfX6H4rbJ7QcSN). The former 2D MVP was retired; this project is the active local source.
 
 ## Edit the Unity project
 

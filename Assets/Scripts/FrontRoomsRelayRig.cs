@@ -50,6 +50,21 @@ public sealed class FrontRoomsRelayRig : MonoBehaviour
     /// blends into its door-squeeze pose; the prototype rig ignores it.</summary>
     public float DoorSqueeze { get; set; }
 
+    /// <summary>The back / hood / load scraping the ceiling: world contact point, at most
+    /// ~2 per second while moving pressed under it. Raised only when <see cref="PressesCeiling"/>.</summary>
+    public event Action<Vector3> CeilingBrush;
+
+    /// <summary>Forcing through a door frame: (contact point, DoorSqueeze 0..1). Raised when the
+    /// squeeze starts and again each time it gets 0.3 harder.</summary>
+    public event Action<Vector3, float> Squeeze;
+
+    /// <summary>Set by a rig whose body is pinned under the ceiling (the squeezed giant). The
+    /// prototype rig leaves it false, so it never raises <see cref="CeilingBrush"/>.</summary>
+    public bool PressesCeiling { get; set; }
+
+    float brushCooldown;
+    float squeezeLevel;
+
     Vector3? listenTarget;
     float blowImpulse;
     bool finalBlow;
@@ -183,6 +198,21 @@ public sealed class FrontRoomsRelayRig : MonoBehaviour
             Step(foot, footBone != null ? footBone.position : transform.position);
         }
         lastGait = moving ? gait : 0f;
+
+        // Body-contact events for the sound chat.
+        brushCooldown -= deltaTime;
+        if (PressesCeiling && moving && brushCooldown <= 0f && CeilingBrush != null)
+        {
+            brushCooldown = .5f;
+            var top = transform.position + Vector3.up * (CeilingHeight - .02f);
+            CeilingBrush(top + transform.forward * .1f);
+        }
+        if (DoorSqueeze <= .01f) squeezeLevel = 0f;
+        else if (Squeeze != null && (squeezeLevel == 0f || DoorSqueeze >= squeezeLevel + .3f))
+        {
+            squeezeLevel = Mathf.Max(DoorSqueeze, .01f);
+            Squeeze(transform.position + Vector3.up * 1.5f, DoorSqueeze);
+        }
 
         if (armL != null) armL.localRotation = Quaternion.Euler(gait * armSwing, 0f, -7f);
         if (armR != null) armR.localRotation = Quaternion.Euler(opposite * armSwing, 0f, 7f);

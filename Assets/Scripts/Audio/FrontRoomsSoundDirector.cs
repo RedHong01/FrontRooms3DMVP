@@ -21,7 +21,14 @@ namespace FrontRooms.Audio
         public static FrontRoomsSoundDirector Instance { get; private set; }
 
         [SerializeField] bool muteLegacyUnityAudio = true;
-        [SerializeField] int fixtureVoices = 6;
+        [SerializeField] int fixtureVoices = 4;
+        // Every fixture voice plays the same recorded loop. Started in the same frame they stay
+        // sample-locked and add up in phase (6 lamps measured +12 dB over one, louder than the
+        // player's steps). Starting them a non-multiple of the 4 s loop apart de-phases them.
+        const float FixtureStagger = .53f;
+        // Level trims until the next bank build bakes them into the events (measured 2026-10-02:
+        // 4 lamps + bed at about -35 LUFS against footsteps at -29.7).
+        const float FixtureTrimDb = -12f, HumBedTrimDb = -3f;
         [SerializeField] float fixtureRadius = 10f;
 
         bool started, legacyRestored;
@@ -55,6 +62,8 @@ namespace FrontRooms.Audio
         readonly List<float> lampNextEvent = new List<float>(256);
         EventInstance[] fixtureVoice;
         int[] fixtureLamp;
+        float[] fixtureStartAt;
+        bool[] fixtureStarted;
         int[] nearest;
         float[] nearestDistance;
         PARAMETER_ID fixtureLevelId;
@@ -76,6 +85,8 @@ namespace FrontRooms.Audio
             Instance = this;
             fixtureVoice = new EventInstance[fixtureVoices];
             fixtureLamp = new int[fixtureVoices];
+            fixtureStartAt = new float[fixtureVoices];
+            fixtureStarted = new bool[fixtureVoices];
             nearest = new int[fixtureVoices];
             nearestDistance = new float[fixtureVoices];
             for (var i = 0; i < fixtureVoices; i++) fixtureLamp[i] = -1;
@@ -151,7 +162,11 @@ namespace FrontRooms.Audio
         // ------------------------------------------------------------ room tone
         void StartRoomTone()
         {
-            if (!humBed.isValid()) { humBed = FrontRoomsFmod.Create2D(SoundIds.HumBed); if (humBed.isValid()) humBed.start(); }
+            if (!humBed.isValid())
+            {
+                humBed = FrontRoomsFmod.Create2D(SoundIds.HumBed);
+                if (humBed.isValid()) { humBed.setVolume(Mathf.Pow(10f, HumBedTrimDb / 20f)); humBed.start(); }
+            }
             if (!airBed.isValid()) { airBed = FrontRoomsFmod.Create2D(SoundIds.AirBed); if (airBed.isValid()) airBed.start(); }
         }
 
@@ -299,7 +314,14 @@ namespace FrontRooms.Audio
                     fixtureVoice[v] = FrontRoomsFmod.Create(SoundIds.Fixture, lamp.transform.position);
                     if (!fixtureVoice[v].isValid()) continue;
                     if (!fixtureIdReady) { fixtureLevelId = FrontRoomsFmod.ParameterId(SoundIds.Fixture, SoundIds.Param.Level); fixtureIdReady = true; }
+                    fixtureVoice[v].setVolume(Mathf.Pow(10f, FixtureTrimDb / 20f));
+                    fixtureStartAt[v] = Time.unscaledTime + v * FixtureStagger;
+                    fixtureStarted[v] = false;
+                }
+                if (!fixtureStarted[v] && Time.unscaledTime >= fixtureStartAt[v])
+                {
                     fixtureVoice[v].start();
+                    fixtureStarted[v] = true;
                 }
                 fixtureLamp[v] = index;
                 fixtureVoice[v].setParameterByID(fixtureLevelId, level);
@@ -464,6 +486,8 @@ namespace FrontRooms.Audio
 
         void OnDoorBroken(Vector3 position)
         {
+            // The leaf is off its hinges now: its motion is the break, not a door being opened.
+            FrontRoomsDoorSound.MarkBroken(position);
             FrontRoomsFmod.OneShot(SoundIds.DoorBreak, position);
             FrontRoomsFmod.OneShot(SoundIds.DoorStopLimit, position, SoundIds.Param.Impact, 1f);
             blowCount = 0;
@@ -478,7 +502,14 @@ namespace FrontRooms.Audio
             if ((position - lastBlowDoor).sqrMagnitude > .25f) blowCount = 0;
             lastBlowDoor = position;
             blowCount++;
-            FrontRoomsFmod.OneShot(SoundIds.DoorBlow, position, SoundIds.Param.Damage, Mathf.Clamp01(blowCount / 5f));
+            // The hunter numbers its blows (BlowIndex 0..BlowCount-1, the last one breaks through);
+            // BlowCount shrinks at higher tiers, so the strength is the share of the way through.
+            var damage = relay != null && relay.BlowIndex >= 0 && relay.BlowCount > 0
+                ? (relay.BlowIndex + 1f) / relay.BlowCount
+                : Mathf.Clamp01(blowCount / 5f);
+            // A struck leaf jolts on its hinge: that is not someone opening the door.
+            FrontRoomsDoorSound.Suppress(position, 1f);
+            FrontRoomsFmod.OneShot(SoundIds.DoorBlow, position, SoundIds.Param.Damage, damage);
         }
 
         void OnRelayState(HunterState state)

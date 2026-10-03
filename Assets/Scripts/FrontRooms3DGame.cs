@@ -41,6 +41,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     public static event Action MapRunEnded;
     /// <summary>The player started climbing through a broken window, at its opening.</summary>
     public static event Action<Vector3> PlayerClimbed;
+    /// <summary>The game paused (true: Esc or lost focus) or resumed (false). Also false when a paused run is torn down.</summary>
+    public static event Action<bool> Paused;
 
     [SerializeField, Tooltip("The Level 0 maze's numbers: generation, run seed, streaming, light budget, dressing (Assets/Levels/FrontRoomsLevel0.asset). Empty: the code defaults.")]
     FrontRoomsLevelProfile levelProfile;
@@ -587,7 +589,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
         relay = new FrontRoomsMapHunter(map, hunterTuning, playerBody, hunter, runSeed);
         relay.StateChanged += state => Event("hunter", state.ToString());
-        relay.DoorBlow += p => FoleyDoorBreak(Flat(p));
+        relay.DoorBlow += p =>
+        {
+            if (hunterRig != null) hunterRig.DoorBlow(relay.BlowIndex, relay.BlowCount);
+            // Under FMOD the sound layer plays the blows (AUDIO_CONTRACT.md).
+            if (!FrontRooms.Audio.FrontRoomsFmod.Ready) FoleyDoorBreak(Flat(p));
+        };
         relay.Caught += End;
 
         zonesVisited.Clear();
@@ -986,10 +993,17 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             var motion = state == HunterState.Chase ? FrontRoomsRelayRig.MotionState.Run
                 : state == HunterState.BreakDoor ? FrontRoomsRelayRig.MotionState.BreakDoor
                 : state == HunterState.Hunt || state == HunterState.Wander || (state == HunterState.Search && relay.Moving) ? FrontRoomsRelayRig.MotionState.Walk
+                : state == HunterState.Search ? FrontRoomsRelayRig.MotionState.Search
                 : FrontRoomsRelayRig.MotionState.IdleListen;
+            // The head turns toward the last noise while it listens or stands searching.
+            hunterRig.SetListenTarget(state == HunterState.Listen || state == HunterState.Search ? relay.ListenPoint : null);
+            // The room it stands in and how deep it is in a doorway, for the rig's crammed poses.
+            hunterRig.CeilingHeight = MapGrid.CeilingHeight(map.ZoneOf(map.CellOf(position)).height);
+            hunterRig.DoorSqueeze = relay.DoorSqueeze;
             hunterRig.TickAnimation(dt, motion, relay.Moving, state == HunterState.Chase ? 1.15f : 1f);
         }
-        if (!relay.Moving) return;
+        // Under FMOD the sound layer plays its steps from the rig's foot plants (AUDIO_CONTRACT.md).
+        if (!relay.Moving || (FrontRooms.Audio.FrontRoomsFmod.Ready && hunterRig != null && hunterRig.RaisesSteps)) return;
         hunterStepTime += dt;
         if (hunterStepTime < (state == HunterState.Chase ? .29f : .44f)) return;
         hunterStepTime = 0f;
@@ -1440,7 +1454,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     void SetPhase(Phase p)
     {
         var wasPlaying = phase == Phase.Playing;
+        var wasPaused = phase == Phase.Paused;
         phase = p; bool playing = p == Phase.Playing;
+        if ((p == Phase.Paused) != wasPaused) Paused?.Invoke(p == Phase.Paused);
         if (playing && !wasPlaying) gameplayHudAlpha = 0f;
         if (!playing) gameplayHudAlpha = 0f;
         if (p != Phase.Paused)
@@ -1562,6 +1578,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     void Event(string kind, string detail) { events.Add(elapsed.ToString("0.000", CultureInfo.InvariantCulture) + "," + kind + ",\"" + detail.Replace("\"", "\"\"") + "\"," + RelayDistance().ToString("0.00", CultureInfo.InvariantCulture)); }
     void OnDestroy()
     {
+        if (phase == Phase.Paused) Paused?.Invoke(false);
         if (map != null) MapRunEnded?.Invoke();
     }
 

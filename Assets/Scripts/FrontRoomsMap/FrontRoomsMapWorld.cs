@@ -69,6 +69,15 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     public event Action<Vector3> GlassHoldReleased;
     /// <summary>The player tried a door that needs this zone's key.</summary>
     public event Action<Vector3> DoorLocked;
+    /// <summary>
+    /// A held key opened a locked door (doors need keys), once per door: the
+    /// door, the zone whose key opened it, and the lock's world point on the
+    /// opener's side. Raised before the leaf swings; it swings after
+    /// UnlockSwingDelay.
+    /// </summary>
+    public event Action<Door, GridCoord, Vector3> DoorUnlocked;
+    /// <summary>Seconds from DoorUnlocked to the leaf starting to swing (the key turning in the lock). 0 swings at once.</summary>
+    public float UnlockSwingDelay { get; set; }
 
     /// <summary>What lies between two side-by-side cells right now.</summary>
     public enum Passage { Open, Wall, ClosedDoor, Glass }
@@ -188,6 +197,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
     readonly Dictionary<GridCoord, BuiltChunk> built = new Dictionary<GridCoord, BuiltChunk>();
     readonly Dictionary<GridCoord, float> droppedAt = new Dictionary<GridCoord, float>();
+    // Chunks whose build threw: left out (not retried every frame) until they leave the build radius.
+    readonly HashSet<GridCoord> failedChunks = new HashSet<GridCoord>();
     readonly HashSet<GridCoord> keysHeld = new HashSet<GridCoord>();
     readonly HashSet<long> brokenWindows = new HashSet<long>();
     readonly HashSet<long> openDoors = new HashSet<long>();
@@ -196,6 +207,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     readonly Dictionary<long, float> doorSwing = new Dictionary<long, float>();
     readonly Dictionary<Collider, Door> doorByCollider = new Dictionary<Collider, Door>();
     readonly Dictionary<long, Door> doorByEdge = new Dictionary<long, Door>();
+    // Doors a key has opened (they stay unlocked), and those whose key is still turning (seconds left).
+    readonly HashSet<long> unlockedDoors = new HashSet<long>();
+    readonly List<(Door door, float left)> unlocking = new List<(Door, float)>();
     readonly Dictionary<Collider, Window> windowByCollider = new Dictionary<Collider, Window>();
     readonly HashSet<Collider> shellColliders = new HashSet<Collider>();
     // Modules placed by hand (the Level Designer preview), stamped whenever their chunk is generated.
@@ -315,7 +329,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         var center = ChunkOf(StreamCenter);
         for (var dy = -buildRadius; dy <= buildRadius; dy++)
         for (var dx = -buildRadius; dx <= buildRadius; dx++)
-            if (!built.ContainsKey(new GridCoord(center.x + dx, center.y + dy))) return false;
+            if (!BuiltOrFailed(new GridCoord(center.x + dx, center.y + dy))) return false;
         foreach (var job in dressQueue)
         {
             var c = job.data.coord;
@@ -334,10 +348,16 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var center = ChunkOf(StreamCenter);
             for (var dy = -buildRadius; dy <= buildRadius; dy++)
             for (var dx = -buildRadius; dx <= buildRadius; dx++)
-                if (!built.ContainsKey(new GridCoord(center.x + dx, center.y + dy))) return false;
+                if (!BuiltOrFailed(new GridCoord(center.x + dx, center.y + dy))) return false;
             return true;
         }
     }
+
+    // A chunk whose build failed counts as done: waiting for it would never end.
+    bool BuiltOrFailed(GridCoord coord) => built.ContainsKey(coord) || failedChunks.Contains(coord);
+
+    /// <summary>Chunks whose build threw and are left out until they leave range.</summary>
+    public int FailedChunkCount => failedChunks.Count;
 
     // ---------- Start area: the title's stream rooms, left out of the map ----------
 
@@ -577,6 +597,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         foreach (var coord in built.Keys)
             if (Mathf.Abs(coord.x - center.x) > buildRadius || Mathf.Abs(coord.y - center.y) > buildRadius) scratch.Add(coord);
         foreach (var coord in scratch) Drop(coord);
+        failedChunks.RemoveWhere(c => Mathf.Abs(c.x - center.x) > buildRadius || Mathf.Abs(c.y - center.y) > buildRadius);
         // Nearest ring first, so the chunk the player walks into is never the one still waiting.
         for (var ring = 0; ring <= buildRadius && budget > 0; ring++)
         for (var dy = -ring; dy <= ring && budget > 0; dy++)
@@ -584,7 +605,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         {
             if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != ring) continue;
             var coord = new GridCoord(center.x + dx, center.y + dy);
-            if (built.ContainsKey(coord)) continue;
+            if (built.ContainsKey(coord) || failedChunks.Contains(coord)) continue;
             // Decision 2: a chunk the player left long enough ago comes back
             // rearranged. It is always at least one chunk (24 m) away when it
             // is rebuilt, so the change is never seen.
@@ -604,35 +625,66 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     void Drop(GridCoord coord)
     {
         if (!built.TryGetValue(coord, out var chunk)) return;
-        foreach (var door in chunk.doors)
-        {
-            movingDoors.Remove(door);
-            doorByEdge.Remove(door.edge);
-            if (door.leaf != null) doorByCollider.Remove(door.leaf);
-        }
-        foreach (var c in chunk.root.GetComponentsInChildren<Collider>(true))
-        {
-            windowByCollider.Remove(c);
-            shellColliders.Remove(c);
-        }
-        FreeMeshes(chunk);
-        Kill(chunk.root);
+        Unregister(chunk);
         built.Remove(coord);
         droppedAt[coord] = Time.time;
     }
 
+    /// <summary>Forget a chunk's doors, windows and shell colliders, and free its meshes and objects.</summary>
+    void Unregister(BuiltChunk chunk)
+    {
+        foreach (var door in chunk.doors)
+        {
+            movingDoors.Remove(door);
+            if (doorByEdge.TryGetValue(door.edge, out var current) && current == door) doorByEdge.Remove(door.edge);
+            if (door.leaf != null) doorByCollider.Remove(door.leaf);
+        }
+        if (chunk.root != null)
+            foreach (var c in chunk.root.GetComponentsInChildren<Collider>(true))
+            {
+                windowByCollider.Remove(c);
+                shellColliders.Remove(c);
+            }
+        FreeMeshes(chunk);
+        if (chunk.root != null) Kill(chunk.root);
+    }
+
+    /// <summary>Tools and tests: make the build of the chunks it returns true for throw, to check the guard round Build.</summary>
+    public Func<GridCoord, bool> FailBuildForTools { get; set; }
+
     ThemeMaterials Theme(ZoneTheme theme) => theme == ZoneTheme.Office ? office : level0;
 
+    /// <summary>
+    /// Build one chunk. A build that throws is undone (nothing half built
+    /// stays registered or in the scene), logged, and the chunk is left out
+    /// until it leaves the build radius, instead of being tried again every frame.
+    /// </summary>
     void Build(GridCoord coord)
+    {
+        var chunk = new BuiltChunk();
+        try
+        {
+            BuildInto(coord, chunk);
+        }
+        catch (Exception e)
+        {
+            Unregister(chunk);
+            built.Remove(coord);
+            failedChunks.Add(coord);
+            Debug.LogError("[FrontRoomsMap] Chunk " + coord + " failed to build and is left out until it leaves range: " + e);
+        }
+    }
+
+    void BuildInto(GridCoord coord, BuiltChunk chunk)
     {
         const int n = MapGrid.ChunkCells;
         var cs = MapGrid.CellSize;
         var data = Cache.Get(coord);
-        var chunk = new BuiltChunk();
         var origin = new Vector3(coord.x * MapGrid.ChunkSize, 0f, coord.y * MapGrid.ChunkSize);
         chunk.root = new GameObject("Chunk " + coord + " · revision " + data.revision);
         chunk.root.transform.SetParent(transform, false);
         chunk.root.transform.localPosition = origin;
+        if (FailBuildForTools != null && FailBuildForTools(coord)) throw new InvalidOperationException("tools: forced build failure");
 
         // One set of meshes per 6 m block and ceiling height, so each renderer
         // can carry its own _CeilingHeight for the surface shader's grime band.
@@ -1017,8 +1069,10 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     {
         var door = DoorBetween(a, b);
         if (door == null || door.open) return door != null;
-        if (doorsNeedKeys && !HasKeyHere()) return false;
+        if (LockedHere(door)) return false;
+        if (Unlocking(door)) return true;
         SwingAway(door, CellCenter(a));
+        if (Unlock(door, CellCenter(a))) return true;
         SetDoor(door, true);
         return true;
     }
@@ -1264,8 +1318,17 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             // A module's own props go in first; the kits fill round them.
             var module = data.ModuleOf(r);
             var obstacles = new List<Rect>(columns);
-            if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module, clear, doorway));
+            if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module, clear, doorway, columns));
             var worked = obstacles.Count > columns.Count || (module?.props != null && module.props.Length > 0);
+            if (module != null)
+            {
+                // The fill sees the module's inner walls (their 0.16 m bands) as obstacles and keeps its inner doorways clear.
+                foreach (var s in module.InnerStrips())
+                {
+                    var strip = Rect.MinMaxRect(room.x * cs + s[0], room.y * cs + s[1], room.x * cs + s[2], room.y * cs + s[3]);
+                    if (s[4] > 0f) obstacles.Add(strip); else clear.Add(strip);
+                }
+            }
             var fill = module == null ? ModuleFill.Auto : module.fill;
             var office = fill == ModuleFill.Office || (fill == ModuleFill.Auto && zone.theme == ZoneTheme.Office);
             if (office)
@@ -1319,7 +1382,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     /// module positions. Returns their footprints in chunk-local metres.
     /// </summary>
     /// <param name="doorway">The stream door's opening and swing, when it opens onto this room: nothing goes there, at any height.</param>
-    List<Rect> PlaceProps(BuiltChunk chunk, CellRect room, RoomModuleData module, List<Rect> clear, Rect? doorway = null)
+    /// <param name="columns">The room's columns: they run floor to ceiling, so a prop on one is left out at any height.</param>
+    List<Rect> PlaceProps(BuiltChunk chunk, CellRect room, RoomModuleData module, List<Rect> clear, Rect? doorway = null, List<Rect> columns = null)
     {
         var footprints = new List<Rect>();
         if (module.props == null || module.props.Length == 0) return footprints;
@@ -1327,23 +1391,44 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         var root = new GameObject("module props").transform;
         root.SetParent(chunk.root.transform, false);
         float ox = room.x * cs, oz = room.y * cs;
+        // First which props are left out, so a desk-top item can go with the prop it stands on, whatever their order.
+        var count = module.props.Length;
+        var rects = new Rect?[count];
+        var leftOut = new string[count];
+        for (var index = 0; index < count; index++)
+        {
+            var p = module.props[index];
+            var f = string.IsNullOrEmpty(p.kit) ? null : KitFootprint(p.kit);
+            if (f == null) continue;
+            RoomModuleData.Bounds(p, f, out var x0, out var z0, out var x1, out var z1);
+            var rect = Rect.MinMaxRect(ox + x0, oz + z0, ox + x1, oz + z1);
+            rects[index] = rect;
+            // The map may open a wall the module drew (a chunk-border gate, a reconnection): never block it.
+            if ((p.y <= ModuleUnits.RelayHeight && !p.noCollider && clear.Exists(s => s.Overlaps(rect))) || (doorway.HasValue && doorway.Value.Overlaps(rect)))
+                leftOut[index] = "would block an opening of";
+            // The map's columns (Auto, or the module's own) stand where they stand.
+            else if (columns != null && columns.Exists(s => s.Overlaps(rect)))
+                leftOut[index] = "stands in a column of";
+        }
+        for (var index = 0; index < count; index++)
+        {
+            // A raised item (on a desk, a cabinet) whose footprint is over a prop left out goes with it.
+            var p = module.props[index];
+            if (leftOut[index] != null || rects[index] == null || p.y <= .01f || p.y > ModuleUnits.RelayHeight) continue;
+            for (var k = 0; k < count; k++)
+                if (k != index && leftOut[k] != null && module.props[k].y <= .01f && rects[k].HasValue && rects[k].Value.Overlaps(rects[index].Value)) { leftOut[index] = "stood on a prop left out of"; break; }
+        }
         for (var index = 0; index < module.props.Length; index++)
         {
             var p = module.props[index];
             if (string.IsNullOrEmpty(p.kit)) continue;
             var f = KitFootprint(p.kit);
             var onFloor = p.y <= ModuleUnits.RelayHeight;
-            var rect = default(Rect);
-            if (f != null)
+            var rect = rects[index] ?? default;
+            if (leftOut[index] != null)
             {
-                RoomModuleData.Bounds(p, f, out var x0, out var z0, out var x1, out var z1);
-                rect = Rect.MinMaxRect(ox + x0, oz + z0, ox + x1, oz + z1);
-                // The map may open a wall the module drew (a chunk-border gate, a reconnection): never block it.
-                if ((onFloor && !p.noCollider && clear.Exists(s => s.Overlaps(rect))) || (doorway.HasValue && doorway.Value.Overlaps(rect)))
-                {
-                    Debug.LogWarning("[FrontRoomsMap] Module prop " + p.kit + " at (" + p.x.ToString("0.00") + ", " + p.z.ToString("0.00") + ") would block an opening of chunk " + chunk.root.name + "; left out.");
-                    continue;
-                }
+                Debug.LogWarning("[FrontRoomsMap] Module prop " + p.kit + " at (" + p.x.ToString("0.00") + ", " + p.z.ToString("0.00") + ") " + leftOut[index] + " chunk " + chunk.root.name + "; left out.");
+                continue;
             }
             var spawned = FrontRoomsKitLibrary.Spawn(p.kit, root, new Vector3(ox + p.x, p.y, oz + p.z), p.yaw, null, !p.noCollider, p.kit);
             if (spawned == null) continue;
@@ -1509,8 +1594,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         {
             if (door.broken) return null;
             if (door.open) return "E  ·  SHUT DOOR";
-            if (HasKeyHere()) return "E  ·  OPEN DOOR";
-            return doorsNeedKeys ? "LOCKED  ·  NEEDS THIS ZONE'S KEY" : "E  ·  OPEN DOOR";
+            return LockedHere(door) ? "LOCKED  ·  NEEDS THIS ZONE'S KEY" : "E  ·  OPEN DOOR";
         }
         if (windowByCollider.ContainsKey(c))
         {
@@ -1523,13 +1607,44 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     public void Use(Collider c)
     {
         if (c == null || !doorByCollider.TryGetValue(c, out var door) || door.broken) return;
-        if (!door.open && doorsNeedKeys && !HasKeyHere())
+        if (!door.open && LockedHere(door))
         {
             DoorLocked?.Invoke(door.position);
             return;
         }
+        // The key is still turning: the door opens by itself.
+        if (Unlocking(door)) return;
         if (!door.open && player != null) SwingAway(door, player.position);
+        if (!door.open && Unlock(door, player != null ? player.position : door.position)) return;
         SetDoor(door, !door.open);
+    }
+
+    bool Unlocking(Door door) => unlocking.Exists(u => u.door == door);
+
+    /// <summary>
+    /// The first time a key opens this door: raise DoorUnlocked. True when the
+    /// leaf waits for UnlockSwingDelay (TickDoors opens it); false when the
+    /// caller opens it now.
+    /// </summary>
+    bool Unlock(Door door, Vector3 from)
+    {
+        if (!doorsNeedKeys || !unlockedDoors.Add(door.edge)) return false;
+        var zone = Cache.ZoneOf(CellOf(player != null ? player.position : from)).id;
+        DoorUnlocked?.Invoke(door, zone, LockPoint(door, from));
+        if (UnlockSwingDelay <= 0f) return false;
+        unlocking.Add((door, UnlockSwingDelay));
+        return true;
+    }
+
+    /// <summary>A shut door's lock on the side of a point: in from the latch jamb, at handle height, on the leaf's face.</summary>
+    public static Vector3 LockPoint(Door door, Vector3 from)
+    {
+        var rotation = (door.hinge != null && door.hinge.parent != null ? door.hinge.parent.rotation : Quaternion.identity) * door.closed;
+        var along = rotation * Vector3.forward;   // hinge jamb to latch jamb
+        var across = rotation * Vector3.right;
+        var side = Vector3.Dot(from - door.position, across) >= 0f ? 1f : -1f;
+        return door.position + along * (DoorWidth * .5f - ModuleUnits.DoorHandleInset) + Vector3.up * ModuleUnits.DoorHandleHeight
+            + across * side * (ModuleUnits.DoorLeafThickness * .5f + ModuleUnits.DoorHandleProud);
     }
 
     /// <summary>
@@ -1582,11 +1697,24 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
     bool HasKeyHere() => player != null && keysHeld.Contains(Cache.ZoneOf(CellOf(player.position)).id);
 
+    // Shut and needing a key here: doors need keys, no key has opened this door yet, and the player holds none for this zone.
+    bool LockedHere(Door door) => doorsNeedKeys && !unlockedDoors.Contains(door.edge) && !HasKeyHere();
+
     /// <summary>Tools and tests in edit mode, where Update does not run: move doors that are opening or breaking.</summary>
     public void TickDoorsForTools(float dt) => TickDoors(dt);
 
     void TickDoors(float dt)
     {
+        for (var i = unlocking.Count - 1; i >= 0; i--)
+        {
+            var (door, left) = unlocking[i];
+            // Rebuilt, broken or opened meanwhile: nothing left to open.
+            if (door.hinge == null || door.broken || door.open) { unlocking.RemoveAt(i); continue; }
+            left -= dt;
+            if (left > 0f) { unlocking[i] = (door, left); continue; }
+            unlocking.RemoveAt(i);
+            SetDoor(door, true);
+        }
         for (var i = movingDoors.Count - 1; i >= 0; i--)
         {
             var door = movingDoors[i];

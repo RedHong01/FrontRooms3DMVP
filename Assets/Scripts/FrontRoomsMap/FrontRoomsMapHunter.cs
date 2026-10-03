@@ -36,6 +36,12 @@ public sealed class FrontRoomsMapHunter
     const float NodeStep = .25f, StraightRecheck = .25f;
     const int NodesPerCell = 12, MaxRegionCells = 4, MaxRegionNodes = NodesPerCell * NodesPerCell * MaxRegionCells * MaxRegionCells;
     const float BlowInterval = .5f;
+    // The last blow lands this long before the door gives, so the rig's break-through snap reads as the impact.
+    const float FinalBlowLead = .1f;
+    // StateTime is summed frame by frame: 60 frames of 1/60 s fall just short of 1 s. Moments are met this early.
+    const float TimeSlack = 1e-4f;
+    // The rig's door squeeze: 1 on the door line, 0 from this far out.
+    const float SqueezeReach = .6f;
     // After the last blow it waits for the leaf to fall open (it swings in 0.18 s).
     const float DoorFallSeconds = .25f;
     const float ReplanSeconds = .35f;
@@ -75,7 +81,8 @@ public sealed class FrontRoomsMapHunter
     readonly bool[] nodeClosed = new bool[MaxRegionNodes];
     Vector3 position, lastSeen, goal;
     int pathIndex;
-    float releaseTimer, lostTime, blowTime, replanTimer, leashTimer;
+    float releaseTimer, lostTime, replanTimer, leashTimer;
+    int blowsStruck;
     // What it knows: when it last saw or heard the player, and the last door the player went through.
     float clock, lastSeenTime = float.MinValue, lastContactTime;
     GridCoord playerCellBefore, doorInto;
@@ -112,6 +119,14 @@ public sealed class FrontRoomsMapHunter
     public bool Released => State != HunterState.Dormant;
     public bool SeesPlayer { get; private set; }
     public int DoorsBroken { get; private set; }
+    /// <summary>The last noise it heard (where its head turns while it listens or searches); null once it sees the player or relays.</summary>
+    public Vector3? ListenPoint { get; private set; }
+    /// <summary>The blow DoorBlow is raised for, 0-based; the last (BlowCount - 1) is the break-through, 0.1 s before the door gives.</summary>
+    public int BlowIndex { get; private set; } = -1;
+    /// <summary>Blows per door: one every 0.5 s of breakDoorSeconds (5 at 2.5 s), the last brought forward 0.1 s.</summary>
+    public int BlowCount => Mathf.Max(1, Mathf.RoundToInt(tuning.breakDoorSeconds / BlowInterval));
+    /// <summary>0..1 while its body is in an open or broken door's opening (1 on the door line, 0 from 0.6 m out); 0 elsewhere. For the rig's squeeze pose.</summary>
+    public float DoorSqueeze { get; private set; }
     public int Relays { get; private set; }
     /// <summary>True while it passes through furniture it found no way round, until its body is clear again.</summary>
     public bool Ghosting => ghosting;
@@ -143,6 +158,7 @@ public sealed class FrontRoomsMapHunter
         {
             releaseTimer += dt;
             if (releaseTimer >= tuning.releaseDelaySeconds && Arrive(playerFeet, playerEye, playerForward)) SetState(HunterState.Listen);
+            DoorSqueeze = 0f;
             return;
         }
 
@@ -175,6 +191,7 @@ public sealed class FrontRoomsMapHunter
         SeesPlayer = Sees(playerEye);
         if (SeesPlayer)
         {
+            ListenPoint = null;
             lastSeen = playerFeet;
             lastSeenTime = lastContactTime = clock;
             lostTime = 0f;
@@ -234,6 +251,7 @@ public sealed class FrontRoomsMapHunter
         step.y = 0f;
         Moving = step.sqrMagnitude > 1e-6f;
         if (Moving) Heading = step.normalized;
+        DoorSqueeze = DoorSqueezeAt(position);
 
         if (SeesPlayer && Flat(position - playerFeet).magnitude < tuning.catchDistance)
         {
@@ -253,6 +271,7 @@ public sealed class FrontRoomsMapHunter
         sweep.Clear();
         sweepIndex = 0;
         lookTimer = 0f;
+        DoorSqueeze = DoorSqueezeAt(position);
         SetState(HunterState.Search);
     }
 
@@ -261,6 +280,7 @@ public sealed class FrontRoomsMapHunter
     {
         if (!Released || State == HunterState.Chase || State == HunterState.BreakDoor) return;
         if (Flat(position - source).magnitude > radius * tuning.hearing) return;
+        ListenPoint = source;
         lastContactTime = clock;
         HuntToward(world.CellOf(source), source);
     }
@@ -392,6 +412,7 @@ public sealed class FrontRoomsMapHunter
         path.Clear();
         pathIndex = 0;
         breakingDoor = null;
+        ListenPoint = null;
         Relays++;
         return true;
     }
@@ -504,7 +525,8 @@ public sealed class FrontRoomsMapHunter
             if (MoveDirect(face, speed, dt))
             {
                 breakingDoor = door;
-                blowTime = BlowInterval;
+                blowsStruck = 0;
+                BlowIndex = -1;
                 resumeState = State;
                 SetState(HunterState.BreakDoor);
             }
@@ -861,21 +883,44 @@ public sealed class FrontRoomsMapHunter
 
     void TickBreak(float dt)
     {
-        blowTime += dt;
-        if (blowTime >= BlowInterval)
+        // Blows every 0.5 s from 0.5 s in (0, 1, ... BlowCount - 2); the last one
+        // (BlowCount - 1) a beat before the door gives at breakDoorSeconds.
+        var final = BlowCount - 1;
+        var due = StateTime + TimeSlack >= tuning.breakDoorSeconds - FinalBlowLead ? final : Mathf.Min(final - 1, Mathf.FloorToInt((StateTime + TimeSlack) / BlowInterval) - 1);
+        while (breakingDoor != null && blowsStruck <= due)
         {
-            blowTime = 0f;
-            if (breakingDoor != null) DoorBlow?.Invoke(breakingDoor.position);
+            BlowIndex = blowsStruck++;
+            DoorBlow?.Invoke(breakingDoor.position);
         }
-        if (StateTime < tuning.breakDoorSeconds) return;
+        if (StateTime + TimeSlack < tuning.breakDoorSeconds) return;
         if (breakingDoor != null)
         {
             world.BreakDoor(breakingDoor, position);
             DoorsBroken++;
             breakingDoor = null;
         }
-        if (StateTime < tuning.breakDoorSeconds + DoorFallSeconds) return;
+        if (StateTime + TimeSlack < tuning.breakDoorSeconds + DoorFallSeconds) return;
         SetState(resumeState == HunterState.Chase ? HunterState.Chase : HunterState.Hunt);
+    }
+
+    /// <summary>How far into an open or broken door's opening a point is: 1 on the door line, 0 from 0.6 m out or beside the 1.0 m opening.</summary>
+    float DoorSqueezeAt(Vector3 p)
+    {
+        var cell = world.CellOf(p);
+        var best = 0f;
+        foreach (var d in Steps)
+        {
+            var next = new GridCoord(cell.x + d.x, cell.y + d.y);
+            if (world.Cache.Edge(cell, next) != EdgeKind.Door) continue;
+            var door = world.DoorBetween(cell, next);
+            if (door == null || !(door.open || door.broken)) continue;
+            var normal = new Vector3(d.x, 0f, d.y);
+            var offset = Flat(p - door.position);
+            var across = Vector3.Dot(offset, normal);
+            if ((offset - normal * across).magnitude > ModuleUnits.DoorWidth * .5f) continue;
+            best = Mathf.Max(best, 1f - Mathf.Abs(across) / SqueezeReach);
+        }
+        return Mathf.Clamp01(best);
     }
 
     bool Sees(Vector3 playerEye)

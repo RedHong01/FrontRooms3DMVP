@@ -213,6 +213,9 @@ public static class FrontRoomsRelayNavTest
         }
         finally
         {
+            // Free the chunk meshes and the map's own materials (OnDestroy does not run for it in edit mode).
+            var built = root.GetComponent<FrontRoomsMapWorld>();
+            if (built != null) built.Release();
             UnityEngine.Object.DestroyImmediate(root);
             RenderSettings.ambientMode = ambientMode;
             RenderSettings.ambientSkyColor = sky;

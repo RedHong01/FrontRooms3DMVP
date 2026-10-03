@@ -1,0 +1,24 @@
+00_sideA_front_1.5m_game.png | cam (253.500, 1.620, 31.500) fwd (0.963, -0.270, 0.000) fov 76 | side A · 1.5 m straight on · game lighting
+01_sideA_oblique_game.png | cam (253.500, 1.620, 30.600) fwd (0.754, -0.261, 0.603) fov 76 | side A · 1.5 m out, 0.9 m toward the hinge side, looking at the latch half · game lighting
+02_sideA_front_1.5m_darknear.png | cam (253.500, 1.620, 31.500) fwd (0.963, -0.270, 0.000) fov 76 | side A · 1.5 m straight on · near room lamps 8%, far room lit (+1 shadowed spot)
+03_sideA_head_3m_darknear.png | cam (252.000, 1.650, 31.500) fwd (0.994, 0.109, 0.000) fov 76 | side A · 3 m out, looking at the head (eye-to-head angle 8.904°) · near dark, far lit
+04_sideA_head_1.0m_lookup_darknear.png | cam (254.000, 1.620, 31.500) fwd (0.919, 0.395, 0.000) fov 76 | side A · 1.0 m out, looking up at the head · near dark, far lit
+05_sideA_latch_inline_darknear.png | cam (253.800, 1.620, 31.750) fwd (0.937, -0.289, 0.195) fov 76 | side A · standing 0.25 m inside the latch jamb line, 1.2 m out (slit ~12° off the line of sight) · near dark, far lit
+06_sideA_latch_dead_inline_darknear.png | cam (253.800, 1.620, 32.050) fwd (0.955, -0.294, -0.040) fov 76 | side A · eye on the latch jamb line, 1.2 m out (slit ~0° off) · near dark, far lit
+07_sideA_hinge_inline_darknear.png | cam (253.800, 1.620, 30.950) fwd (0.955, -0.294, 0.040) fov 76 | side A · eye on the hinge jamb line, 1.2 m out · near dark, far lit
+08_sideA_latch_reveal_close_darknear.png | cam (254.200, 1.620, 31.650) fwd (0.888, -0.244, 0.389) fov 76 | side A · 0.8 m out, looking at the latch jamb reveal · near dark, far lit
+09_sideB_front_1.5m_game.png | cam (256.500, 1.620, 31.500) fwd (-0.963, -0.270, 0.000) fov 76 | side B · 1.5 m straight on · game lighting
+10_sideB_oblique_game.png | cam (256.500, 1.620, 30.600) fwd (-0.754, -0.261, 0.603) fov 76 | side B · 1.5 m out, 0.9 m toward the hinge side, looking at the latch half · game lighting
+11_sideB_front_1.5m_darknear.png | cam (256.500, 1.620, 31.500) fwd (-0.963, -0.270, 0.000) fov 76 | side B · 1.5 m straight on · near room lamps 8%, far room lit (+1 shadowed spot)
+12_sideB_head_2.6m_darknear.png | cam (257.600, 1.620, 31.500) fwd (-0.992, 0.126, 0.000) fov 76 | side B · 2.6 m out, looking at the head (eye-to-head angle 10.247°) · near dark, far lit
+13_sideB_head_1.0m_lookup_darknear.png | cam (256.000, 1.620, 31.500) fwd (-0.919, 0.395, 0.000) fov 76 | side B · 1.0 m out, looking up at the head · near dark, far lit
+14_sideB_latch_inline_darknear.png | cam (256.200, 1.620, 31.750) fwd (-0.937, -0.289, 0.195) fov 76 | side B · standing 0.25 m inside the latch jamb line, 1.2 m out (slit ~12° off the line of sight) · near dark, far lit
+15_sideB_latch_dead_inline_darknear.png | cam (256.200, 1.620, 32.050) fwd (-0.955, -0.294, -0.040) fov 76 | side B · eye on the latch jamb line, 1.2 m out (slit ~0° off) · near dark, far lit
+16_sideB_hinge_inline_darknear.png | cam (256.200, 1.620, 30.950) fwd (-0.955, -0.294, 0.040) fov 76 | side B · eye on the hinge jamb line, 1.2 m out · near dark, far lit
+17_sideB_latch_reveal_close_darknear.png | cam (255.800, 1.620, 31.650) fwd (-0.888, -0.244, 0.389) fov 76 | side B · 0.8 m out, looking at the latch jamb reveal · near dark, far lit
+18_open_fromA_t0.13s.png | cam (253.500, 1.620, 31.500) fwd (0.963, -0.270, 0.000) fov 76 | pushed open from side A · 0.13 s into the 0.55 s swing · swing -1 progress 0.242
+19_open_fromA_hinge_side.png | cam (253.600, 1.620, 31.000) fwd (0.967, -0.254, 0.000) fov 76 | open 95° (pushed from side A) · looking at the hinge jamb from the push side
+20_open_fromA_swing_side_hinge.png | cam (256.600, 1.620, 30.900) fwd (-0.975, -0.216, 0.051) fov 76 | open 95° (pushed from side A) · seen from the swing side, looking at the hinge jamb
+21_open_fromB_t0.13s.png | cam (256.500, 1.620, 31.500) fwd (-0.963, -0.270, 0.000) fov 76 | pushed open from side B · 0.13 s into the 0.55 s swing · swing 1 progress 0.242
+22_open_fromB_hinge_side.png | cam (256.400, 1.620, 31.000) fwd (-0.967, -0.254, 0.000) fov 76 | open 95° (pushed from side B) · looking at the hinge jamb from the push side
+23_open_fromB_swing_side_hinge.png | cam (253.400, 1.620, 30.900) fwd (0.975, -0.216, 0.051) fov 76 | open 95° (pushed from side B) · seen from the swing side, looking at the hinge jamb

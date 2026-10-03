@@ -1842,10 +1842,16 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
+    static Mesh cylinderMesh;
+
     GameObject Cylinder(Transform parent, string name, Vector3 localPosition, Vector3 scale, Material material, Vector3 eulerAngles)
     {
-        var cylinder = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        cylinder.name = name;
+        // Built-in cylinder mesh without CreatePrimitive: CreatePrimitive adds a CapsuleCollider,
+        // which WebGL's engine-code stripping removes ("Can't add component ... CapsuleCollider").
+        // These are decorative (handle bars, kick details), so no collider is wanted anyway.
+        var cylinder = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
+        if (cylinderMesh == null) cylinderMesh = Resources.GetBuiltinResource<Mesh>("Cylinder.fbx");
+        cylinder.GetComponent<MeshFilter>().sharedMesh = cylinderMesh;
         cylinder.transform.SetParent(parent, false);
         cylinder.transform.localPosition = localPosition;
         cylinder.transform.localScale = scale;

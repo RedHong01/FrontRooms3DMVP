@@ -19,6 +19,20 @@ public static class FrontRoomsLook
     public const float FogDensity = .014f;
     public const float ReflectionIntensity = .3f;
 
+    /// <summary>Which reflection cubemap the world uses (glass, VCT, metal): the player's zone,
+    /// or DeadLamp when the lamp of the player's cell is dead or off.</summary>
+    public enum ReflectionZone { Level0, Office, Tall, DeadLamp }
+
+    /// <summary>
+    /// Switch the default reflection to the zone's cubemap, crossfading over blendSeconds.
+    /// Safe to call every frame with the same value. The map calls it at run start and
+    /// on zone / dead-lamp changes. STUB: no-op until the glass work lands the cubemaps
+    /// (Documentation/VISUAL_CHAT_TASKS.md G6); the signature is final.
+    /// </summary>
+    public static void SetZoneReflection(ReflectionZone zone, float blendSeconds = .5f)
+    {
+    }
+
     public static void ApplyAmbient()
     {
         RenderSettings.ambientMode = AmbientMode.Trilight;

@@ -51,7 +51,7 @@ def mat(name, color, roughness=0.65, metallic=0.0):
         bsdf.inputs["Roughness"].default_value = roughness
         bsdf.inputs["Metallic"].default_value = metallic
     return m
-floor_mat = mat("Catalog_Floor", (0.055, 0.065, 0.075), 0.82)
+floor_mat = mat("Catalog_Floor", (0.16, 0.19, 0.23), 0.82)
 label_mat = mat("Catalog_Label", (0.82, 0.91, 1.0), 0.5)
 header_mat = mat("Catalog_Header", (1.0, 0.55, 0.12), 0.5)
 
@@ -83,14 +83,14 @@ def category(info):
 # Assets are arranged in category blocks, six columns wide.
 cols = 6
 cell_x = 4.6
-cell_z = 4.6
+cell_y = 4.6
 block_gap = 2.0
 category_order = ["Office", "Domestic", "Storage", "Other"]
 category_rows = {key: 0 for key in category_order}
-category_base_z = {}
+category_base_y = {}
 row_cursor = 0
 for key in category_order:
-    category_base_z[key] = row_cursor
+    category_base_y[key] = row_cursor
     count = sum(1 for p in fbx_paths if category(sidecar_info(p.stem)) == key)
     row_cursor += max(1, math.ceil(count / cols)) + 1
 
@@ -106,7 +106,6 @@ def add_text(body, location, size, material, parent=None):
     target_collection = (next(iter(parent.users_collection), root_collection) if parent else root_collection)
     target_collection.objects.link(obj)
     obj.location = location
-    obj.rotation_euler[0] = math.radians(90)
     obj.data.materials.append(material)
     return obj
 
@@ -121,7 +120,7 @@ for index, fbx in enumerate(fbx_paths):
     col = local_index % cols
     row = local_index // cols
     x = (col - (cols - 1) / 2.0) * cell_x
-    z = (row + category_base_z[cat]) * cell_z
+    y = (row + category_base_y[cat]) * cell_y
 
     before = set(bpy.data.objects)
     bpy.ops.import_scene.fbx(filepath=str(fbx), use_custom_normals=True, use_image_search=False)
@@ -163,18 +162,20 @@ for index, fbx in enumerate(fbx_paths):
         min_x = min(v.x for v in corners); max_x = max(v.x for v in corners)
         min_y = min(v.y for v in corners); max_y = max(v.y for v in corners)
         min_z = min(v.z for v in corners); max_z = max(v.z for v in corners)
-        root.location += Vector((x - (min_x + max_x) * 0.5, -min_y, z - (min_z + max_z) * 0.5))
+        # Blender is Z-up; Unity FBX imports arrive with an X=90° object
+        # rotation so their world bounds are X width, Y depth, Z height.
+        root.location += Vector((x - (min_x + max_x) * 0.5, y - (min_y + max_y) * 0.5, -min_z))
         root["bounds_m"] = "%.4f x %.4f x %.4f" % (max_x - min_x, max_y - min_y, max_z - min_z)
 
-    label = add_text(fbx.stem.replace("Kit_", ""), (0, 0.012, -1.95), 0.25, label_mat, parent=root)
+    label = add_text(fbx.stem.replace("Kit_", ""), (0, -1.95, 0.012), 0.25, label_mat, parent=root)
     label["source_fbx"] = str(fbx)
     imported_count += 1
     asset_records.append((fbx.stem, cat, info.get("tags", [])))
 
 # Floor plane, grid strips and category headers.
 width = cols * cell_x + 3.0
-depth = (row_cursor + 1) * cell_z + 2.0
-bpy.ops.mesh.primitive_plane_add(size=2, location=(0, -0.035, (row_cursor - 1) * cell_z * 0.5))
+depth = (row_cursor + 1) * cell_y + 2.0
+bpy.ops.mesh.primitive_plane_add(size=2, location=(0, (row_cursor - 1) * cell_y * 0.5, -0.035))
 floor = bpy.context.object
 floor.name = "CATALOG_FLOOR"
 floor.scale = (width * 0.5, depth * 0.5, 1)
@@ -183,14 +184,14 @@ for c in list(floor.users_collection): c.objects.unlink(floor)
 root_collection.objects.link(floor)
 
 for key in category_order:
-    header_z = (category_base_z[key] - 0.53) * cell_z
-    add_text(f"{key.upper()}  ({sum(1 for n,c,t in asset_records if c == key)})", (0, 0.02, header_z), 0.42, header_mat)
+    header_y = (category_base_y[key] - 0.53) * cell_y
+    add_text(f"{key.upper()}  ({sum(1 for n,c,t in asset_records if c == key)})", (0, header_y, 0.02), 0.42, header_mat)
 
 # A small legend / provenance plaque.
 legend_text = (
-    "FRONTROOMS PROP MODEL CATALOG\\n"
-    f"{imported_count} FBX assets imported from Assets/Resources/Props/Models\\n"
-    "Source folder preserved; this file is a separate inspection copy\\n"
+    "FRONTROOMS PROP MODEL CATALOG\n"
+    f"{imported_count} FBX assets imported from Assets/Resources/Props/Models\n"
+    "Source folder preserved; this file is a separate inspection copy\n"
     "Kit FBX + JSON sidecars | Blender catalog build"
 )
 curve = bpy.data.curves.new("CatalogLegendCurve", type='FONT')
@@ -201,8 +202,7 @@ curve.size = 0.28
 curve.extrude = 0.004
 legend = bpy.data.objects.new("CATALOG_LEGEND", curve)
 root_collection.objects.link(legend)
-legend.location = (-width * 0.5 + 0.6, 0.01, -2.5)
-legend.rotation_euler[0] = math.radians(90)
+legend.location = (-width * 0.5 + 0.6, -2.5, 0.02)
 legend.data.materials.append(header_mat)
 
 # Notes inside the .blend for provenance.
@@ -225,13 +225,25 @@ scene["catalog_source_folder"] = str(MODEL_DIR)
 scene["catalog_imported_count"] = imported_count
 scene["catalog_source_folder_fbx_count"] = len(fbx_paths)
 scene["catalog_status"] = "Source folder preserved; combined inspection copy"
-scene.render.engine = 'BLENDER_EEVEE_NEXT'
+scene.render.engine = 'BLENDER_WORKBENCH'
 scene.render.resolution_x = 1600
 scene.render.resolution_y = 1200
 scene.render.resolution_percentage = 50
 scene.render.image_settings.file_format = 'PNG'
 scene.render.filepath = str(OUT_RENDER)
-scene.world.color = (0.015, 0.02, 0.028)
+scene.display.shading.light = 'STUDIO'
+scene.display.shading.color_type = 'MATERIAL'
+scene.display.shading.show_shadows = True
+scene.display.shading.show_cavity = True
+scene.display.shading.cavity_type = 'WORLD'
+scene.display.shading.show_specular_highlight = True
+scene.display.shading.background_type = 'WORLD'
+scene.world.color = (0.04, 0.05, 0.07)
+scene.world.use_nodes = True
+world_bg = scene.world.node_tree.nodes.get('Background')
+if world_bg:
+    world_bg.inputs['Color'].default_value = (0.045, 0.055, 0.075, 1.0)
+    world_bg.inputs['Strength'].default_value = 0.45
 
 # Camera looking at the catalog center.
 def look_at(obj, target):
@@ -241,15 +253,16 @@ def look_at(obj, target):
 cam_data = bpy.data.cameras.new("CatalogCamera")
 cam = bpy.data.objects.new("CATALOG_CAMERA", cam_data)
 root_collection.objects.link(cam)
-cam.location = (width * 0.82, depth * 0.78, depth * 0.74)
-cam.data.lens = 52
-look_at(cam, (0, 0.5, (row_cursor - 1) * cell_z * 0.5))
+cam.location = (width * 0.9, -depth * 0.95, depth * 0.9)
+cam.data.type = 'ORTHO'
+cam.data.ortho_scale = depth * 1.08
+look_at(cam, (0, (row_cursor - 1) * cell_y * 0.5, 0.0))
 scene.camera = cam
 
 for name, loc, energy, size in [
-    ("Key", (0, 10, 0), 1800, 10),
-    ("Fill", (-width, 7, depth * 0.4), 1200, 8),
-    ("Rim", (width, 6, depth), 1600, 8),
+    ("Key", (0, (row_cursor - 1) * cell_y * 0.5, depth), 1800, 10),
+    ("Fill", (-width, 0, depth * 0.6), 1200, 8),
+    ("Rim", (width, depth, depth * 0.7), 1600, 8),
 ]:
     data = bpy.data.lights.new(name, type='AREA')
     data.energy = energy
@@ -258,7 +271,14 @@ for name, loc, energy, size in [
     light = bpy.data.objects.new("CATALOG_LIGHT_" + name, data)
     root_collection.objects.link(light)
     light.location = loc
-    look_at(light, (0, 0, (row_cursor - 1) * cell_z * 0.5))
+    look_at(light, (0, (row_cursor - 1) * cell_y * 0.5, 0))
+
+sun_data = bpy.data.lights.new("CatalogSun", type='SUN')
+sun_data.energy = 3.0
+sun_data.angle = math.radians(25)
+sun = bpy.data.objects.new("CATALOG_LIGHT_Sun", sun_data)
+root_collection.objects.link(sun)
+sun.rotation_euler = (math.radians(20), math.radians(-25), math.radians(-20))
 
 # Set a useful viewport state.
 for area in bpy.context.screen.areas if bpy.context.screen else []:

@@ -6,7 +6,7 @@ Open Assets/Scenes/FrontRooms3D.unity. This is the first-person greybox scene. I
 
 ## Change the route
 
-Edit Assets/Scripts/FrontRoomsLevel.cs. The 3D version intentionally shares the same five-room data model as the 2D prototype, so these changes stay comparable:
+Edit Assets/Scripts/FrontRoomsLevel.cs. The current 3D version uses a five-room data model that was also used by the retired 2D prototype:
 
 - AddRoom(...) defines the room name, height, rule, note and key.
 - AddOpening(...) defines hall, door and window boundaries.

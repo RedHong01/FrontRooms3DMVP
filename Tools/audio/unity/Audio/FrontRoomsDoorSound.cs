@@ -31,6 +31,37 @@ namespace FrontRooms.Audio
         EventInstance swing;
         PARAMETER_ID velocityId, opennessId;
         bool idsReady;
+        bool broken;
+        float suppressedUntil;
+
+        static readonly System.Collections.Generic.List<FrontRoomsDoorSound> active = new System.Collections.Generic.List<FrontRoomsDoorSound>();
+        const float DoorReach = 1.6f;      // a door's hinges sit within this of the position MapWorld reports for it
+
+        /// <summary>The door at this position was broken down: its leaves no longer make door Foley.</summary>
+        public static void MarkBroken(Vector3 doorPosition)
+        {
+            foreach (var d in active)
+                if ((d.transform.position - doorPosition).sqrMagnitude < DoorReach * DoorReach) { d.broken = true; d.Silence(); }
+        }
+
+        /// <summary>The door at this position is being struck or rattled: ignore its leaf motion for a while.</summary>
+        public static void Suppress(Vector3 doorPosition, float seconds)
+        {
+            foreach (var d in active)
+                if ((d.transform.position - doorPosition).sqrMagnitude < DoorReach * DoorReach)
+                {
+                    d.suppressedUntil = Mathf.Max(d.suppressedUntil, Time.time + seconds);
+                    d.Silence();
+                }
+        }
+
+        void Silence()
+        {
+            moving = false;
+            FrontRoomsFmod.Stop(ref swing, true);
+        }
+
+        void OnEnable() => active.Add(this);
 
         public float Openness => Mathf.Clamp01(previousAngle / openLimit);
 
@@ -50,8 +81,14 @@ namespace FrontRooms.Audio
             if (Mathf.Abs(angle - previousAngle) > 45f)
             {
                 // A pooled room was recycled and its leaves snapped back: not a motion, no sound.
-                moving = false;
-                FrontRoomsFmod.Stop(ref swing, true);
+                // A recycled door is a new, intact door.
+                broken = false;
+                Silence();
+                previousAngle = angle;
+                return;
+            }
+            if (broken || Time.time < suppressedUntil)
+            {
                 previousAngle = angle;
                 return;
             }
@@ -125,8 +162,8 @@ namespace FrontRooms.Audio
 
         void OnDisable()
         {
-            moving = false;
-            FrontRoomsFmod.Stop(ref swing, true);
+            active.Remove(this);
+            Silence();
         }
     }
 }

@@ -102,7 +102,7 @@ or fall exists. The player takes over in place.
 |---|---|
 | Trigger | Proximity, within 4 m from either side. **Not E.** It is held shut until the map round it is built, for at most 3 s after Space. `FrontRooms3DGame.cs:716-728`; `FrontRoomsRoomStream.cs:733-747` |
 | Camera | — |
-| Object | Double doors open over 0.9 s. When the player is out of the start area and ≥4 m from the door, it swings shut over 0.9 s and never opens again. `FrontRooms3DGame.cs:733-734`; `FrontRoomsRoomStream.cs:575-585, 778-783` |
+| Object | Double doors open over 0.9 s. When the player is out of the start area and ≥4 m from the door, it swings shut over 0.9 s and never opens again. `FrontRooms3DGame.cs:744-745` (the shut; 733-734 is the opening) [review fix 22:55, see 10 §9]; `FrontRoomsRoomStream.cs:575-585, 778-783` |
 | VFX | The maze lamps by the door rise over 0.6 s. After the door shuts, the stream lamps fade over 1.2 s and are then destroyed. `FrontRooms3DGame.cs:117, 732, 740-758` |
 | SFX | FMOD Automatic door sound (open and close). Legacy clips (muted). |
 | UI | — (no cue that the way back is gone) |
@@ -140,7 +140,7 @@ different (I5).
 
 | Channel | Today |
 |---|---|
-| Trigger | E on a shut door without the key of **the zone the player stands in** (not the door's zone). `FrontRoomsMap/FrontRoomsMapWorld.cs:1516-1520, 1573` |
+| Trigger | E on a shut door without the key of **the zone the player stands in**. A map door always joins two zones (`FrontRoomsMap.cs:350-355`), so it has no single "door's zone"; which side's key should open it is a design question (10 §7 Q3) [review fix 22:55, see 10 §9]. `FrontRoomsMap/FrontRoomsMapWorld.cs:1516-1520, 1573` |
 | Camera / body / object / VFX / post | — (no handle rattle, no leaf jiggle, no camera nudge) |
 | SFX | FMOD `Mechanism/Door/Locked` one-shot. Nothing in the game code subscribes to `DoorLocked`. `Audio/FrontRoomsSoundDirector.cs:387, 450` |
 | UI | The prompt already says "LOCKED · NEEDS THIS ZONE'S KEY". No flash text. |
@@ -211,7 +211,7 @@ smoothness .9, `_Blend` 0 but SrcBlend One with `_ALPHAPREMULTIPLY_ON`, and ZWri
 DepthOnly pass (`Assets/Editor/Rendering/FrontRoomsRenderSetup.cs:398-424`). The maze has no
 reflection probe: the only `ReflectionProbe` reference in the scripts turns probes off in the stream
 (`FrontRoomsRoomStream.cs:1171`). Global reflection intensity is .3 with no skybox
-(`Rendering/FrontRoomsLook.cs:20, 30`; `FrontRoomsMap/FrontRoomsMapWorld.cs:490`). A smoothness .9
+(in the game both come from the scene, `FrontRooms3D.unity:29, 38`; `FrontRoomsLook.cs:20, 30` and `FrontRoomsMapWorld.ApplyRenderSettings` apply only in the standalone map scene, captures and editor tools [review fix 22:55, see 10 §9]). A smoothness .9
 surface therefore has almost nothing to reflect. The pane renderer's shadow mode is left at the
 primitive default (`FrontRoomsMap/FrontRoomsMapWorld.cs:897-902`). Whether the transparent pane
 casts a solid shadow under the shadow-casting lamps is UNVERIFIED and needs an editor check. The
@@ -429,7 +429,7 @@ the killer.
 | G14 | **The locked-door feedback, when enabled, is only a prompt and an FMOD one-shot.** There is no handle rattle or leaf jiggle, and the game ignores `DoorLocked`. It also checks the player's zone, not the door's. | S2 | map | I6; `FrontRoomsMap/FrontRoomsMapWorld.cs:1516-1520, 1573` |
 | G15 | **No exit, goal or level transition exists**, so there is no end-of-run moment to shoot. The Escape clip is unused. | S2 (design) | map | I21; `FrontRooms3DGame.cs:31` |
 | G16 | **The Relay's facing snaps instantly**, and the creature is 16 primitives. Every encounter frames a placeholder. | S2 | visual (rig and mesh) + map (turn smoothing) | `FrontRooms3DGame.cs:972-973`; `FrontRoomsRelayRig.cs:3-8` |
-| G17 | **The start door's "way back is gone" beat has no shot.** It is automatic, with no E and no cue. It also behaves differently from map doors (proximity versus E). | S3 | map | I3; `FrontRooms3DGame.cs:733-734` |
+| G17 | **The start door's "way back is gone" beat has no shot.** It is automatic, with no E and no shot; its only cue is the automatic double-door sound (`FrontRoomsSoundDirector.cs:214-215`) [review fix 22:55, see 10 §9]. It also behaves differently from map doors (proximity versus E). | S3 | map | I3; `FrontRooms3DGame.cs:744-745` [review fix 22:55, see 10 §9] |
 | G18 | **The aimed object has no highlight or rim**, and the crosshair has no state change. Prompts pop on and off with no fade. | S3 | map (UI) + visual (outline or rim shader if wanted) | I4; `FrontRooms3DGame.cs:1520, 1524` |
 | G19 | **Pause does not pause FMOD**, and restart is a hard cut with no fade. | S3 | sound (pause snapshot) + map (fade) | I19, I20 |
 | G20 | **Legacy fallback gaps.** Glass uses the door-break clip, and the key has no legacy sound. This only matters if FMOD is not ready (for example, banks missing on a platform). | S3 | sound | `FrontRooms3DGame.cs:778`; `FrontRoomsAudio.cs:68, 84` |

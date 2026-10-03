@@ -121,7 +121,7 @@ Full dump: [`images/runtime_dump.txt`](images/runtime_dump.txt).
 | Screen-space reflections | none in the renderer feature list | runtime feature list |
 | **Reflection probes** | **0** (FindObjectsByType, inactive included) | runtime |
 | Probe blending / box projection | both **off** | `FrontRooms_URP.asset:54-55` |
-| Skybox | **none**; default reflection = "Default-Skybox-Cubemap" 128², intensity **0.3** | `Assets/Scenes/FrontRooms3D.unity:29,38`; `FrontRoomsLook.cs:20,30` |
+| Skybox | **none**; default reflection = "Default-Skybox-Cubemap" 128², intensity **0.3** | `Assets/Scenes/FrontRooms3D.unity:29,38` (the runtime source; `FrontRoomsLook.cs:20,30` never runs in the game [review fix 22:55, see 10 §9]) |
 | Lightmaps / light probes | 0 / 0 (everything is realtime) | runtime |
 | Post (global volume) | ACES; bloom (threshold 1.05, intensity 0.55); white balance; lift-gamma-gain; vignette 0.26; film grain 0.22; chromatic aberration 0.06; lens distortion -0.04 | runtime dump of `Resources/Rendering/FrontRoomsPost` |
 | Post (Office) | 44 local volumes in view distance; Office grade (saturation -22, tint -14, thin grain) | runtime dump |

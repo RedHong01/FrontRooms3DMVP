@@ -18,21 +18,23 @@ are watching. The maze lies behind that corridor's next shut door.
      - The cell ahead is open and leads on for 150+ cells.
    - **Start area:** the stream rooms are the map's start area (`SetStartArea`). The map builds nothing there and walls it off on three sides. The stream room's end wall, carried out by two facade strips, forms the fourth side with the door in it. `IsBuilt` and `PassageBetween` treat it as no map.
    - **Streaming:** the maze streams in at the normal per-frame budget round the door (`StreamFocus`, `Begin(player, false)`). Map lamps whose light would reach through the stream walls are held dark (`StartLampsNorth/South`).
-   - **The door:** it opens once the 3 × 3 chunks round it are built and furnished (`ReadyAround(1)`, at most 3 s after Space).
+   - **The door:** it opens once everything in sight through it is built and furnished (`ReadyAround(BuildRadius)`, at most 3 s after Space).
 3. **Leaving the start rooms.**
    - Once the player is 4 m into the maze, the door swings shut and stays shut.
    - The stream's lamps fade out, and the maze's lamps beside the rooms fade in.
    - The rooms behind it are destroyed one per frame. The last room goes, and the start area is handed back to the map, once every chunk round it has been dropped.
 4. **Play.**
-3. **Play.**
    - WASD and mouse to move and look. Shift sprints on 5 s of stamina, which refills after 1 s.
    - E opens or shuts a door (it swings away from you); holding E for 1 s breaks glass, and walking into the broken frame climbs through it.
    - Keys are collected by walking over them. With `doorsNeedKeys` off in the level profile (the default) they are shown but not required.
+   - With `doorsNeedKeys` on, a shut door needs the key of the zone you stand in (`DoorLocked` otherwise). The first time a key opens a door, the map raises `DoorUnlocked(door, zone, lock point)` (the lock: 1.0 m up, 0.08 m in from the latch jamb, on your side) and the leaf swings after `UnlockSwingDelay` (0 by default; the key push-in sets it). From then on that door is unlocked from both sides.
+   - Esc (or losing focus) pauses; `FrontRooms3DGame.Paused(bool)` reports it, for the sound layer.
    - The HUD shows the zone name and meta line, the Relay state and distance, the prompt and hold bar, and the stamina segments under the crosshair. The hint card is timed: the first-run hint, then only flashes.
 5. **Relay** (`FrontRoomsMapHunter`, the same `HunterTuning` as before):
    - **Release:** 3 s after the door to the stream rooms has shut behind the player, in a built cell 9–15 cells of walking away that the player cannot see, preferably behind them.
    - **States:** it does not know where the player is. Listen → **Wander** to a random place 6–14 cells away (at 80 % of hunt speed, keeping to shut doors) → Listen … It **chases only once it sees the player**: a 12 m ray at eye height that walls, shut doors and columns block. A noise sends it walking to that spot (Hunt), without running, even mid-search. Losing sight in a chase, it goes where it last saw the player; if it was right behind them as they went through a door, it follows into the room behind that door instead. Either way it then **searches that room** (up to 3 spots, listening 1.1 s at each, at 70 % of hunt speed; a carved room's cells, or the cells within 2 steps that need no door) and gives up, back to wandering. It does not follow the player further unless it hears or sees them again.
-   - **Doors and glass:** it breaks shut doors (2.5 s of blows) and cannot pass unbroken glass.
+   - **Doors and glass:** it breaks shut doors and cannot pass unbroken glass. Blows land 0.5, 1.0, 1.5 and 2.0 s into BreakDoor and the last one at 2.4 s; the door gives at 2.5 s (`breakDoorSeconds`), and it waits 0.25 s for the leaf to fall. `DoorBlow` fires at each blow with `BlowIndex` (0–4) and `BlowCount` (5) set.
+   - **Rig hooks** (the visual chat's `FrontRoomsRelayRig`, set each frame by `FrontRooms3DGame.UpdateRelayRig`): the motion state (Search when it stands searching), the listen target (`ListenPoint`, the last noise it heard, in Listen and Search; cleared when it sees the player or relays), `DoorBlow(index, count)`, the ceiling height of its cell, and `DoorSqueeze` (1 on the line of an open or broken door it is in, 0 from 0.6 m out). Its footsteps come from the rig's `Step` under FMOD; the old timed steps play only when FMOD is not ready.
    - **Noise:** it walks to sprint steps (26 m), door moves (14 m) and breaking glass (40 m).
    - **Leash:** if it ends up off the built map it relays at once; if it is more than 30 cells away and has neither seen nor heard the player for 45 s, it relays itself closer, out of sight.
    - **Catch:** under 0.7 m while it sees the player.
@@ -74,6 +76,7 @@ Rooms authored in the Level Designer (`LEVEL_DESIGNER.md`) can replace carved ro
 1. After the maze, the rooms and the columns, each generated room that is one open space (no later room cuts into it, every cell the same height and theme) rolls `moduleChance`.
 2. If it hits, the candidates are the modules with the room's height and theme whose tier range includes `moduleTier`, in every quarter turn they allow (`allowRotate`) that fits the room. One is chosen by weight (a module's weight is shared between its fitting turns).
 3. It is stamped (`RoomModuleStamp`) at a hashed spot inside the room: inner and perimeter edges inside the chunk as authored, the map's rule at zone borders and on the chunk border, columns per the module, walls reopened if the chunk was cut apart.
+4. When it is built, a module prop is left out (with a console warning) if it would block a real opening, stands in a column, or stands on a prop left out (a desk-top item goes with its desk). A fill (Office kit, pile) sees the module's inner walls as obstacles and keeps its inner doorways clear.
 
 All of it is a function of the seed, the chunk and its revision, with the library in a stable order (by asset name), so neighbours agree, rebuilds are identical and a revisit shift may bring a different module. The 100-seed check runs with the profile's library and reports how many modules it placed; outside Unity it was also run with 14 random modules at chance 0.7 (3,806 placed, 100/100). The debug map outlines placed modules in orange.
 
@@ -90,6 +93,7 @@ so zones are irregular and cross chunk borders. Each zone rolls a ceiling class:
 
 - **Reachable:** the maze tree connects every cell of a chunk, and each chunk border has one required opening, so every cell connects to every other (doors and windows count as passable).
 - **Borders agree:** zones, heights, border edges and border corners are pure functions of the seed and world coordinates, so neighbouring chunks agree whichever is built first.
+- **A chunk that fails to build** (an exception in `Build`) is undone, logged once and left out until it leaves the build radius, then tried once more; `ReadyAround` and `Settled` count it as done.
 - **Revisits shift (decision 2):** a chunk the player has been away from for at least 30 s is rebuilt with a new revision when they come back. The maze, rooms and interior walls change. Borders, zones and keys stay the same. It is always at least 24 m away and inside the fog when it is rebuilt, so the change is never seen.
 
 ## Walkable test scene
@@ -113,7 +117,8 @@ Controls: click to look, WASD, Shift sprints on about 5 s of stamina, E opens an
 - **FrontRooms → Map → Play main scene on autopilot**: plays `FrontRooms3D.unity` unattended. It presses Space (at 1.8 s, or `-autopilotSpaceAt N`; 1.0 starts with the door still shut 4.85 m ahead), walks out of the stream room into the maze, then walks breadth-first routes for 75 s, opening doors and sprinting once. The report adds the handoff: the slowest frames after Space and what the map built in them, when the map was ready, how long the player waited at the held door, and when the door opened and shut and the stream was removed. Frames and `report.json` go to `Verification/main-autopilot`. Batch: `-executeMethod FrontRoomsMainScenePlaytest.RunBatch`, with no `-quit`; it exits 0 on PASS.
 - Headless `-executeMethod FrontRoomsMapTestScene.CaptureColumnsBatch -captureSeed N`: renders the first Level 0, Office and tall-hall column near the spawn and the ceiling straight above the spawn (troffer vs printed grid) to `Verification/map-columns-*.png` and `map-ceiling.png`.
 - **FrontRooms → Map → Test Relay navigation**: builds the map around the spawn, scatters test furniture and sends the Relay on 60 hunts; writes `Verification/relay-nav-test.json`.
-- Headless: `-executeMethod FrontRoomsMapVerification.RunBatch`, `FrontRoomsMapTestScene.CreateBatch`, `FrontRoomsMapTestScene.CaptureBatch`, `FrontRoomsRelayNavTest.RunBatch`.
+- **FrontRooms → Map → Test map interactions**: the Relay's blow timing, `DoorSqueeze` and `ListenPoint`; `DoorUnlocked` with and without the swing delay, from both sides, and with keys off; module props on columns (and what stands on them); the Office kit round a module's inner walls; the guard round a failing chunk build. Writes `Verification/map-interaction-tests.json`; batch `-executeMethod FrontRoomsMapInteractionTests.RunBatch -quit`.
+- Headless: `-executeMethod FrontRoomsMapVerification.RunBatch`, `FrontRoomsMapTestScene.CreateBatch`, `FrontRoomsMapTestScene.CaptureBatch`, `FrontRoomsRelayNavTest.RunBatch`, `FrontRoomsMapInteractionTests.RunBatch`.
 
 ## Code
 
