@@ -448,20 +448,39 @@ namespace FrontRooms.Map
                 }
                 // Where in the room: off the chunk border when the room leaves a choice,
                 // since the map decides edges there and could open a wall the designer drew.
+                // Auto columns stand on the world 6 m grid, so such a module lands on the
+                // grid phase the Level Designer preview shows (centred in a chunk).
                 var spot = MapHash.Hash(seed, chunk.coord.x * 16 + r, chunk.coord.y, MapHash.ModuleSpot, revision);
-                var x = Spot(rect.x, rect.w, chosen.width, spot);
-                var y = Spot(rect.y, rect.h, chosen.depth, spot / 97u);
+                var auto = chosen.columns == ModuleColumns.Auto;
+                var x = Spot(rect.x, rect.w, chosen.width, spot, auto ? (MapGrid.ChunkCells - chosen.width) / 2 : -1);
+                var y = Spot(rect.y, rect.h, chosen.depth, spot / 97u, auto ? (MapGrid.ChunkCells - chosen.depth) / 2 : -1);
+                if (x < 0 || y < 0) continue; // no start on that phase: the generated room stays
                 RoomModuleStamp.Apply(this, chunk, chosen, x, y);
             }
         }
 
-        /// <summary>A hashed start for a span of <paramref name="size"/> inside [from, from + room), preferring starts that keep it off the chunk border.</summary>
-        static int Spot(int from, int room, int size, uint hash)
+        /// <summary>
+        /// A hashed start for a span of <paramref name="size"/> inside [from, from + room),
+        /// preferring starts that keep it off the chunk border. With a
+        /// <paramref name="phase"/>, only starts whose distance from it is even (-1 if none).
+        /// </summary>
+        static int Spot(int from, int room, int size, uint hash, int phase = -1)
         {
             int lo = from, hi = from + room - size;
             int innerLo = Math.Max(lo, 1), innerHi = Math.Min(hi, MapGrid.ChunkCells - 1 - size);
+            if (phase >= 0) return Pick(innerLo, innerHi, phase, hash, out var start) || Pick(lo, hi, phase, hash, out start) ? start : -1;
             if (innerLo <= innerHi) { lo = innerLo; hi = innerHi; }
             return lo + (int)(hash % (uint)(hi - lo + 1));
+        }
+
+        /// <summary>A hashed start in [lo, hi] whose distance from <paramref name="phase"/> is even.</summary>
+        static bool Pick(int lo, int hi, int phase, uint hash, out int start)
+        {
+            if (((lo - phase) & 1) != 0) lo++;
+            start = -1;
+            if (lo > hi) return false;
+            start = lo + 2 * (int)(hash % (uint)((hi - lo) / 2 + 1));
+            return true;
         }
 
         /// <summary>True for a cell corner on the 6 m structural grid (both world indices even).</summary>
@@ -500,15 +519,19 @@ namespace FrontRooms.Map
                 var chance = zone.height == ZoneHeight.Tall ? settings.tallColumnHalls : office ? settings.officeColumnRooms : settings.level0ColumnRooms;
                 if (MapHash.Unit(MapHash.Hash(settings.seed, chunk.coord.x * 16 + r, chunk.coord.y, MapHash.Columns, revision)) >= chance) continue;
                 var style = office || zone.height == ZoneHeight.Tall ? MapChunk.ColumnLarge : (byte)0;
+                // In a module, a corner where an inner wall or doorway meets stays free: a column there would stand in it.
+                bool Free(int i, int j) => module == null
+                    || (chunk.east[MapGrid.LocalIndex(i - 1, j)] == EdgeKind.Open && chunk.east[MapGrid.LocalIndex(i - 1, j - 1)] == EdgeKind.Open
+                        && chunk.north[MapGrid.LocalIndex(i - 1, j - 1)] == EdgeKind.Open && chunk.north[MapGrid.LocalIndex(i, j - 1)] == EdgeKind.Open);
                 for (var j = rect.y + 1; j < rect.y + rect.h; j++)
                 for (var i = rect.x + 1; i < rect.x + rect.w; i++)
                 {
-                    if (!OnColumnGrid(chunk.Cell(i, j))) continue;
+                    if (!OnColumnGrid(chunk.Cell(i, j)) || !Free(i, j)) continue;
                     chunk.pillar[i + j * (n + 1)] = true;
                     var flags = style;
                     // Office columns carry a bulkhead to the next column on the grid inside the same room.
-                    if (office && i + 2 < rect.x + rect.w) flags |= MapChunk.ColumnBeamEast;
-                    if (office && j + 2 < rect.y + rect.h) flags |= MapChunk.ColumnBeamNorth;
+                    if (office && i + 2 < rect.x + rect.w && Free(i + 2, j)) flags |= MapChunk.ColumnBeamEast;
+                    if (office && j + 2 < rect.y + rect.h && Free(i, j + 2)) flags |= MapChunk.ColumnBeamNorth;
                     chunk.pillarStyle[i + j * (n + 1)] = flags;
                 }
             }

@@ -22,9 +22,10 @@ using UiLengthUnit = UnityEngine.UIElements.LengthUnit;
 
 [ExecuteAlways]
 // First-person FrontRooms. The title is the looping room stream; when the
-// player presses Space its first door opens and they noclip into the
-// generated Level 0 maze (FrontRoomsMapWorld), where the serialized Relay
-// hunts them (FrontRoomsMapHunter).
+// player presses Space they take over where the camera is, the stream stops
+// at its next shut door, and the generated Level 0 maze (FrontRoomsMapWorld)
+// lies behind that door. There the serialized Relay hunts them
+// (FrontRoomsMapHunter).
 public sealed class FrontRooms3DGame : MonoBehaviour
 {
     enum Phase { Title, Playing, Paused, Caught }
@@ -34,7 +35,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Transform hunter;
     [SerializeField, Tooltip("When the Relay is released, how it listens, hunts, searches, chases and breaks doors.")]
     FrontRoomsHunterTuning hunterTuning = new FrontRoomsHunterTuning();
-    /// <summary>A map run began (after the noclip): the map and the Relay exist. For listeners such as the sound layer.</summary>
+    /// <summary>A map run began (the player took over in the title's stream room): the map and the Relay exist. For listeners such as the sound layer.</summary>
     public static event Action<FrontRoomsMapWorld, FrontRoomsMapHunter> MapRunStarted;
     /// <summary>The map run is torn down (restart reloads the scene, or Play stops).</summary>
     public static event Action MapRunEnded;
@@ -61,7 +62,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Text roomMetaText, roomText, threatStateText, distanceText, contextText, overlayText, keyText, displaySettingsText;
     Image crosshairImage, keyImage;
     Text promptText;
-    Image noclipFade, holdBarFill;
+    Image holdBarFill;
     GameObject holdBar;
     readonly Image[] staminaSegments = new Image[5];
     GameObject keyPanel;
@@ -96,14 +97,36 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     GameObject streamedRoomTemplate;
     float titleLogoAlpha;
     float logoMotionElapsed;
-    bool titleHandoffPending;
+    // The wordmark fades out over the first moments of play instead of vanishing.
+    bool logoFading;
+    const float LogoExitSeconds = .55f;
     bool mapPlay;
-    // Noclip: -1 when idle, otherwise seconds into the white-out or fade-in.
-    float noclipTime = -1f;
-    bool noclipSwitched;
+    // The run starts in the title's stream rooms (the map's start area). The
+    // door out of them opens once the map behind it is built, and shuts for
+    // good once the player is well into the map; then the rooms go dark and,
+    // when the map has dropped every chunk round them, they are removed.
+    bool inStartRooms, leftStartRooms, startDoorOpened;
+    GridCoord startDoorCell;
+    Vector3 startDoorPoint;
+    float titleFarClip;
+    Light[] streamLights;
+    float[] streamLightLevels;
+    float streamFade = -1f, startRearZ, startDoorHeldFor;
+    // The door opens once the chunks round it are built and furnished (what
+    // can be seen through it), and never later than this after Space.
+    const float StreamFadeSeconds = 1.2f, StartDoorShutDistance = 4f, StartDoorHoldLimit = 3f, StartLampsRiseSeconds = .6f;
+    // The stream rooms take a 5-cell (15 m) strip of the map: the 11.76 m room plus the gaps to the map's walls.
+    const int StartAreaHalfCells = 2;
+    // The title camera's drift, eased out when the player takes over, so control does not start with a jolt.
+    Vector3 glide;
+    const float GlideSeconds = .6f;
+    // Cursor lock can report one large mouse delta: ignore the first frames of play.
+    int mouseSettleFrames;
     // The runtime stream runs on its own centerline, clear of the edit-mode
-    // profile preview at X = 0.
-    public const float TitleCenterX = 256f;
+    // profile preview at X = 0. It sits on a map cell centre (3 m cells from
+    // world 0, so x ≡ 1.5 mod 3): the stream door then opens onto one cell of
+    // the map the run continues in.
+    public const float TitleCenterX = 256.5f;
     const string EditorPreviewName = "EDITOR_PREVIEW / Room profiles (generated)";
     const float LogoScale = .75f;
     // The trailing S forms are deliberately sequenced instead of sharing the
@@ -124,8 +147,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     // Sprint stamina: about 5 s of running, refilling after a 1 s breather.
     const float StaminaSeconds = 5f, StaminaRecoverDelay = 1f, StaminaRecoverRate = 1f;
     const float EyeHeight = ModuleUnits.PlayerEye, Reach = 2.4f, GlassNoiseRadius = 40f;
-    // The noclip: a fast white-out as the first door opens, then the maze fades in.
-    const float NoclipOutSeconds = .22f, NoclipInSeconds = .8f;
     float stamina = StaminaSeconds, sinceSprint, fallSpeed;
     // Climbing through a broken window: the sill (0.35 m) is above the step
     // height and the opening (1.65 m) is lower than the player, so walking
@@ -291,6 +312,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         ApplyHdrMode(hdrEnabled, false);
         BuildHud();
         BuildSound();
+        // The map's first-use loads happen now, before the first frame, not
+        // in the frames after Space while the player is watching.
+        FrontRoomsMapWorld.Prewarm();
         BuildTitleCorridor();
         SetPhase(Phase.Title);
         if (restart)
@@ -341,13 +365,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (titleWorld != null) StopTitleCorridor();
         titleWorld = new GameObject("Title sequence / recycled corridor").transform;
         // The camera stays in the same generated room through the handoff;
-        // the title corridor simply becomes the level.
+        // the room it is in when Space is pressed is where play starts. Z 0
+        // puts every room boundary on a multiple of 3 m (rooms are 12 m,
+        // starting 6 m behind the camera), so the door the map is attached
+        // behind always lies on a map cell line.
         if (cam != null)
         {
-            var titlePosition = cam.transform.position;
-            titlePosition.x = TitleCenterX;
-            titlePosition.y = 1.62f;
-            cam.transform.position = titlePosition;
+            cam.transform.position = new Vector3(TitleCenterX, EyeHeight, 0f);
             cam.transform.rotation = Quaternion.identity;
         }
         roomStream = titleWorld.gameObject.AddComponent<FrontRoomsRoomStream>();
@@ -359,7 +383,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             ProfileMaterials(wallMats), ProfileMaterials(floorMats), ProfileMaterials(ceilingMats));
         titleLogoAlpha = 0f;
         logoMotionElapsed = 0f;
-        titleHandoffPending = false;
+        logoFading = false;
         mapPlay = false;
         if (cam != null) cam.transform.rotation = Quaternion.identity;
     }
@@ -373,14 +397,23 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         logoMotionElapsed += dt;
         titleLogoAlpha = roomStream.LogoVisibility;
         UpdateLogoMotion();
-        if (titleHandoffPending && roomStream.HasControl) EnterGameplayFromTitle();
+    }
+
+    // The wordmark shows on the title and while it fades out as play starts.
+    bool LogoShown => phase == Phase.Title || logoFading;
+
+    void UpdateLogoFade(float dt)
+    {
+        titleLogoAlpha = Mathf.MoveTowards(titleLogoAlpha, 0f, dt / LogoExitSeconds);
+        if (titleLogoAlpha <= 0f) logoFading = false;
+        UpdateLogoMotion();
     }
 
     void UpdateLogoMotion()
     {
         if (vectorLogoActive)
         {
-            var vectorVisible = phase == Phase.Title;
+            var vectorVisible = LogoShown;
             if (vectorLogoRoot != null) vectorLogoRoot.style.display = vectorVisible ? UiDisplayStyle.Flex : UiDisplayStyle.None;
             if (!vectorVisible || vectorLogoLeftImage == null || vectorLogoS1Image == null || vectorLogoS2Image == null) return;
 
@@ -417,8 +450,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             vectorLogoS1Image.style.left = new UiLength(vectorS1X, UiLengthUnit.Pixel);
             vectorLogoS2Image.style.left = new UiLength(vectorS2X, UiLengthUnit.Pixel);
             // Keep the vector mark on the same fade-in clock as the title
-            // corridor. It remains at full opacity after the reveal; only the
-            // player handoff hides it.
+            // corridor. It remains at full opacity after the reveal; the
+            // player handoff fades it out (UpdateLogoFade).
             var vectorAlpha = Mathf.Clamp01(titleLogoAlpha);
             vectorLogoLeftImage.style.opacity = vectorAlpha;
             vectorLogoS1Image.style.opacity = vectorAlpha;
@@ -426,7 +459,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             return;
         }
         if (logoMotionRoot == null || logoLeftImage == null || logoSlideImage == null) return;
-        var visible = phase == Phase.Title;
+        var visible = LogoShown;
         logoLeftImage.enabled = visible;
         logoSlideImage.enabled = visible;
         if (!visible) return;
@@ -454,67 +487,38 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
     void RequestTitleStart()
     {
-        if (titleHandoffPending || mapPlay || noclipTime >= 0f) return;
-        if (roomStream == null) return;
-        roomStream.RequestStart();
-        titleHandoffPending = true;
+        if (mapPlay || roomStream == null || cam == null) return;
+        StartRunInPlace();
     }
 
     void StartCanonicalStreamedRestart()
     {
         if (roomStream == null) return;
         SetPhase(Phase.Title);
-        // A retry reuses the title's first door and noclip, so it lands in a
-        // fresh maze (or the same one when Map Seed is set), like a first run.
+        // A retry starts in the title's first room with a fresh maze (or the
+        // same one when Map Seed is set) behind its door, like a first run.
         RequestTitleStart();
-        Log("RESTART · noclip into the maze");
+        Log("RESTART · in the first stream room, maze behind its door");
     }
 
     /// <summary>
-    /// The first door is open and the camera is through it. The player
-    /// noclips: a fast white-out, the corridor is dropped, and the Level 0
-    /// maze fades in around them.
+    /// Space on the title. The player takes over where the camera is, in the
+    /// stream room they are watching: no glide to an anchor and no white-out.
+    /// The stream ends at its first door that is still shut (nothing past it
+    /// has been seen), and the Level 0 map is attached behind that door:
+    /// placed so the door opens onto one of its cells, with the stream rooms
+    /// left out of it as its start area. The map fills in at the normal
+    /// streaming budget, round the door first, and the door stays shut until
+    /// it is built and furnished, so nothing is ever built in view.
     /// </summary>
-    void EnterGameplayFromTitle()
+    void StartRunInPlace()
     {
-        if (!titleHandoffPending || mapPlay) return;
-        titleHandoffPending = false;
-        noclipTime = 0f;
-        noclipSwitched = false;
-        if (noclipFade != null) noclipFade.enabled = true;
-    }
-
-    void UpdateNoclip(float dt)
-    {
-        noclipTime += dt;
-        if (!noclipSwitched)
+        var terminal = roomStream.FirstClosedDoorSequence();
+        if (terminal < 0)
         {
-            var t = Mathf.Clamp01(noclipTime / NoclipOutSeconds);
-            SetNoclipFade(t * t);
-            if (noclipTime < NoclipOutSeconds) return;
-            noclipSwitched = true;
-            noclipTime = 0f;
-            StartMapRun();
+            Log("START · no shut stream door is loaded yet");
             return;
         }
-        var fade = 1f - Mathf.Clamp01(noclipTime / NoclipInSeconds);
-        SetNoclipFade(fade * fade);
-        if (noclipTime < NoclipInSeconds) return;
-        noclipTime = -1f;
-        if (noclipFade != null) noclipFade.enabled = false;
-    }
-
-    void SetNoclipFade(float alpha)
-    {
-        if (noclipFade == null) return;
-        var c = noclipFade.color;
-        c.a = Mathf.Clamp01(alpha);
-        noclipFade.color = c;
-    }
-
-    void StartMapRun()
-    {
-        StopTitleCorridor();
         var profile = levelProfile != null ? levelProfile : FrontRoomsLevelProfile.Default;
         runSeed = profile.runSeed != 0 ? profile.runSeed : UnityEngine.Random.Range(1, int.MaxValue);
 #if UNITY_EDITOR
@@ -522,11 +526,31 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 #endif
         map = FrontRoomsMapWorld.CreateEmbedded(transform, profile, runSeed);
 
-        // The player is a capsule the camera rides on; walls and doors are
-        // the map's colliders.
+        // The door line is a map cell line and the stream centreline a cell
+        // centre (BuildTitleCorridor, TitleCenterX), so the door opens onto
+        // one cell; the stream rooms take the 5-cell strip behind it.
+        var centerX = roomStream.CenterX;
+        var doorZ = roomStream.RoomStartZ(terminal) + FrontRoomsRoomStream.RoomLength;
+        var rearZ = roomStream.RoomStartZ(roomStream.OldestSequence);
+        var rows = Mathf.RoundToInt((doorZ - rearZ) / MapGrid.CellSize);
+        map.transform.SetPositionAndRotation(MapRootFor(map, centerX, doorZ, rows), Quaternion.identity);
+        startDoorCell = map.CellOf(new Vector3(centerX, 0f, doorZ + MapGrid.CellSize * .5f));
+        startDoorPoint = new Vector3(centerX, 0f, doorZ);
+        startRearZ = rearZ;
+        startDoorHeldFor = 0f;
+        var rearCell = map.CellOf(new Vector3(centerX, 0f, rearZ + MapGrid.CellSize * .5f));
+        map.SetStartArea(new RectInt(startDoorCell.x - StartAreaHalfCells, rearCell.y, StartAreaHalfCells * 2 + 1, startDoorCell.y - rearCell.y), startDoorCell);
+        roomStream.EndStreamAt(terminal, (StartAreaHalfCells + .5f) * MapGrid.CellSize + ModuleUnits.WallHalf);
+        roomStream.TerminalDoorHeld = true;
+
+        // The player is a capsule the camera rides on, standing where the
+        // camera is. Walls and doors are colliders: the stream rooms' boxes,
+        // then the map's.
+        titleFarClip = cam.farClipPlane;
+        var eye = cam.transform.position;
         playerRoot = new GameObject("Player").transform;
         playerRoot.SetParent(transform, false);
-        playerRoot.position = map.SpawnWorldPosition;
+        playerRoot.position = ClearStandingSpot(new Vector3(eye.x, eye.y - EyeHeight, eye.z));
         playerBody = playerRoot.gameObject.AddComponent<CharacterController>();
         playerBody.height = ModuleUnits.PlayerHeight;
         playerBody.radius = ModuleUnits.PlayerRadius;
@@ -536,17 +560,26 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         cam.transform.SetParent(playerRoot, false);
         cam.transform.localPosition = new Vector3(0f, EyeHeight, 0f);
         cam.transform.localRotation = Quaternion.identity;
-        cam.farClipPlane = map.SightDistance;
         yaw = 0f;
         pitch = 0f;
         fallSpeed = 0f;
         climbTime = -1f;
         stamina = StaminaSeconds;
         sinceSprint = 0f;
+        glide = Vector3.forward * FrontRoomsRoomStream.TitleSpeed;
+        mouseSettleFrames = 2;
+        inStartRooms = true;
+        leftStartRooms = false;
+        startDoorOpened = false;
+        streamFade = -1f;
+        streamLights = null;
         map.DoorMoved += OnDoorMoved;
         map.GlassBroken += OnGlassBroken;
         map.KeyTaken += OnKeyTaken;
-        map.Begin(playerRoot);
+        map.StreamFocus = map.CellCenter(startDoorCell);
+        map.StartLampsNorth = 0f;
+        map.StartLampsSouth = 0f;
+        map.Begin(playerRoot, false);
 
         relay = new FrontRoomsMapHunter(map, hunterTuning, playerBody, hunter, runSeed);
         relay.StateChanged += state => Event("hunter", state.ToString());
@@ -555,15 +588,182 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 
         zonesVisited.Clear();
         keysTaken = 0;
-        currentZone = map.ZoneOf(map.CellOf(playerRoot.position)).id;
-        zonesVisited.Add(currentZone);
         playerPos = Flat(playerRoot.position);
         elapsed = 0f;
         mapPlay = true;
+        logoFading = true;
         SetPhase(Phase.Playing);
-        Event("start", "map seed " + runSeed);
+        Event("start", "map seed " + runSeed + ", stream room " + terminal);
         MapRunStarted?.Invoke(map, relay);
-        Log("NOCLIP · Level 0 maze, seed " + runSeed + " · " + map.BuiltChunkCount + " chunks built");
+        Log("START · in place in stream room " + terminal + " · maze seed " + runSeed + " behind its door, map root " + map.transform.position + ", door cell " + startDoorCell);
+    }
+
+    /// <summary>
+    /// Where the map's root goes: a multiple of 192 m (ModuleUnits.WorldPeriod,
+    /// so the printed ceiling grid stays on the troffers), chosen so that the
+    /// row of cells the stream door opens onto, all five across the start
+    /// area, is Standard-height Level 0 (the stream room's 2.9 m ceiling and
+    /// Lobby paper carry straight on), and so that the way on is straight
+    /// ahead: the door's open leaves stand 1.12 m into its cell, too close to
+    /// the cell's side walls to pass, so the cell's far edge must be open and
+    /// lead into the maze (the stream rooms' strip of <paramref name="rows"/>
+    /// cells behind the door can cut cells off from the rest of their chunk).
+    /// The map is infinite and fixed by its seed; this only picks which part
+    /// of it the door leads into.
+    /// </summary>
+    static Vector3 MapRootFor(FrontRoomsMapWorld map, float centerX, float doorZ, int rows)
+    {
+        var period = ModuleUnits.WorldPeriod;
+        var probe = new Vector3(centerX, 0f, doorZ + MapGrid.CellSize * .5f);
+        Vector3? reachable = null;
+        for (var ring = 0; ring <= 8; ring++)
+        for (var b = -ring; b <= ring; b++)
+        for (var a = -ring; a <= ring; a++)
+        {
+            if (Mathf.Max(Mathf.Abs(a), Mathf.Abs(b)) != ring) continue;
+            var root = new Vector3(a * period, 0f, b * period);
+            var door = FrontRoomsMapWorld.CellAt(probe - root);
+            var area = new RectInt(door.x - StartAreaHalfCells, door.y - rows, StartAreaHalfCells * 2 + 1, rows);
+            var standard = true;
+            for (var dx = -StartAreaHalfCells; dx <= StartAreaHalfCells && standard; dx++)
+            {
+                var zone = map.ZoneOf(new GridCoord(door.x + dx, door.y));
+                standard = zone.height == ZoneHeight.Standard && zone.theme == ZoneTheme.Level0;
+            }
+            if (!standard && reachable.HasValue) continue;
+            var ahead = new GridCoord(door.x, door.y + 1);
+            var onward = map.Cache.Edge(door, ahead);
+            if (onward == EdgeKind.Wall || onward == EdgeKind.Window || !LeadsIntoMaze(map.Cache, ahead, area, door)) continue;
+            if (standard) return root;
+            reachable = root;
+        }
+        Log("START · no Standard Level 0 row found for the stream door" + (reachable.HasValue ? "; using one that only leads on" : "; the map stays at the origin"));
+        return reachable ?? Vector3.zero;
+    }
+
+    static readonly GridCoord[] Steps4 = { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
+
+    /// <summary>
+    /// From <paramref name="start"/>, through anything but a wall and never
+    /// back into the door cell or the start area, the walk reaches a good
+    /// part of the maze (150 cells; a pocket cut off by the strip is far smaller).
+    /// </summary>
+    static bool LeadsIntoMaze(FrontRoomsMapCache cache, GridCoord start, RectInt area, GridCoord door)
+    {
+        var seen = new HashSet<GridCoord> { start, door };
+        var queue = new Queue<GridCoord>();
+        queue.Enqueue(start);
+        while (queue.Count > 0)
+        {
+            var cell = queue.Dequeue();
+            foreach (var step in Steps4)
+            {
+                var next = cell + step;
+                if (seen.Contains(next) || area.Contains(new Vector2Int(next.x, next.y))) continue;
+                if (cache.Edge(cell, next) == EdgeKind.Wall) continue;
+                seen.Add(next);
+                if (seen.Count >= 150) return true;
+                queue.Enqueue(next);
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Feet under the camera, unless the body would stand in a door leaf or
+    /// return there; then the nearest clear spot back along the corridor.
+    /// </summary>
+    static Vector3 ClearStandingSpot(Vector3 feet)
+    {
+        Physics.SyncTransforms();
+        var r = ModuleUnits.PlayerRadius;
+        for (var step = 0; step <= 30; step++)
+        {
+            var p = feet + Vector3.back * (step * .1f);
+            // Above the floor and below the ceiling: only walls and doors count.
+            if (!Physics.CheckCapsule(p + Vector3.up * (r + .2f), p + Vector3.up * (ModuleUnits.PlayerHeight - r), r, ~0, QueryTriggerInteraction.Ignore))
+                return p;
+        }
+        return feet;
+    }
+
+    /// <summary>
+    /// The stream rooms the run starts in. Their door into the map opens once
+    /// the map behind it is ready; leaving them hands the camera the map's
+    /// sight distance. Once the player is well into the map the door swings
+    /// shut for good (the Relay is let loose from then on), the rooms' lamps
+    /// fade out, and when the map has dropped every chunk round them they are
+    /// removed and the map takes the ground back.
+    /// </summary>
+    void UpdateStartRooms(float dt)
+    {
+        if (roomStream == null) return;
+        var feet = playerRoot.position;
+        var inside = map.InStartArea(map.CellOf(feet));
+        if (!inside && !leftStartRooms)
+        {
+            leftStartRooms = true;
+            map.StreamFocus = null;
+            Event("start rooms", "left");
+        }
+        inStartRooms = inside;
+        // Far enough to see down the stream rooms to their rear wall, never
+        // past the map built beyond the door (at least 51 m north of it).
+        cam.farClipPlane = inside ? Mathf.Clamp(feet.z - startRearZ + 2f, map.SightDistance, titleFarClip) : map.SightDistance;
+        if (streamFade < 0f)
+        {
+            roomStream.Tick(dt);
+            if (!startDoorOpened)
+            {
+                var ready = map.ReadyAround(1);
+                if (!ready && elapsed > StartDoorHoldLimit && roomStream.TerminalDoorHeld) Log("START · map round the door not ready after " + StartDoorHoldLimit + " s; opening anyway");
+                roomStream.TerminalDoorHeld = !ready && elapsed <= StartDoorHoldLimit;
+                if (roomStream.TerminalDoorHeld && inside && Vector2.Distance(Flat(feet), Flat(startDoorPoint)) < 4f) startDoorHeldFor += dt;
+                if (roomStream.TerminalDoorOpen)
+                {
+                    startDoorOpened = true;
+                    roomStream.TerminalDoorHeld = false;
+                    Event("start door", "opens");
+                }
+            }
+            else
+            {
+                // The maze's lamps by the door come up with the swing, as the stream's rooms do.
+                map.StartLampsNorth = Mathf.MoveTowards(map.StartLampsNorth, 1f, dt / StartLampsRiseSeconds);
+                if (!inside && Vector2.Distance(Flat(feet), Flat(startDoorPoint)) >= StartDoorShutDistance)
+                    roomStream.CloseTerminalDoor();
+            }
+            if (!roomStream.TerminalDoorShut) return;
+            // Nothing of the stream can be seen any more: fade its lamps out,
+            // gently, for their light on the map's side and the hum that
+            // reads them, and bring up the maze's lamps beside the rooms.
+            streamFade = 0f;
+            streamLights = titleWorld.GetComponentsInChildren<Light>();
+            streamLightLevels = new float[streamLights.Length];
+            for (var i = 0; i < streamLights.Length; i++) streamLightLevels[i] = streamLights[i].enabled ? streamLights[i].intensity : 0f;
+            Event("start door", "shut");
+            return;
+        }
+        if (streamFade < 1f)
+        {
+            streamFade = Mathf.Min(1f, streamFade + dt / StreamFadeSeconds);
+            map.StartLampsNorth = 1f;
+            map.StartLampsSouth = streamFade;
+            for (var i = 0; i < streamLights.Length; i++)
+            {
+                if (streamLights[i] == null) continue;
+                streamLights[i].intensity = streamLightLevels[i] * (1f - streamFade);
+                if (streamFade >= 1f) Destroy(streamLights[i]);
+            }
+            return;
+        }
+        // One room a frame, behind the shut door; the last one keeps facing the maze.
+        if (roomStream.DisposeOneRoom() || map.StartAreaBuilt) return;
+        // Every chunk round the rooms is gone, far out of sight: so is the last of them.
+        StopTitleCorridor();
+        map.ClearStartArea();
+        inStartRooms = false;
+        Event("start rooms", "removed");
     }
 
     void OnDoorMoved(Vector3 p)
@@ -600,8 +800,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         else
 #endif
         {
-            yaw += Input.GetAxisRaw("Mouse X") * 2.1f;
-            pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * 2.1f, -75f, 75f);
+            if (mouseSettleFrames > 0) mouseSettleFrames--;
+            else
+            {
+                yaw += Input.GetAxisRaw("Mouse X") * 2.1f;
+                pitch = Mathf.Clamp(pitch - Input.GetAxisRaw("Mouse Y") * 2.1f, -75f, 75f);
+            }
             // Keep the authored InputManager axes, but also read the physical
             // keys directly. This makes the standalone Mac/WebGL player robust
             // when a platform starts with the new input backend.
@@ -632,7 +836,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         fallSpeed = playerBody.isGrounded ? -1f : fallSpeed - 9.81f * dt;
         var before = playerPos;
         if (climbTime >= 0f || TryStartClimb(wish)) Climb(dt);
-        else playerBody.Move((wish * (sprinting ? Run : Walk) + Vector3.up * fallSpeed) * dt);
+        else playerBody.Move((wish * (sprinting ? Run : Walk) + glide + Vector3.up * fallSpeed) * dt);
+        glide = Vector3.MoveTowards(glide, Vector3.zero, FrontRoomsRoomStream.TitleSpeed / GlideSeconds * dt);
         playerPos = Flat(playerRoot.position);
         if (Vector2.Distance(before, playerPos) > .001f)
         {
@@ -644,17 +849,25 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                 if (sprinting) relay?.Noise(playerRoot.position, hunterTuning.sprintNoiseRadius);
             }
         }
-        var zone = map.ZoneOf(map.CellOf(playerRoot.position)).id;
-        if (zone != currentZone)
+        UpdateStartRooms(dt);
+        // Zones count from the first step into the map.
+        if (!inStartRooms)
         {
-            currentZone = zone;
-            if (zonesVisited.Add(zone)) Event("zone", zone.ToString());
+            var zone = map.ZoneOf(map.CellOf(playerRoot.position)).id;
+            if (zone != currentZone || zonesVisited.Count == 0)
+            {
+                currentZone = zone;
+                if (zonesVisited.Add(zone)) Event("zone", zone.ToString());
+            }
         }
         UpdateAim(dt);
 #if UNITY_EDITOR
         var tickWatch = autopilot ? System.Diagnostics.Stopwatch.StartNew() : null;
 #endif
-        relay.Tick(dt, playerRoot.position, cam.transform.position, playerRoot.forward);
+        // Dormant until the door back to the stream rooms has shut behind the
+        // player: its release clock only starts once they are in the maze for good.
+        if (relay.Released || streamFade >= 0f || roomStream == null)
+            relay.Tick(dt, playerRoot.position, cam.transform.position, playerRoot.forward);
 #if UNITY_EDITOR
         if (tickWatch != null && tickWatch.Elapsed.TotalMilliseconds > autoRelayTickMs)
         {
@@ -1214,13 +1427,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         logoOutline.effectColor = new Color(1f, .86f, .34f, 0f);
         LoadBrandLogo();
         UpdateDisplaySettingsText();
-        // Last child of the canvas, so the noclip white-out covers everything.
-        noclipFade = Panel(g.transform, "Noclip fade", new Vector2(.5f, .5f), Vector2.zero, Vector2.zero, new Color(.97f, .95f, .86f, 0f)).GetComponent<Image>();
-        var fadeRect = noclipFade.rectTransform;
-        fadeRect.anchorMin = Vector2.zero;
-        fadeRect.anchorMax = Vector2.one;
-        fadeRect.offsetMin = fadeRect.offsetMax = Vector2.zero;
-        noclipFade.enabled = false;
     }
     void SetPhase(Phase p)
     {
@@ -1240,11 +1446,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             logoImage.enabled = p == Phase.Title && logoMotionRoot == null && !vectorLogoActive;
             if (p == Phase.Title && logoMotionRoot == null) logoImage.color = new Color(1f, 1f, 1f, titleLogoAlpha);
         }
-        if (vectorLogoRoot != null) vectorLogoRoot.style.display = p == Phase.Title ? UiDisplayStyle.Flex : UiDisplayStyle.None;
+        // The vector wordmark is its own panel: it keeps fading out over the start of play.
+        if (vectorLogoRoot != null) vectorLogoRoot.style.display = LogoShown ? UiDisplayStyle.Flex : UiDisplayStyle.None;
         if (logoMotionRoot != null)
         {
-            if (logoLeftImage != null) logoLeftImage.enabled = p == Phase.Title;
-            if (logoSlideImage != null) logoSlideImage.enabled = p == Phase.Title;
+            if (logoLeftImage != null) logoLeftImage.enabled = LogoShown;
+            if (logoSlideImage != null) logoSlideImage.enabled = LogoShown;
         }
         if (roomPanel != null) roomPanel.SetActive(playing);
         if (threatPanel != null) threatPanel.SetActive(playing);
@@ -1272,7 +1479,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     void Update()
     {
         if (!Application.isPlaying) return;
-        if (phase == Phase.Title && noclipTime < 0f && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) RequestTitleStart();
+        if (phase == Phase.Title && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))) RequestTitleStart();
         else if (phase == Phase.Paused && Input.GetKeyDown(KeyCode.O)) ToggleDisplaySettings();
         else if (displaySettingsOpen && Input.GetKeyDown(KeyCode.H)) ApplyHdrMode(!hdrEnabled, true);
         else if (Input.GetKeyDown(KeyCode.Escape) && displaySettingsOpen) ToggleDisplaySettings();
@@ -1283,7 +1490,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (autopilot) AutopilotTick(dt);
 #endif
         if (phase == Phase.Title) UpdateTitleSequence(dt);
-        if (noclipTime >= 0f) UpdateNoclip(dt);
+        if (logoFading) UpdateLogoFade(dt);
         if (phase == Phase.Playing && mapPlay)
         {
             elapsed += dt;
@@ -1301,11 +1508,12 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             gameplayHudAlpha = 0f;
         ApplyGameplayHudAlpha();
         if (!mapPlay || map == null || playerRoot == null) return;
-        var zone = map.ZoneOf(map.CellOf(playerRoot.position));
+        // In the stream rooms the run starts in: Level 0's lobby, before zone 01.
+        var zone = inStartRooms ? new ZoneInfo { height = ZoneHeight.Standard, theme = ZoneTheme.Level0 } : map.ZoneOf(map.CellOf(playerRoot.position));
         var released = relay != null && relay.Released;
         var threat = !released ? "" : relay.State == HunterState.BreakDoor ? "RELAY  /  BREAKING DOOR" : "RELAY  /  " + relay.State.ToString().ToUpperInvariant();
         roomMetaText.text = play ? "ZONE " + zonesVisited.Count.ToString("00") + "  /  " + zone.height.ToString().ToUpperInvariant() + "  " + MapGrid.CeilingHeight(zone.height).ToString("0.0") + " M" : "";
-        roomText.text = play ? ZoneName(zone) : "";
+        roomText.text = play ? (inStartRooms ? "LEVEL 0 / THE LOBBY" : ZoneName(zone)) : "";
         var showThreat = play && released;
         threatStateText.text = showThreat ? threat : "";
         distanceText.text = showThreat ? "RELAY  " + Mathf.RoundToInt(RelayDistance()) + " M" : "";
@@ -1328,7 +1536,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
         if (roomPanel != null) roomPanel.SetActive(play);
         if (threatPanel != null) threatPanel.SetActive(showThreat);
-        if (keyPanel != null) keyPanel.SetActive(play && map.HasKeyFor(zone.id));
+        if (keyPanel != null) keyPanel.SetActive(play && !inStartRooms && map.HasKeyFor(zone.id));
         if (contextPanel != null) contextPanel.SetActive(play && hint.Length > 0);
     }
 
@@ -1361,7 +1569,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
 #if UNITY_EDITOR
     // ---------- Autopilot: a scripted play-through for batch verification ----------
     // FrontRoomsMainScenePlaytest sets the session flag and enters Play. The
-    // autopilot presses Space, noclips, walks the maze along breadth-first
+    // autopilot presses Space, takes over in the stream room, walks out
+    // through its door into the maze, walks the maze along breadth-first
     // routes (opening doors on the way), sprints once, captures frames to
     // Verification/main-autopilot, writes report.json and a done file. It
     // never runs in a build or in a normal Play session.
@@ -1369,7 +1578,15 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     /// <summary>Session key for a fixed maze seed on the autopilot (0 = the profile's).</summary>
     public const string AutopilotSeedKey = "FrontRooms.Autopilot.Seed";
     int autopilotSeed, autoSkipFrames, autoGhostsSeen;
-    float autoWorstFrameMs, autoRelayTickMs, autoRelayTickAt;
+    float autoWorstFrameMs, autoRelayTickMs, autoRelayTickAt, autoHandoffWorstMs;
+    // When (play seconds) the start door opened, the player left the stream rooms, the door shut behind them, the rooms were removed.
+    float autoStartDoorAt = -1f, autoLeftStartAt = -1f, autoStartShutAt = -1f, autoStreamRemovedAt = -1f, autoSettledAt = -1f;
+    bool autoDoorShot, autoLookBackShot;
+    // When the autopilot presses Space (title seconds). -autopilotSpaceAt 1.0 starts with the
+    // first stream door still shut 4.85 m ahead, so the door is reached while the map is building.
+    float autoSpaceAt = 1.8f;
+    readonly List<(float ms, string text)> autoHandoffFrames = new List<(float, string)>();
+    const float AutoHandoffSeconds = 4f;
     readonly List<string> autoGhostLog = new List<string>();
     readonly List<float> autoFrameMs = new List<float>();
     readonly List<string> autoSpikes = new List<string>();
@@ -1415,6 +1632,17 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         public float p99FrameMs;
         public float relayTickMaxMs;
         public float relayTickMaxAt;
+        // The handoff from the title: the worst frame in the first 4 s after Space (nothing is hidden any more),
+        // and when the start door opened, the player left the stream rooms, the door shut, the rooms were removed (-1: never).
+        public float handoffWorstFrameMs;
+        public List<string> handoffSlowestFrames = new List<string>();
+        public float spacePressedAt;
+        public float mapReadyAt = -1f;
+        public float startDoorHeldSeconds;
+        public float startDoorOpenedAt = -1f;
+        public float leftStartRoomsAt = -1f;
+        public float startDoorShutAt = -1f;
+        public float streamRemovedAt = -1f;
         public List<string> frameSpikes = new List<string>();
         public int officeRoomsDressed;
         public int errors;
@@ -1431,6 +1659,9 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         autopilot = UnityEditor.SessionState.GetBool(AutopilotKey, false);
         autopilotSeed = UnityEditor.SessionState.GetInt(AutopilotSeedKey, 0);
         if (!autopilot) return;
+        var args = Environment.GetCommandLineArgs();
+        for (var i = 0; i < args.Length - 1; i++)
+            if (args[i] == "-autopilotSpaceAt" && float.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out var at)) autoSpaceAt = Mathf.Max(.2f, at);
         autoOutDir = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", "main-autopilot");
         Directory.CreateDirectory(autoOutDir);
         foreach (var old in Directory.GetFiles(autoOutDir, "*.png")) File.Delete(old);
@@ -1450,17 +1681,27 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         if (autoFinished) return;
         autoClock += dt;
         autoFrames++;
-        // Streaming and dressing hitches, after the first 2 s of play (the noclip build is hidden).
+        // Streaming and dressing hitches, from the frame Space is pressed: the
+        // map now builds while the player is in the stream room, in view.
         // Frames right after an autopilot capture carry its PNG encode, not the game's cost.
         if (autoSkipFrames > 0) autoSkipFrames--;
-        else if (mapPlay && autoPlayClock > 2f)
+        else if (mapPlay)
         {
             var ms = Time.unscaledDeltaTime * 1000f;
             autoWorstFrameMs = Mathf.Max(autoWorstFrameMs, ms);
+            if (autoPlayClock < AutoHandoffSeconds)
+            {
+                autoHandoffWorstMs = Mathf.Max(autoHandoffWorstMs, ms);
+                // The six slowest handoff frames and what the map did in them.
+                autoHandoffFrames.Add((ms, autoPlayClock.ToString("0.00", CultureInfo.InvariantCulture) + " s: " + ms.ToString("0.0") + " ms" + (map.WorkInFrame(Time.frameCount - 1).Length > 0 ? ", map: " + map.WorkInFrame(Time.frameCount - 1) : "")));
+                autoHandoffFrames.Sort((x, y) => y.ms.CompareTo(x.ms));
+                if (autoHandoffFrames.Count > 6) autoHandoffFrames.RemoveAt(6);
+            }
             autoFrameMs.Add(ms);
             // Spikes with their time, to tell streaming or dressing hitches from one-off editor shader compiles.
             if (ms > 50f && autoSpikes.Count < 12)
-                autoSpikes.Add(autoPlayClock.ToString("0.0", CultureInfo.InvariantCulture) + " s: " + ms.ToString("0") + " ms, zone " + ZoneName(map.ZoneOf(map.CellOf(playerRoot.position))) + ", chunks " + map.BuiltChunkCount);
+                autoSpikes.Add(autoPlayClock.ToString("0.0", CultureInfo.InvariantCulture) + " s: " + ms.ToString("0") + " ms, zone " + ZoneName(map.ZoneOf(map.CellOf(playerRoot.position))) + ", chunks " + map.BuiltChunkCount
+                    + (map.WorkInFrame(Time.frameCount - 1).Length > 0 ? ", map: " + map.WorkInFrame(Time.frameCount - 1) : ""));
         }
         if (relay != null && relay.Ghosts != autoGhostsSeen)
         {
@@ -1470,10 +1711,10 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         }
         if (!mapPlay)
         {
-            if (phase == Phase.Title && noclipTime < 0f && !titleHandoffPending)
+            if (phase == Phase.Title)
             {
-                if (autoShots == 0 && autoClock > 1.2f) AutopilotCapture("00_title");
-                if (autoClock > 1.8f) RequestTitleStart();
+                if (autoShots == 0 && autoClock > Mathf.Min(1.2f, autoSpaceAt - .3f)) AutopilotCapture("00_title");
+                if (autoClock > autoSpaceAt) RequestTitleStart();
             }
             if (autoClock > 40f) AutopilotFinish("never reached the maze");
             return;
@@ -1484,8 +1725,27 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             var flat = Flat(playerRoot.position);
             if (autoPlayClock > dt) autoDistance += Vector2.Distance(flat, autoLastFlat);
             autoLastFlat = flat;
-            autoCells.Add(map.CellOf(playerRoot.position));
+            if (!inStartRooms) autoCells.Add(map.CellOf(playerRoot.position));
         }
+        if (autoStartDoorAt < 0f && startDoorOpened) autoStartDoorAt = autoPlayClock;
+        if (autoLeftStartAt < 0f && leftStartRooms) autoLeftStartAt = autoPlayClock;
+        if (autoStartShutAt < 0f && streamFade >= 0f) autoStartShutAt = autoPlayClock;
+        if (autoStreamRemovedAt < 0f && roomStream == null) autoStreamRemovedAt = autoPlayClock;
+        // The seam, from both sides: the map through the open stream door, and the shut door from the maze.
+        if (!autoDoorShot && autoStartDoorAt >= 0f && autoPlayClock - autoStartDoorAt > 1f && inStartRooms)
+        {
+            autoDoorShot = true;
+            AutopilotCapture((autoShots < 10 ? "0" : "") + autoShots + "_start_door");
+        }
+        if (!autoLookBackShot && autoStartShutAt >= 0f && autoPlayClock - autoStartShutAt > .3f)
+        {
+            // From the door cell, eye height, looking back at the shut door and either side of it.
+            autoLookBackShot = true;
+            var from = startDoorPoint + Vector3.forward * 2.7f + Vector3.up * EyeHeight;
+            foreach (var side in new[] { 0f, -2.4f, 2.4f })
+                AutopilotLookFrom(from, startDoorPoint + new Vector3(side, 1.3f, 0f), "start_door_from_maze" + (side < 0f ? "_left" : side > 0f ? "_right" : ""));
+        }
+        if (autoSettledAt < 0f && map.Settled) autoSettledAt = autoPlayClock;
         autoMaxChunks = Mathf.Max(autoMaxChunks, map.BuiltChunkCount);
         if (relay != null)
         {
@@ -1526,6 +1786,18 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         local = Vector2.zero;
         sprint = false;
+        // Out of the stream rooms first: down the centreline, through the door
+        // and on past its open leaves into the cell ahead (always open, MapRootFor).
+        if (inStartRooms || (map.CellOf(playerRoot.position) == startDoorCell && playerRoot.position.z < startDoorPoint.z + 2.2f))
+        {
+            var aim = map.CellCenter(startDoorCell) + Vector3.forward * 1.2f - playerRoot.position;
+            aim.y = 0f;
+            var aimYaw = Mathf.Atan2(aim.x, aim.z) * Mathf.Rad2Deg;
+            yaw = Mathf.MoveTowardsAngle(yaw, aimYaw, 300f * dt);
+            pitch = Mathf.MoveTowards(pitch, 0f, 60f * dt);
+            local = new Vector2(0f, 1f);
+            return;
+        }
         var here = map.CellOf(playerRoot.position);
         autoStuckClock += dt;
         if (autoStuckClock > 2.5f)
@@ -1607,6 +1879,20 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (cam == null) return;
         AutopilotRender(cam, name);
+    }
+
+    /// <summary>One view from a point towards another, with the player's lens.</summary>
+    void AutopilotLookFrom(Vector3 from, Vector3 target, string label)
+    {
+        if (cam == null) return;
+        var go = new GameObject("AUTOPILOT / look-at camera");
+        var shot = go.AddComponent<Camera>();
+        shot.CopyFrom(cam);
+        shot.enabled = false;
+        go.transform.position = from;
+        go.transform.LookAt(target);
+        AutopilotRender(shot, (autoShots < 10 ? "0" : "") + autoShots + "_" + label);
+        Destroy(go);
     }
 
     bool OfficeDressingNear(Vector3 point, float radius)
@@ -1727,6 +2013,15 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             p99FrameMs = Percentile(autoFrameMs, .99f),
             relayTickMaxMs = autoRelayTickMs,
             relayTickMaxAt = autoRelayTickAt,
+            handoffWorstFrameMs = autoHandoffWorstMs,
+            handoffSlowestFrames = autoHandoffFrames.ConvertAll(f => f.text),
+            spacePressedAt = autoSpaceAt,
+            mapReadyAt = autoSettledAt,
+            startDoorHeldSeconds = startDoorHeldFor,
+            startDoorOpenedAt = autoStartDoorAt,
+            leftStartRoomsAt = autoLeftStartAt,
+            startDoorShutAt = autoStartShutAt,
+            streamRemovedAt = autoStreamRemovedAt,
             frameSpikes = autoSpikes,
             officeRoomsDressed = map == null ? 0 : CountNamed(map.transform, "office dressing"),
             errors = autoErrors,

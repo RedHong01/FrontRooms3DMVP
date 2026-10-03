@@ -16,7 +16,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))                       # Frontrooms3D
 OUT = os.path.abspath(os.path.join(ROOT, "..", "Research", "week02", "assets", "sound-previews"))
-TMP = os.path.join(OUT, "_work")
+TMP = os.path.join(HERE, "build", "previews_work")
 LIB = os.path.join(ROOT, "AudioSource", "FMOD_Library")
 PH = os.path.join(ROOT, "AudioSource", "FMOD_Placeholders")
 REN = os.path.join(HERE, "build", "renders")
@@ -136,8 +136,8 @@ def main(chart=None):
     for k in ("dry", "damp", "soaked"):
         src = os.path.join(REN, "steps_walk_%s.wav" % k)
         clip(src, wav("walk_" + k), max(0.0, onset(src) - .02), 3.3)
-        tile_png(wav("walk_" + k), png("sr02_" + k), 1152, 592, 6)
-        add("SR02", k, "sr02_" + k, png("sr02_" + k), wav("walk_" + k), 576, 296)
+        tile_png(wav("walk_" + k), png("sr02_" + k), 1152, 320, 6)
+        add("SR02", k, "sr02_" + k, png("sr02_" + k), wav("walk_" + k), 576, 160)
 
     # SR03: together, then each layer alone, its row lit while it plays
     soaked = os.path.join(REN, "steps_walk_soaked.wav")
@@ -221,10 +221,114 @@ def main(chart=None):
         tile_png(wav(k), png("sr08_" + k), 1728, 480, 6)
         add("SR08", k, "sr08_" + k, png("sr08_" + k), wav(k), 864, 240)
 
+    for slot in SLOTS:
+        k = slot["mp4"][:-4]
+        slot["layer"] = "media:" + k
+        slot["slides_slide"], slot["slides_node"] = SLIDES_NODES[k]
+        slot["sources"] = SOURCES[k]
     with open(os.path.join(OUT, "slots.json"), "w") as f:
         json.dump(dict(slides_file_key="NmYGRYKlhfX6H4rbJ7QcSN", design_file_key="0tCbAiVUlrPId3RWd9LRif",
                        playback="click to play, sound on, no autoplay, no loop", slots=SLOTS), f, indent=1)
+    write_ledger()
+    write_instructions()
     print(len(SLOTS), "previews in", OUT)
+
+
+# Slides 15-22 in NmYGRYKlhfX6H4rbJ7QcSN: slot layer per preview (slide, node)
+SLIDES_NODES = {
+    "sr01_legacy_steps": ("15", "174:626"), "sr01_creak": ("15", "174:629"), "sr01_hum_generated": ("15", "174:632"),
+    "sr01_placeholder_steps": ("15", "174:635"), "sr02_dry": ("16", "176:636"), "sr02_damp": ("16", "176:639"),
+    "sr02_soaked": ("16", "176:642"), "sr03_layers": ("17", "174:691"), "sr04_takes": ("18", "175:629"),
+    "sr05_steps": ("19", "175:651"), "sr05_wet": ("19", "175:653"), "sr05_doors": ("19", "175:655"),
+    "sr05_hum": ("19", "175:657"), "sr05_air": ("19", "175:659"), "sr05_glass": ("19", "175:661"),
+    "sr05_keys": ("19", "175:663"), "sr05_cloth": ("19", "175:665"), "sr07_door_story": ("21", "175:801"),
+    "sr08_before": ("22", "175:842"), "sr08_after": ("22", "175:844")}
+
+FS = "Freesound %s (%s, %s)"
+STEPS = [FS % ("575321", "taure", "CC0"), FS % ("256209", "hannagreen", "CC0")]
+DAMP = [FS % ("583287", "Profispiesser", "CC0"), FS % ("187617", "bewagne", "CC-BY 3.0")]
+DOORS = [FS % ("768656", "Nox_Sound", "CC0"), FS % ("843829", "thaighaudio", "CC0"), FS % ("341176", "klangfabrik", "CC0"),
+         FS % ("160213", "qubodup", "CC0"), "BigSoundBank 3205 Creaking Door #2 (CC0)"]
+ROOM = [FS % ("454098", "kyles", "CC0"), FS % ("406508", "kyles", "CC0"), FS % ("341512", "klankbeeld", "CC-BY 4.0")]
+MADE = "made in the project (synthesized placeholder)"
+RENDER = "rendered through the built FMOD banks (Tools/audio/fmod_check.py render)"
+SOURCES = {
+    "sr01_legacy_steps": ["Frontrooms3D/Verification/audio/player-walk.wav: the old procedural step, " + MADE],
+    "sr01_creak": ["BigSoundBank 3205 Creaking Door #2 (CC0), the build's only recording"],
+    "sr01_hum_generated": ["AudioSource/FMOD_Placeholders/Ambience/amb_hum_bed_loop.wav, " + MADE],
+    "sr01_placeholder_steps": ["AudioSource/FMOD_Placeholders/Foley/step_carpet_walk_01-03.wav, " + MADE],
+    "sr02_dry": ["Footstep event at Dampness 0, " + RENDER] + STEPS,
+    "sr02_damp": ["Footstep event at Dampness 0.4, " + RENDER] + STEPS + DAMP,
+    "sr02_soaked": ["Footstep event at Dampness 0.9, " + RENDER] + STEPS + DAMP,
+    "sr03_layers": ["one soaked step, " + RENDER, "then each layer file from AudioSource/FMOD_Library"] + STEPS + DAMP
+                   + [FS % ("611276", "xkeril", "CC0")],
+    "sr04_takes": ["plr_step_carpet_walk_body_01-10 (LIBRARY.json lists each take's source second)"] + STEPS,
+    "sr05_steps": STEPS, "sr05_wet": [FS % ("187617", "bewagne", "CC-BY 3.0")], "sr05_doors": DOORS[:3],
+    "sr05_hum": [FS % ("454098", "kyles", "CC0")], "sr05_air": [FS % ("406508", "kyles", "CC0")],
+    "sr05_glass": [FS % ("376607", "Soundkrampf", "CC0"), FS % ("575283", "TRP", "CC0")],
+    "sr05_keys": [FS % ("616835", "TRP", "CC0")], "sr05_cloth": [FS % ("611276", "xkeril", "CC0")],
+    "sr07_door_story": ["door events + room tone, " + RENDER, "timed to the SR07 chart markers (scenario_door_story)"] + DOORS + ROOM[:2],
+    "sr08_before": ["AudioSource/FMOD_Placeholders/Foley/step_carpet_walk_01-03.wav, " + MADE],
+    "sr08_after": ["Footstep event at Dampness 0.4, " + RENDER] + STEPS + DAMP,
+}
+
+
+def write_ledger():
+    rows = ["# Sources for the sound previews", "",
+            "Every preview is either a project render or a cut from a licensed recording. Freesound pages: "
+            "https://freesound.org/s/<id>/. Full licence notes and CC-BY credit lines: "
+            "Frontrooms3D/Documentation/AUDIO_LICENSES.md. Exact source seconds per asset: "
+            "Frontrooms3D/AudioSource/FMOD_Library/LIBRARY.json.", "",
+            "The two canon images on slide 16 / SR02 come from Research/week02/ip-research (see its SOURCES.md): "
+            "the Level 0 photo (Wikimedia Commons, EXIF 2002-06-12, \"copyrighted free use\") and Kane Pixels, "
+            "\"The Backrooms (Found Footage)\", youtube.com/watch?v=H4dGpz6cnHo at 0:48.", "",
+            "| Preview | Slide | Sources |", "|---|---|---|"]
+    for slot in SLOTS:
+        rows.append("| `%s` | %s | %s |" % (slot["mp4"], slot["slides_slide"], "<br>".join(slot["sources"])))
+    with open(os.path.join(OUT, "SOURCES.md"), "w") as f:
+        f.write("\n".join(rows) + "\n")
+
+
+
+def write_instructions():
+    rows = ["| %d | %s (%s) | %s | `%s` | `%s` | %s | %.1f s |" % (i, s["slides_slide"], s["slide"], s["slot"], s["mp4"],
+                                                               s["layer"], s["slides_node"], s["seconds"])
+            for i, s in enumerate(SLOTS, 1)]
+    doc = """# Insert the sound previews into the FrontRooms sound slides (Slides 15-22)
+
+For whoever does the insertion (Red, or an agent driving the Figma desktop app).
+The Figma MCP upload accepts images only, so each MP4 has to go in through the Figma editor.
+Every slot already shows its poster (the video's first frame), so the deck reads correctly before any video is in.
+
+## File
+
+Slides file `NmYGRYKlhfX6H4rbJ7QcSN` (the Project 1 deck), slides **15-22** at the end of the row.
+They mirror the design frames SR01-SR08 in section "FRONTROOMS · SOUND RESEARCH" (design file `0tCbAiVUlrPId3RWd9LRif`, node 2339:858).
+To jump to a slot: https://www.figma.com/slides/NmYGRYKlhfX6H4rbJ7QcSN?node-id=<node with - instead of :>
+
+## Steps for each row
+
+1. Select the slot layer (it is named `media:<clip>`; Edit > Find works with the exact name).
+2. Fill > click the image swatch > **Video** > **Upload from computer** > pick the MP4 from this folder. Keep the fit mode on **Fill**.
+3. In the Slides video options set **Autoplay off, Loop off, Sound on**: these are click-to-play previews
+   (the week-1 deck's clips are the opposite: muted autoplay loops).
+4. Don't rename, move or resize the layer.
+
+Each video shows the spectrogram of exactly the audio it plays, with a white playhead; on slides 17 and 18 a yellow box
+walks through the layers / takes instead. On slide 21 the playhead crosses each marker on the door chart at the moment
+that sound fires (audio rendered through the built FMOD banks). Sources for every clip: SOURCES.md.
+
+## Slot map (%d slots)
+
+| # | Slide | Slot | MP4 | Layer | Slides node | Length |
+|---|---|---|---|---|---|---|
+%s
+
+Regenerate everything with `python3 Frontrooms3D/Tools/audio/make_previews.py <screenshot of SR07>`
+(the audio renders come from `fmod_check.py render`).
+""" % (len(SLOTS), "\n".join(rows))
+    with open(os.path.join(OUT, "INSERT_VIDEOS_INSTRUCTIONS.md"), "w") as f:
+        f.write(doc)
 
 
 if __name__ == "__main__":

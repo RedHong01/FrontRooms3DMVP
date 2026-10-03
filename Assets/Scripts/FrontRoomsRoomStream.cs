@@ -37,7 +37,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     // leaves when a pooled room is recycled onto that threshold.
     const float RearSealOffset = .24f;
     const float BoundaryMargin = .34f;
-    const float TitleSpeed = 1.15f;
+    /// <summary>The title camera's crawl, metres per second. The game eases it out when the player takes over.</summary>
+    public const float TitleSpeed = 1.15f;
     // The title crawl is intentionally slow, but the start trigger should
     // feel like a handoff into play rather than another title beat. Accelerate
     // over a short ramp, then settle precisely on the next room's authored
@@ -107,6 +108,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         public float doorProgress;
         public bool doorOpening;
         public bool doorOpen;
+        // The terminal door swinging shut for good (CloseTerminalDoor). The
+        // title's doors snap shut instead: its camera never looks back.
+        public bool doorClosing;
         // Broken by the Relay: the door stays open and never auto-closes.
         public bool doorBroken;
         public bool connected;
@@ -186,6 +190,11 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     bool hasControl;
     bool isEntering;
     int firstPlayableSequence = -1;
+    // Ended for play (EndStreamAt): nothing recycles or rebases, rooms past
+    // the terminal room are put away, and the terminal door is the game's.
+    bool frozen;
+    int terminalSequence = int.MaxValue;
+    bool terminalLocked;
 
     /// <summary>Raised once per door, when its latch first releases.</summary>
     public event Action<int, Vector3> DoorOpeningStarted;
@@ -224,6 +233,32 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     /// <summary>Sequence of the first furnished room after the empty lead rooms, or -1 before the handoff.</summary>
     public int FirstProfileSequence => IsPlayable ? firstPlayableSequence + LeadRooms + 1 : -1;
     int LeadRooms => Mathf.Max(0, emptyLeadRooms);
+    /// <summary>True once EndStreamAt has handed the remaining rooms to play.</summary>
+    public bool IsEnded => frozen;
+    /// <summary>The room whose far door leads out of the ended stream, or -1.</summary>
+    public int TerminalSequence => frozen ? terminalSequence : -1;
+    /// <summary>The oldest room still loaded: the far end of the corridor behind the camera.</summary>
+    public int OldestSequence => initialized ? FindOldestRoom()?.sequence ?? 0 : 0;
+    /// <summary>While true the terminal door stays shut even when the player walks up to it.</summary>
+    public bool TerminalDoorHeld { get; set; }
+    /// <summary>The terminal door has opened at least part way and has not been shut for good.</summary>
+    public bool TerminalDoorOpen
+    {
+        get
+        {
+            var room = frozen ? FindSequence(terminalSequence) : null;
+            return room != null && !terminalLocked && room.doorProgress > 0f;
+        }
+    }
+    /// <summary>CloseTerminalDoor was called and the leaves are back in the frame: the stream rooms can no longer be seen.</summary>
+    public bool TerminalDoorShut
+    {
+        get
+        {
+            var room = frozen ? FindSequence(terminalSequence) : null;
+            return room != null && terminalLocked && !room.doorClosing && room.doorProgress <= 0f;
+        }
+    }
 
     void EnsureVolumetricLightMaterial()
     {
@@ -275,6 +310,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         lobbyOnlyTitle = true;
         firstPlayableSequence = -1;
         TotalRebaseShift = 0f;
+        frozen = false;
+        terminalSequence = int.MaxValue;
+        terminalLocked = false;
+        TerminalDoorHeld = false;
 
         EnsureVolumetricLightMaterial();
 
@@ -408,7 +447,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
     /// </summary>
     public void RequestStart()
     {
-        if (!initialized || hasControl || startRequested) return;
+        if (!initialized || hasControl || startRequested || frozen) return;
         var current = FindCurrentRoom();
         var next = FindSequence(current.sequence + 1);
         if (next == null) return;
@@ -428,6 +467,116 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         // its creak before the player can see or hear the hinge move.
         next.doorOpening = false;
         BeginDoorOpening(current);
+    }
+
+    /// <summary>
+    /// The first room, from the camera's room forward, whose far door is still
+    /// shut and not moving: nothing beyond it has been seen yet. -1 when no
+    /// such room is loaded.
+    /// </summary>
+    public int FirstClosedDoorSequence()
+    {
+        if (!initialized || streamCamera == null) return -1;
+        for (var room = FindCurrentRoom(); room != null; room = FindSequence(room.sequence + 1))
+            if (!room.doorOpen && !room.doorOpening && !room.doorBroken && room.doorProgress <= 0f) return room.sequence;
+        return -1;
+    }
+
+    /// <summary>
+    /// Play starts where the camera is: the stream ends at room
+    /// <paramref name="sequence"/>, whose shut far door the game connects to
+    /// the generated map. Rooms beyond that door (sealed, never seen) are put
+    /// away, the title crawl stops, and nothing recycles or rebases any more,
+    /// so the rooms that are left stay where the map expects them. The
+    /// room's end wall is carried out to <paramref name="facadeHalfWidth"/>
+    /// either side of the centreline (outside its side walls), so from the map
+    /// the door sits in one continuous wall. The terminal door then opens by
+    /// proximity like every stream door, unless TerminalDoorHeld, and shuts
+    /// for good on CloseTerminalDoor.
+    /// </summary>
+    public void EndStreamAt(int sequence, float facadeHalfWidth)
+    {
+        if (!initialized || frozen) return;
+        var terminal = FindSequence(sequence);
+        if (terminal == null) return;
+        frozen = true;
+        terminalSequence = sequence;
+        terminalLocked = false;
+        startRequested = true;
+        isEntering = false;
+        hasControl = true;
+        transitionPoolIndex = -1;
+        for (var i = 0; i < MaxRooms; i++)
+        {
+            var room = pool[i];
+            if (room == null || room.sequence <= sequence) continue;
+            room.connected = false;
+            if (room.doorAudio != null) room.doorAudio.Stop();
+            ResetRoomLights(room);
+            room.root.SetActive(false);
+        }
+        BuildFacade(terminal, facadeHalfWidth);
+    }
+
+    /// <summary>
+    /// Once the terminal door has shut for good: destroy one piece of the
+    /// stream the map no longer needs. First every room but the terminal one
+    /// (whose end wall and door still face the map), then that room's unused
+    /// profile variants. One per call, so the teardown is spread over frames.
+    /// False when nothing is left to remove. Tick must not run afterwards.
+    /// </summary>
+    public bool DisposeOneRoom()
+    {
+        if (!frozen || !terminalLocked) return false;
+        for (var i = 0; i < MaxRooms; i++)
+        {
+            var room = pool[i];
+            if (room == null || room.sequence == terminalSequence) continue;
+            Destroy(room.root);
+            pool[i] = null;
+            return true;
+        }
+        var terminal = FindSequence(terminalSequence);
+        if (terminal?.profileVariants == null) return false;
+        for (var v = 0; v < terminal.profileVariants.Length; v++)
+        {
+            var variant = terminal.profileVariants[v];
+            if (variant == null || variant.activeSelf) continue;
+            Destroy(variant);
+            terminal.profileVariants[v] = null;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Swing the terminal door shut and keep it shut: the way back to the stream rooms is gone.</summary>
+    public void CloseTerminalDoor()
+    {
+        if (!frozen || terminalLocked) return;
+        terminalLocked = true;
+        var room = FindSequence(terminalSequence);
+        if (room == null || room.doorProgress <= 0f) return;
+        room.doorOpen = false;
+        room.doorOpening = false;
+        room.doorClosing = true;
+        room.doorSoundPlayed = false;
+    }
+
+    /// <summary>
+    /// The terminal room's end wall carried out past its side walls. These
+    /// strips stand in the gap between the room and the map's start-area
+    /// walls, so only their map side is ever seen: flush with the door
+    /// returns, in the room's own (world-projected) paper, so the print runs
+    /// on across the joint.
+    /// </summary>
+    void BuildFacade(RoomSlot room, float halfWidth)
+    {
+        var inner = RoomWidth * .5f;
+        var span = halfWidth - inner;
+        if (span <= .01f) return;
+        var wall = ProfileMaterial(profileWallMaterials, room.rule, wallMaterial);
+        Box(room.root.transform, "door wall extension left", new Vector3(-(inner + span * .5f), RoomHeight * .5f, RoomLength), new Vector3(span, RoomHeight, DoorWallDepth), wall);
+        Box(room.root.transform, "door wall extension right", new Vector3(inner + span * .5f, RoomHeight * .5f, RoomLength), new Vector3(span, RoomHeight, DoorWallDepth), wall);
     }
 
     /// <summary>
@@ -555,10 +704,22 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         for (var i = 0; i < MaxRooms; i++)
         {
             var room = pool[i];
-            if (room == null) continue;
+            if (room == null || room.sequence > terminalSequence) continue;
             var distance = room.endZ - cameraZ;
-            if (!room.doorOpen && distance < 4f && distance > -1f)
+            // The terminal door leads into the map: it waits while the game
+            // holds it, and once shut for good it never opens again.
+            var terminal = room.sequence == terminalSequence;
+            var mayOpen = !terminal || (!TerminalDoorHeld && !terminalLocked);
+            // In play the player can come back to a door from its far side,
+            // where the leaves swing: open it only while they are clear of the swing.
+            var inReach = frozen
+                ? (distance > 0f && distance < 4f) || (distance < -1.5f && distance > -4f)
+                : distance < 4f && distance > -1f;
+            if (!room.doorOpen && mayOpen && inReach)
+            {
+                room.doorClosing = false;
                 BeginDoorOpening(room);
+            }
             if (room.doorOpening && room.doorProgress < 1f)
             {
                 room.doorProgress = Mathf.MoveTowards(room.doorProgress, 1f, dt / DoorOpenSeconds);
@@ -567,7 +728,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 {
                     room.doorOpening = false;
                     room.doorOpen = true;
-                    var next = FindSequence(room.sequence + 1);
+                    // Nothing of the stream lies past the terminal door.
+                    var next = terminal ? null : FindSequence(room.sequence + 1);
                     if (next != null)
                     {
                         next.connected = true;
@@ -576,7 +738,10 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                     }
                 }
             }
-            if (room.doorOpen && !room.doorBroken && distance < -4f && room.sequence < currentSequence)
+            // Doors behind the camera shut so their rooms can be recycled. An
+            // ended stream recycles nothing, so in play they stay open; only
+            // the terminal door shuts (CloseTerminalDoor).
+            if (!frozen && room.doorOpen && !room.doorBroken && distance < -4f && room.sequence < currentSequence)
             {
                 room.doorOpen = false;
                 room.doorOpening = false;
@@ -584,6 +749,12 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
                 room.doorSoundPlayed = false;
                 if (room.doorAudio != null) room.doorAudio.Stop();
                 ApplyDoorPose(room);
+            }
+            if (room.doorClosing)
+            {
+                room.doorProgress = Mathf.MoveTowards(room.doorProgress, 0f, dt / DoorOpenSeconds);
+                ApplyDoorPose(room);
+                if (room.doorProgress <= 0f) room.doorClosing = false;
             }
         }
     }
@@ -600,7 +771,7 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         for (var i = 0; i < MaxRooms; i++)
         {
             var room = pool[i];
-            if (room == null || room.lampState == null) continue;
+            if (room == null || room.lampState == null || room.sequence > terminalSequence) continue;
             for (var lamp = 0; lamp < room.lampState.Length; lamp++)
                 TickLamp(room, lamp, dt);
         }
@@ -688,6 +859,8 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         // crossed; the loop is bounded by the fixed pool size and performs no
         // allocation.
         AdvanceCurrentSequence();
+        // An ended stream keeps the rooms it has: the map is built round them.
+        if (frozen) return;
 
         var oldest = FindOldestRoom();
         if (oldest == null || oldest.sequence >= currentSequence - 1) return;
@@ -738,6 +911,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
     void RebaseIfNeeded()
     {
+        // The camera belongs to the player once the stream has ended; the
+        // rooms must stay put in the map's world.
+        if (frozen) return;
         var z = streamCamera.transform.position.z;
         if (Mathf.Abs(z) <= RebaseThreshold) return;
         var shift = Mathf.Floor(z / RebaseThreshold) * RebaseThreshold;
@@ -840,15 +1016,15 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
 
     RoomSlot FindOldestRoom()
     {
-        var oldest = pool[0];
-        for (var i = 1; i < MaxRooms; i++) if (pool[i] != null && pool[i].sequence < oldest.sequence) oldest = pool[i];
+        RoomSlot oldest = null;
+        for (var i = 0; i < MaxRooms; i++) if (pool[i] != null && (oldest == null || pool[i].sequence < oldest.sequence)) oldest = pool[i];
         return oldest;
     }
 
     RoomSlot FindNewestRoom()
     {
-        var newest = pool[0];
-        for (var i = 1; i < MaxRooms; i++) if (pool[i] != null && pool[i].sequence > newest.sequence) newest = pool[i];
+        RoomSlot newest = null;
+        for (var i = 0; i < MaxRooms; i++) if (pool[i] != null && (newest == null || pool[i].sequence > newest.sequence)) newest = pool[i];
         return newest;
     }
 

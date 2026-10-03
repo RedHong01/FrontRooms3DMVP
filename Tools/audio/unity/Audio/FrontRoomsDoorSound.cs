@@ -81,14 +81,16 @@ namespace FrontRooms.Audio
             stillTime = 0f;
             if (!FrontRoomsFmod.Ready) return;
             var p = transform.position;
-            if (previousAngle < ClosedAngle)
+            if (mode == Mode.Automatic)
             {
-                if (mode == Mode.Automatic) FrontRoomsFmod.OneShot(SoundIds.DoorAutoOperator, p);
-                else
-                {
-                    FrontRoomsFmod.OneShot(SoundIds.DoorHandle, p);
-                    FrontRoomsFmod.OneShot(SoundIds.DoorUnlatch, p);
-                }
+                // The operator motor drives the leaf both ways: out of the frame and back from the stop.
+                if (previousAngle < ClosedAngle || previousAngle >= openLimit - 3f)
+                    FrontRoomsFmod.OneShot(SoundIds.DoorAutoOperator, p);
+            }
+            else if (previousAngle < ClosedAngle)
+            {
+                FrontRoomsFmod.OneShot(SoundIds.DoorHandle, p);
+                FrontRoomsFmod.OneShot(SoundIds.DoorUnlatch, p);
             }
             if (!idsReady)
             {

@@ -42,7 +42,25 @@ namespace FrontRooms.Map
             }
 
             // Edge ownership for the repair: 1 = module perimeter, 2 = module inside.
+            // Modules stamped earlier in this chunk keep their walls ranked the same way.
             var owner = new byte[2 * N * N];
+            for (var r = 0; r < chunk.rooms.Length; r++)
+            {
+                var earlier = chunk.ModuleOf(r);
+                if (earlier == null) continue;
+                var rc = chunk.rooms[r];
+                for (var j = rc.y; j < rc.y + rc.h; j++)
+                for (var i = rc.x; i < rc.x + rc.w; i++)
+                {
+                    var k = MapGrid.LocalIndex(i, j);
+                    if (i < rc.x + rc.w - 1) owner[k] = 2;
+                    else if (i < N - 1) owner[k] = 1;
+                    if (j < rc.y + rc.h - 1) owner[N * N + k] = 2;
+                    else if (j < N - 1) owner[N * N + k] = 1;
+                    if (i == rc.x && i > 0) owner[k - 1] = 1;
+                    if (j == rc.y && j > 0) owner[N * N + k - N] = 1;
+                }
+            }
             for (var j = 0; j < d; j++)
             for (var i = 0; i < w - 1; i++)
                 Set(chunk, owner, x0 + i, y0 + j, true, module.innerEast[i + j * (w - 1)], 2);

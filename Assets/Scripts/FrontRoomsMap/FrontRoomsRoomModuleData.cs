@@ -139,7 +139,8 @@ namespace FrontRooms.Map
             lamps = Resize(lamps, width * depth, ModuleLamp.Auto);
             customColumns = customColumns ?? new ModuleColumn[0];
             props = props ?? new ModuleProp[0];
-            weight = Math.Max(0f, weight);
+            // NaN and negative weights mean never; a huge one is capped so totals stay finite.
+            weight = weight > 0f ? Math.Min(weight, 1000f) : 0f;
             minTier = Clamp(minTier, 0, 9);
             maxTier = Clamp(maxTier, minTier, 9);
         }
@@ -289,6 +290,9 @@ namespace FrontRooms.Map
             if (width >= MaxCells - 1 || depth >= MaxCells - 1)
                 warnings.Add("A side of 7 or 8 cells meets the chunk border: the map decides the edges there and may open one of your walls to keep the maze connected. Keep props off those walls.");
             if (fill == ModuleFill.Office && theme != ZoneTheme.Office) warnings.Add("Office fill in a Level 0 room.");
+            var dresses = fill == ModuleFill.Office || fill == ModuleFill.Pile || (fill == ModuleFill.Auto && (theme == ZoneTheme.Office || (width >= 4 && depth >= 4)));
+            if (dresses && InnerStrips().Count > 0)
+                warnings.Add("Fill " + fill + " furnishes the room as one open space: the Office kit or a pile may stand in an inner wall or block an inner doorway. Use Fill None with inner walls.");
             if (fill == ModuleFill.Pile && (width < 4 || depth < 4)) warnings.Add("A pile needs a hall of 4 x 4 cells to look right.");
 
             // Props: inside the clear floor, under the ceiling, off the openings.

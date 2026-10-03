@@ -74,11 +74,14 @@ public sealed class FrontRoomsLevelProfile : ScriptableObject
     /// <summary>The modules' data, in a stable order (by asset name), for the generator. Never the assets' own data objects.</summary>
     public System.Collections.Generic.List<RoomModuleData> ModuleData()
     {
+        // Each asset once (a duplicate would double its weight); ties in name keep the list's order.
+        var seen = new System.Collections.Generic.HashSet<FrontRoomsRoomModule>();
         var list = new System.Collections.Generic.List<(string, RoomModuleData)>();
         if (modules != null)
             foreach (var m in modules)
-                if (m != null && m.data != null) list.Add((m.name, m.data.Clone()));
-        list.Sort((a, b) => string.CompareOrdinal(a.Item1, b.Item1));
+                if (m != null && m.data != null && seen.Add(m)) list.Add((m.name, m.data.Clone()));
+        var order = new System.Collections.Generic.List<(string, RoomModuleData)>(list);
+        list.Sort((a, b) => { var c = string.CompareOrdinal(a.Item1, b.Item1); return c != 0 ? c : order.IndexOf(a).CompareTo(order.IndexOf(b)); });
         var result = new System.Collections.Generic.List<RoomModuleData>();
         foreach (var (_, d) in list) result.Add(d);
         return result;

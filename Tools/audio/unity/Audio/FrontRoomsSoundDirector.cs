@@ -63,7 +63,9 @@ namespace FrontRooms.Audio
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Boot()
         {
-            if (Instance != null || Application.isBatchMode) return;
+            var tracing = System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-audioTrace") >= 0;
+            if (Instance != null || (Application.isBatchMode && !tracing)) return;
+            FrontRoomsFmod.Tracing = tracing;
             var go = new GameObject("FrontRooms Sound Director");
             DontDestroyOnLoad(go);
             go.AddComponent<FrontRoomsSoundDirector>();
@@ -97,6 +99,14 @@ namespace FrontRooms.Audio
             StopRoomTone(true);
             for (var i = 0; i < fixtureVoices; i++) FrontRoomsFmod.Stop(ref fixtureVoice[i], true);
             if (muteLegacyUnityAudio) AudioListener.volume = 1f;
+            if (FrontRoomsFmod.Tracing)
+            {
+                var args = System.Environment.GetCommandLineArgs();
+                var seed = System.Array.IndexOf(args, "-autopilotSeed");
+                var name = seed >= 0 && seed + 1 < args.Length ? "trace_seed" + args[seed + 1] + ".txt" : "trace.txt";
+                FrontRoomsFmod.WriteTrace(System.IO.Path.Combine(System.IO.Directory.GetParent(Application.dataPath).FullName,
+                    "Verification", "audio", name));
+            }
         }
 
         void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -212,7 +222,9 @@ namespace FrontRooms.Audio
         SoundIds.Surface SurfaceAt(Vector3 feet)
         {
             if (map == null) return SoundIds.Surface.Carpet;
-            var zone = map.ZoneOf(map.CellOf(feet));
+            var cell = map.CellOf(feet);
+            if (map.InStartArea(cell)) return SoundIds.Surface.Carpet;            // the title's stream rooms: Level 0
+            var zone = map.ZoneOf(cell);
             return zone.theme == ZoneTheme.Office ? SoundIds.Surface.CarpetTile : SoundIds.Surface.Carpet;
         }
 
@@ -224,7 +236,9 @@ namespace FrontRooms.Audio
         float DampnessAt(Vector3 feet)
         {
             if (map == null) return .4f;
-            var zone = map.ZoneOf(map.CellOf(feet));
+            var cell = map.CellOf(feet);
+            if (map.InStartArea(cell)) return .4f;
+            var zone = map.ZoneOf(cell);
             if (zone.theme == ZoneTheme.Office) return .15f;
             return zone.height == ZoneHeight.Low ? .55f : zone.height == ZoneHeight.Tall ? .3f : .4f;
         }
@@ -325,7 +339,7 @@ namespace FrontRooms.Audio
             FrontRoomsFmod.SetGlobal(SoundIds.Param.Tension, tension);
 
             var zone = SoundIds.Zone.Standard;
-            if (map != null && listener != null)
+            if (map != null && listener != null && !map.InStartArea(map.CellOf(listener.position)))
             {
                 var info = map.ZoneOf(map.CellOf(listener.position));
                 zone = info.theme == ZoneTheme.Office ? SoundIds.Zone.Office

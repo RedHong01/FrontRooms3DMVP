@@ -4,26 +4,40 @@ The design plan replaces the straight train of rooms with an endless Level 0
 maze. The generator produces it as data (cells, edges, zones, keys);
 `FrontRoomsMapWorld` builds it as geometry around the player. The main game
 (`FrontRooms3D.unity`) plays in it: the title is still the looping room
-stream, and pressing Space noclips the player into the maze.
+stream, and pressing Space hands the player control in the stream room they
+are watching. The maze lies behind that corridor's next shut door.
 
 ## Main game flow
 
 1. **Title.** `FrontRoomsRoomStream` loops the Lobby corridor with the logo, unchanged.
-2. **Space.** The first door opens as before. When the camera is through it, a 0.22 s white-out covers the screen, the corridor is destroyed, and `FrontRoomsMapWorld.CreateEmbedded` builds the 5 × 5 chunks around the spawn (cell (4, 4) of chunk (0, 0)). The camera moves onto a `CharacterController` player, and the maze fades in over 0.8 s.
+2. **Space.** No glide and no white-out: the player takes over where the camera is.
+   - **Stream:** it ends at its first door that is still shut (`FrontRoomsRoomStream.EndStreamAt`). Rooms past that door are put away, and nothing recycles or rebases any more.
+   - **Placement:** `FrontRoomsMapWorld.CreateEmbedded` attaches the maze behind that door.
+     - Its root is the nearest multiple of 192 m where the door opens onto a cell (the title runs at x 256.5 = a cell centre, z 0 = room ends on cell lines).
+     - The five cells across the door are Standard-height Level 0, matching the stream room's 2.9 m ceiling and paper.
+     - The cell ahead is open and leads on for 150+ cells.
+   - **Start area:** the stream rooms are the map's start area (`SetStartArea`). The map builds nothing there and walls it off on three sides. The stream room's end wall, carried out by two facade strips, forms the fourth side with the door in it. `IsBuilt` and `PassageBetween` treat it as no map.
+   - **Streaming:** the maze streams in at the normal per-frame budget round the door (`StreamFocus`, `Begin(player, false)`). Map lamps whose light would reach through the stream walls are held dark (`StartLampsNorth/South`).
+   - **The door:** it opens once the 3 × 3 chunks round it are built and furnished (`ReadyAround(1)`, at most 3 s after Space).
+3. **Leaving the start rooms.**
+   - Once the player is 4 m into the maze, the door swings shut and stays shut.
+   - The stream's lamps fade out, and the maze's lamps beside the rooms fade in.
+   - The rooms behind it are destroyed one per frame. The last room goes, and the start area is handed back to the map, once every chunk round it has been dropped.
+4. **Play.**
 3. **Play.**
    - WASD and mouse to move and look. Shift sprints on 5 s of stamina, which refills after 1 s.
    - E opens or shuts a door (it swings away from you); holding E for 1 s breaks glass, and walking into the broken frame climbs through it.
    - Keys are collected by walking over them. With `doorsNeedKeys` off in the level profile (the default) they are shown but not required.
    - The HUD shows the zone name and meta line, the Relay state and distance, the prompt and hold bar, and the stamina segments under the crosshair. The hint card is timed: the first-run hint, then only flashes.
-4. **Relay** (`FrontRoomsMapHunter`, the same `HunterTuning` as before):
-   - **Release:** 3 s after the noclip, in a built cell 9–15 cells of walking away that the player cannot see, preferably behind them.
+5. **Relay** (`FrontRoomsMapHunter`, the same `HunterTuning` as before):
+   - **Release:** 3 s after the door to the stream rooms has shut behind the player, in a built cell 9–15 cells of walking away that the player cannot see, preferably behind them.
    - **States:** it does not know where the player is. Listen → **Wander** to a random place 6–14 cells away (at 80 % of hunt speed, keeping to shut doors) → Listen … It **chases only once it sees the player**: a 12 m ray at eye height that walls, shut doors and columns block. A noise sends it walking to that spot (Hunt), without running, even mid-search. Losing sight in a chase, it goes where it last saw the player; if it was right behind them as they went through a door, it follows into the room behind that door instead. Either way it then **searches that room** (up to 3 spots, listening 1.1 s at each, at 70 % of hunt speed; a carved room's cells, or the cells within 2 steps that need no door) and gives up, back to wandering. It does not follow the player further unless it hears or sees them again.
    - **Doors and glass:** it breaks shut doors (2.5 s of blows) and cannot pass unbroken glass.
    - **Noise:** it walks to sprint steps (26 m), door moves (14 m) and breaking glass (40 m).
    - **Leash:** if it ends up off the built map it relays at once; if it is more than 30 cells away and has neither seen nor heard the player for 45 s, it relays itself closer, out of sight.
    - **Catch:** under 0.7 m while it sees the player.
    - **Body:** r 0.3 m, tested from 0.4 to 1.95 m. It walks straight while the body fits and otherwise plans a detour on a 0.25 m grid round furniture, columns and open door leaves. With no way round furniture it passes through it on a route that still keeps out of walls. A hunt that ends inside furniture stops beside it. A door it breaks swings away from it.
-5. **Caught.** The result shows time, zones crossed, keys taken and doors it broke. R restarts: same title, new maze (or the same one if `runSeed` is set).
+6. **Caught.** The result shows time, zones crossed, keys taken and doors it broke. R restarts: same title, new maze (or the same one if `runSeed` is set).
 
 ## Level profile
 
@@ -96,7 +110,7 @@ Controls: click to look, WASD, Shift sprints on about 5 s of stamina, E opens an
 - **FrontRooms → Map → Select level profile** / **Assign level profile to main scene** (batch: `-executeMethod FrontRoomsLevelProfiles.SetupBatch -quit`).
 - **FrontRooms → Map → Verify 100 seeds**: checks 100 seeds of the level profile's generation numbers over 8 × 8 chunks each and writes `Verification/map-verification-latest.json`.
 - **FrontRooms → Map → Capture test views**: builds the area around the spawn in edit mode and renders four views to `Verification/map-test-*.png`.
-- **FrontRooms → Map → Play main scene on autopilot**: plays `FrontRooms3D.unity` unattended. It presses Space, noclips, then walks breadth-first routes for 75 s, opening doors and sprinting once. Frames and `report.json` go to `Verification/main-autopilot`. Batch: `-executeMethod FrontRoomsMainScenePlaytest.RunBatch`, with no `-quit`; it exits 0 on PASS.
+- **FrontRooms → Map → Play main scene on autopilot**: plays `FrontRooms3D.unity` unattended. It presses Space (at 1.8 s, or `-autopilotSpaceAt N`; 1.0 starts with the door still shut 4.85 m ahead), walks out of the stream room into the maze, then walks breadth-first routes for 75 s, opening doors and sprinting once. The report adds the handoff: the slowest frames after Space and what the map built in them, when the map was ready, how long the player waited at the held door, and when the door opened and shut and the stream was removed. Frames and `report.json` go to `Verification/main-autopilot`. Batch: `-executeMethod FrontRoomsMainScenePlaytest.RunBatch`, with no `-quit`; it exits 0 on PASS.
 - Headless `-executeMethod FrontRoomsMapTestScene.CaptureColumnsBatch -captureSeed N`: renders the first Level 0, Office and tall-hall column near the spawn and the ceiling straight above the spawn (troffer vs printed grid) to `Verification/map-columns-*.png` and `map-ceiling.png`.
 - **FrontRooms → Map → Test Relay navigation**: builds the map around the spawn, scatters test furniture and sends the Relay on 60 hunts; writes `Verification/relay-nav-test.json`.
 - Headless: `-executeMethod FrontRoomsMapVerification.RunBatch`, `FrontRoomsMapTestScene.CreateBatch`, `FrontRoomsMapTestScene.CaptureBatch`, `FrontRoomsRelayNavTest.RunBatch`.
@@ -108,7 +122,7 @@ Controls: click to look, WASD, Shift sprints on about 5 s of stamina, E opens an
 - `Assets/Scripts/FrontRoomsMap/FrontRoomsModuleUnits.cs`: the modular unit spec in code. `FrontRoomsLevelProfile.cs`: the level profile asset type.
 - `Assets/Scripts/FrontRoomsMap/FrontRoomsMapWorld.cs`: the level builder, both embedded in the game and standalone in the test scene. `FrontRoomsMapWalker.cs` is the test scene's player.
 - `Assets/Scripts/FrontRoomsMap/FrontRoomsMapHunter.cs`: the Relay on the map.
-- `Assets/Scripts/FrontRooms3DGame.cs`: title, noclip, map play, HUD, and the editor-only autopilot.
+- `Assets/Scripts/FrontRooms3DGame.cs`: title, the in-place handoff to the maze, map play, HUD, and the editor-only autopilot.
 - `Assets/Editor/FrontRoomsMap/`: debug window, verification, test scene menu and captures.
 
 The older `FrontRoomsMaze` (finite 9 × 7 maze) and `FrontRoomsRace` (route graph) generators are superseded by this layer and can be removed once the test scene is approved.

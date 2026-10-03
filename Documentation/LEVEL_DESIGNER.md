@@ -1,6 +1,6 @@
-# FrontRooms Level Designer (P2)
+# FrontRooms Level Designer (P1–P3)
 
-Author a room as data, see it in the game's own build next to the editor, then (P3) let the generator use it. Every number follows `LEVEL_MODULE_SPEC.md`.
+Author a room as data, see it in the game's own build next to the editor, and let the generator place it in the real maze. Every number follows `LEVEL_MODULE_SPEC.md`.
 
 ## Use it
 
@@ -48,7 +48,15 @@ While the designer scene is the active scene (not in Play):
 
 Checks: the stamp is tested outside Unity (400 random rooms: borders unchanged, every cell connected, edges, lamps and columns as authored; rotation four times is identity), plus the 100-seed map check. Headless captures: `-executeMethod FrontRoomsLevelDesigner.CaptureBatch -quit` writes `Verification/designer-<module>-eye.png` and `-plan.png`. The P2 tools: `-executeMethod FrontRoomsLevelDesignerTests.RunBatch -quit` writes `Verification/level-designer-tests.json` (63 checks on a temporary module: palette placement against every wall and both faces of an inner wall, hung and desk-top kits; for every turn, round trips and every built prop against the conversions 26 world periods out; Scene move, turn, drop and delete with Undo; the generator toggle, chance and tier with Undo; the module's checks).
 
+## In the game (P3)
+
+A module the level profile lists (`Assets/Levels/FrontRoomsLevel0.asset` → *Room modules*; the window's *Used by the generator*) is placed by the generator into the real maze:
+
+- Each carved room that is one open space rolls **Module Chance** (`generation.moduleChance`, 0.3). If it hits, a module with the room's height and theme, whose tier range includes **Module Tier** (`generation.moduleTier`, 0), and that fits the room in some allowed quarter turn, is chosen by **weight** (shared between its fitting turns).
+- It is stamped at a hashed spot in the room, off the chunk border when the room leaves room for that, so the walls you drew stay yours. Where the map decides an edge (zone and chunk borders, a wall reopened to keep the maze connected), any of your props that would block it is left out with a console warning.
+- The same seed always gives the same modules; a revisit shift may bring a different one. The 100-seed check runs with the library and reports how many it placed; the debug map (**FrontRooms → Map → Debug map**) outlines them in orange.
+- The four samples are in the library from the start. The preview turns the generator's modules off around the room you edit, so only yours is there.
+
 ## Next
 
-- **P3** the generator picks modules by weight, height, theme, tier and rotation into rooms that fit, with the 100-seed check extended to stamped maps.
-- **P4** live tuning in Play mode, gameplay markers (key spot, Relay entry), tiers from DP08.
+- **P4** live tuning in Play mode, gameplay markers (key spot, Relay entry), tiers from DP08 (module tier and the Relay's hearing per tier).

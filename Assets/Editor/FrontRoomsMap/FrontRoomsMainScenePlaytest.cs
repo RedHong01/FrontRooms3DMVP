@@ -4,8 +4,9 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 
 /// <summary>
-/// Plays the main scene unattended: title → Space → noclip → about 75 s in
-/// the maze with the Relay, on FrontRooms3DGame's editor-only autopilot.
+/// Plays the main scene unattended: title → Space → out of the stream room
+/// into the maze → about 75 s there with the Relay, on FrontRooms3DGame's
+/// editor-only autopilot (-autopilotSpaceAt N sets when Space is pressed).
 /// Frames and report.json go to Verification/main-autopilot. In batch mode
 /// the editor exits 0 on PASS and 1 otherwise.
 /// Run with -executeMethod FrontRoomsMainScenePlaytest.RunBatch (no -quit);

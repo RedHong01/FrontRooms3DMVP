@@ -87,6 +87,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         public float eventEnd;
         public float phase;
         public float level = 1f;
+        // Near the start area (its light would reach through the stream rooms' walls): 1 north of the door line, 2 south of it.
+        public byte startGroup;
     }
 
     public sealed class Door
@@ -200,6 +202,11 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     readonly List<(RoomModuleData module, GridCoord chunk, int x, int y)> placedModules = new List<(RoomModuleData, GridCoord, int, int)>();
     Vector3? spawnOverride;
     float spawnYaw;
+    // The start area (SetStartArea): cells the title's stream rooms stand in,
+    // and the cell their door opens onto.
+    RectInt startArea;
+    bool hasStartArea;
+    GridCoord startDoorCell;
     readonly List<GridCoord> scratch = new List<GridCoord>();
     readonly List<Door> movingDoors = new List<Door>();
     Transform player;
@@ -270,15 +277,127 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         pileChance = source.pileChance;
     }
 
-    /// <summary>Build everything around the player at once, then stream from Update.</summary>
-    public void Begin(Transform playerTransform)
+    /// <summary>
+    /// Start streaming around the player. With <paramref name="buildAllNow"/>
+    /// every chunk in range is built and furnished in this call, for builds
+    /// nobody watches (the test scene, edit-mode captures). Without it they
+    /// fill in from Update at the normal per-frame budget, nearest first;
+    /// the main game does that while the player is still in the title's
+    /// stream room, and opens the door into the map once Settled.
+    /// </summary>
+    public void Begin(Transform playerTransform, bool buildAllNow = true)
     {
         player = playerTransform;
         begun = true;
-        Stream(ChunkOf(player.position), int.MaxValue);
-        // The first build is hidden (the noclip white-out, or an edit-mode capture): furnish it all now.
-        while (DressNext()) { }
+        if (buildAllNow)
+        {
+            Stream(ChunkOf(StreamCenter), int.MaxValue);
+            while (DressNext()) { }
+        }
         TickFixtures(0f);
+    }
+
+    /// <summary>While set, chunks stream round this world point instead of round the player.</summary>
+    public Vector3? StreamFocus { get; set; }
+
+    const double FocusFrameBudgetMs = 8.0;
+
+    Vector3 StreamCenter => StreamFocus ?? player.position;
+
+    /// <summary>
+    /// The chunks within <paramref name="rings"/> of the streaming centre are
+    /// built and none of their rooms is still waiting to be furnished.
+    /// </summary>
+    public bool ReadyAround(int rings)
+    {
+        if (!begun || player == null) return false;
+        var center = ChunkOf(StreamCenter);
+        for (var dy = -rings; dy <= rings; dy++)
+        for (var dx = -rings; dx <= rings; dx++)
+            if (!built.ContainsKey(new GridCoord(center.x + dx, center.y + dy))) return false;
+        foreach (var job in dressQueue)
+        {
+            var c = job.data.coord;
+            if (Mathf.Abs(c.x - center.x) <= rings && Mathf.Abs(c.y - center.y) <= rings
+                && built.TryGetValue(c, out var standing) && standing == job.chunk) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Every chunk within the build radius of the streaming centre is built, and every queued room is furnished.</summary>
+    public bool Settled
+    {
+        get
+        {
+            if (!begun || player == null || dressQueue.Count > 0) return false;
+            var center = ChunkOf(StreamCenter);
+            for (var dy = -buildRadius; dy <= buildRadius; dy++)
+            for (var dx = -buildRadius; dx <= buildRadius; dx++)
+                if (!built.ContainsKey(new GridCoord(center.x + dx, center.y + dy))) return false;
+            return true;
+        }
+    }
+
+    // ---------- Start area: the title's stream rooms, left out of the map ----------
+
+    /// <summary>
+    /// Leave a rectangle of cells to the title's stream rooms, which the run
+    /// starts in. Those cells get no floor, ceiling, lamp, key, column, grade
+    /// or furniture; their west, east and south sides are walled; their north
+    /// side is the stream room's end wall, whose door opens onto
+    /// <paramref name="doorCell"/>. Render only: the generated data is not
+    /// changed, but IsBuilt and PassageBetween treat the cells as no map, so
+    /// the Relay and the autopilot never route through them. Call before Begin.
+    /// </summary>
+    public void SetStartArea(RectInt cells, GridCoord doorCell)
+    {
+        startArea = cells;
+        startDoorCell = doorCell;
+        hasStartArea = cells.width > 0 && cells.height > 0;
+    }
+
+    /// <summary>
+    /// Give the start area back to the map, once the stream rooms are gone.
+    /// Only while StartAreaBuilt is false: a chunk built round the rooms keeps
+    /// their hole and its walls until it is rebuilt.
+    /// </summary>
+    public void ClearStartArea() => hasStartArea = false;
+
+    public bool HasStartArea => hasStartArea;
+
+    public bool InStartArea(GridCoord cell) =>
+        hasStartArea && cell.x >= startArea.xMin && cell.x < startArea.xMax && cell.y >= startArea.yMin && cell.y < startArea.yMax;
+
+    /// <summary>
+    /// True while a built chunk has geometry shaped by the start area: one that
+    /// overlaps it, or owns a wall on its west or south side (the neighbours
+    /// own those edges).
+    /// </summary>
+    public bool StartAreaBuilt
+    {
+        get
+        {
+            if (!hasStartArea) return false;
+            foreach (var coord in built.Keys)
+            {
+                var o = MapGrid.ChunkOrigin(coord);
+                if (o.x < startArea.xMax && startArea.xMin - 1 < o.x + MapGrid.ChunkCells
+                    && o.y < startArea.yMax && startArea.yMin - 1 < o.y + MapGrid.ChunkCells) return true;
+            }
+            return false;
+        }
+    }
+
+    /// <summary>True when a column or bulkhead between two cell corners would touch the start area or its edge.</summary>
+    bool TouchesStartArea(int x0, int y0, int x1, int y1) =>
+        hasStartArea && x1 >= startArea.xMin && x0 <= startArea.xMax && y1 >= startArea.yMin && y0 <= startArea.yMax;
+
+    bool RoomInStartArea(MapChunk data, CellRect room)
+    {
+        if (!hasStartArea) return false;
+        var o = data.Origin;
+        return o.x + room.x < startArea.xMax && startArea.xMin < o.x + room.x + room.w
+            && o.y + room.y < startArea.yMax && startArea.yMin < o.y + room.y + room.h;
     }
 
     /// <summary>
@@ -394,9 +513,11 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     public Vector3 CellCenter(GridCoord cell) =>
         transform.TransformPoint(new Vector3((cell.x + .5f) * MapGrid.CellSize, 0f, (cell.y + .5f) * MapGrid.CellSize));
 
-    public bool IsBuilt(GridCoord cell) => built.ContainsKey(MapGrid.ChunkOf(cell));
+    /// <summary>The cell's chunk is built. Start-area cells never are: the stream rooms stand there.</summary>
+    public bool IsBuilt(GridCoord cell) => !InStartArea(cell) && built.ContainsKey(MapGrid.ChunkOf(cell));
 
-    public ZoneInfo ZoneOf(GridCoord cell) => Cache.ZoneOf(cell);
+    /// <summary>The zone a cell belongs to. The start area reads as the zone its door opens onto (Standard Level 0, like the stream rooms), not the generated zone hidden under it.</summary>
+    public ZoneInfo ZoneOf(GridCoord cell) => Cache.ZoneOf(InStartArea(cell) ? startDoorCell : cell);
 
     /// <summary>
     /// True for the map's own architecture: chunk walls, floors and ceilings,
@@ -416,11 +537,36 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     void Update()
     {
         if (!begun || player == null) return;
-        Stream(ChunkOf(player.position), chunksPerFrame);
-        DressNext();
+        frameWork.Clear();
+        workWatch.Restart();
+        Stream(ChunkOf(StreamCenter), chunksPerFrame);
+        // While the game streams round a focus (the player still in the
+        // title's stream room, watching), a heavy chunk build and a room's
+        // furniture never share a frame.
+        if (StreamFocus == null || workWatch.Elapsed.TotalMilliseconds < FocusFrameBudgetMs) DressNext();
         TickFixtures(Time.deltaTime);
         TickDoors(Time.deltaTime);
         CollectKeys();
+        if (frameWork.Length > 0) frameWork.Append(" = ").Append(workWatch.Elapsed.TotalMilliseconds.ToString("0.0")).Append(" ms");
+        previousWork = lastWork;
+        previousWorkFrame = lastWorkFrame;
+        lastWork = frameWork.ToString();
+        lastWorkFrame = Time.frameCount;
+    }
+
+    // What streaming did in the last Update, for frame-time reports (the autopilot's spikes).
+    readonly System.Text.StringBuilder frameWork = new System.Text.StringBuilder();
+    readonly System.Diagnostics.Stopwatch workWatch = new System.Diagnostics.Stopwatch(), stepWatch = new System.Diagnostics.Stopwatch();
+    string lastWork = "", previousWork = "";
+    int lastWorkFrame = -1, previousWorkFrame = -1;
+
+    /// <summary>The chunks built and rooms furnished in the Update of the given frame, with their times; empty when it did neither or is too old.</summary>
+    public string WorkInFrame(int frame) => frame == lastWorkFrame ? lastWork : frame == previousWorkFrame ? previousWork : "";
+
+    void NoteWork(string what)
+    {
+        if (frameWork.Length > 0) frameWork.Append(", ");
+        frameWork.Append(what).Append(' ').Append(stepWatch.Elapsed.TotalMilliseconds.ToString("0.0")).Append(" ms");
     }
 
     void Stream(GridCoord center, int budget)
@@ -446,7 +592,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
                 ShiftedChunks++;
             }
             droppedAt.Remove(coord);
+            stepWatch.Restart();
             Build(coord);
+            NoteWork("chunk " + coord);
             budget--;
         }
     }
@@ -514,8 +662,13 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var height = MapGrid.CeilingHeight(data.height[index]);
             var b = BlockOf(i, j, height);
             var cellCenter = new Vector3((i + .5f) * cs, 0f, (j + .5f) * cs);
-            Solid(b, theme.floor, cellCenter + Vector3.down * (ModuleUnits.FloorSlab * .5f), new Vector3(cs, ModuleUnits.FloorSlab, cs), CarpetRepeat);
-            Solid(b, theme.ceiling, cellCenter + Vector3.up * (height + ModuleUnits.CeilingSlab * .5f), new Vector3(cs, ModuleUnits.CeilingSlab, cs), CeilingRepeat);
+            // The title's stream rooms stand in the start area: no map there.
+            var reserved = InStartArea(cell);
+            if (!reserved)
+            {
+                Solid(b, theme.floor, cellCenter + Vector3.down * (ModuleUnits.FloorSlab * .5f), new Vector3(cs, ModuleUnits.FloorSlab, cs), CarpetRepeat);
+                Solid(b, theme.ceiling, cellCenter + Vector3.up * (height + ModuleUnits.CeilingSlab * .5f), new Vector3(cs, ModuleUnits.CeilingSlab, cs), CeilingRepeat);
+            }
 
             // East and north edges of every cell. Chunk borders on the east and
             // north belong to this chunk; west and south ones to the neighbour.
@@ -525,14 +678,29 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var northZone = Cache.ZoneOf(north);
             var eastHeight = Mathf.Max(height, MapGrid.CeilingHeight(eastZone.height));
             var northHeight = Mathf.Max(height, MapGrid.CeilingHeight(northZone.height));
-            BuildEdge(chunk, data.east[index], cell, east, new Vector3((i + 1) * cs, 0f, j * cs), Vector3.forward,
-                eastHeight, theme.wall, Theme(eastZone.theme).wall, BlockOf(i, j, eastHeight), Get, Solid, origin);
-            BuildEdge(chunk, data.north[index], cell, north, new Vector3(i * cs, 0f, (j + 1) * cs), Vector3.right,
-                northHeight, theme.wall, Theme(northZone.theme).wall, BlockOf(i, j, northHeight), Get, Solid, origin);
+            Material eastA = theme.wall, eastB = Theme(eastZone.theme).wall, northA = theme.wall, northB = Theme(northZone.theme).wall;
+            var eastKind = StartAreaEdge(data.east[index], cell, east, false, ref eastHeight, ref eastA, ref eastB);
+            var northKind = StartAreaEdge(data.north[index], cell, north, true, ref northHeight, ref northA, ref northB);
+            // A wall's ends reach half a thickness past its corner, except into the start area.
+            BuildEdge(chunk, eastKind, cell, east, new Vector3((i + 1) * cs, 0f, j * cs), Vector3.forward,
+                eastHeight, eastA, eastB, BlockOf(i, j, eastHeight), Get, Solid, origin,
+                !BothInStartArea(new GridCoord(cell.x, cell.y - 1), new GridCoord(cell.x + 1, cell.y - 1)),
+                !BothInStartArea(new GridCoord(cell.x, cell.y + 1), new GridCoord(cell.x + 1, cell.y + 1)));
+            BuildEdge(chunk, northKind, cell, north, new Vector3(i * cs, 0f, (j + 1) * cs), Vector3.right,
+                northHeight, northA, northB, BlockOf(i, j, northHeight), Get, Solid, origin,
+                !BothInStartArea(new GridCoord(cell.x - 1, cell.y), new GridCoord(cell.x - 1, cell.y + 1)),
+                !BothInStartArea(new GridCoord(cell.x + 1, cell.y), new GridCoord(cell.x + 1, cell.y + 1)));
 
-            if (data.pillar[i + j * (n + 1)]) BuildColumn(data.pillarStyle[i + j * (n + 1)], new Vector3(i * cs, 0f, j * cs), height, zone.theme, theme, b, Get, Solid, origin);
+            if (data.pillar[i + j * (n + 1)] && !TouchesStartArea(cell.x, cell.y, cell.x, cell.y))
+            {
+                // No column, cove or bulkhead reaches into the start area.
+                var style = data.pillarStyle[i + j * (n + 1)];
+                if (TouchesStartArea(cell.x, cell.y, cell.x + 2, cell.y)) style &= unchecked((byte)~MapChunk.ColumnBeamEast);
+                if (TouchesStartArea(cell.x, cell.y, cell.x, cell.y + 2)) style &= unchecked((byte)~MapChunk.ColumnBeamNorth);
+                BuildColumn(style, new Vector3(i * cs, 0f, j * cs), height, zone.theme, theme, b, Get, Solid, origin);
+            }
 
-            BuildFixture(chunk, cell, cellCenter, height, theme, data.lamp[index]);
+            if (!reserved) BuildFixture(chunk, cell, cellCenter, height, theme, data.lamp[index]);
         }
 
         for (var b = 0; b < builders.Length; b++)
@@ -554,7 +722,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         chunk.meshes.Add(shell.sharedMesh);
         shellColliders.Add(shell);
 
-        if (data.hasKey && !keysHeld.Contains(data.ownZone.id))
+        if (data.hasKey && !keysHeld.Contains(data.ownZone.id) && !InStartArea(data.keyCell))
         {
             var key = GameObject.CreatePrimitive(PrimitiveType.Cube);
             key.name = "Key · zone " + data.ownZone.id;
@@ -602,13 +770,35 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     delegate void SolidFn(int blockIndex, Material material, Vector3 center, Vector3 size, float repeat);
 
     /// <summary>
+    /// An edge as built round the start area: nothing inside it, nothing on
+    /// its north side (the stream room's end wall and door stand there), and
+    /// a plain wall in the outside cell's paper and height where it meets the
+    /// map on its west, east and south sides. Other edges pass through.
+    /// </summary>
+    EdgeKind StartAreaEdge(EdgeKind kind, GridCoord a, GridCoord b, bool northward, ref float height, ref Material wallA, ref Material wallB)
+    {
+        var inA = InStartArea(a);
+        var inB = InStartArea(b);
+        if (!inA && !inB) return kind;
+        if (inA && inB) return EdgeKind.Open;
+        if (northward && inA) return EdgeKind.Open;
+        var outside = Cache.ZoneOf(inA ? b : a);
+        height = MapGrid.CeilingHeight(outside.height);
+        wallA = wallB = Theme(outside.theme).wall;
+        return EdgeKind.Wall;
+    }
+
+    bool BothInStartArea(GridCoord a, GridCoord b) => InStartArea(a) && InStartArea(b);
+
+    /// <summary>
     /// One 3 m edge from <paramref name="start"/> along <paramref name="along"/>.
     /// Where the two sides are different themes the wall is split in two
     /// halves, each faced in its own room's paper. Doorway width and position
     /// come from the edge's hash, so no two doorways line up.
     /// </summary>
     void BuildEdge(BuiltChunk chunk, EdgeKind kind, GridCoord a, GridCoord b, Vector3 start, Vector3 along, float height,
-        Material wallA, Material wallB, int blockIndex, BuilderFn get, SolidFn solid, Vector3 origin)
+        Material wallA, Material wallB, int blockIndex, BuilderFn get, SolidFn solid, Vector3 origin,
+        bool mayExtendStart = true, bool mayExtendEnd = true)
     {
         if (kind == EdgeKind.Open) return;
         var length = MapGrid.CellSize;
@@ -616,8 +806,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         var across = new Vector3(along.z, 0f, along.x);
         void Piece(float from, float to, float bottom, float top, bool extendStart, bool extendEnd)
         {
-            if (from > 0f) extendStart = false;
-            if (to < length) extendEnd = false;
+            if (from > 0f || !mayExtendStart) extendStart = false;
+            if (to < length || !mayExtendEnd) extendEnd = false;
             var f = from - (extendStart ? WallThickness * .5f : 0f);
             var t = to + (extendEnd ? WallThickness * .5f : 0f);
             if (t - f < .05f || top - bottom < .05f) return;
@@ -785,6 +975,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     {
         // Only side-by-side cells share an edge; anything else is no way through.
         if (Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) != 1) return Passage.Wall;
+        // The start area is walled off from the map (its door is the stream's).
+        if (InStartArea(a) || InStartArea(b)) return Passage.Wall;
         switch (Cache.Edge(a, b))
         {
             case EdgeKind.Open:
@@ -868,6 +1060,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         light.shadowNearPlane = .1f;
         fixture.baseIntensity = theme.lampIntensity * (height > 4f ? 1.6f : 1f);
         fixture.light = light;
+        fixture.startGroup = StartLampGroup(cell, light.range);
         // About one lamp in three may cast shadows, and only near the player.
         fixture.castsShadow = MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, 223)) < .34f;
 
@@ -882,6 +1075,30 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         chunk.fixtures.Add(fixture);
     }
 
+    /// <summary>
+    /// Map lamps near the start area, held dark by the game while the stream
+    /// rooms can be seen: a lamp with no shadow lights straight through the
+    /// rooms' walls, so one switching on as its chunk streams in would
+    /// brighten the room the player is standing in. North: lamps past the
+    /// door line (they come up as the door opens). South: lamps beside and
+    /// behind the rooms (they come up once the door has shut for good).
+    /// 0 is dark, 1 normal.
+    /// </summary>
+    public float StartLampsNorth { get; set; } = 1f;
+    public float StartLampsSouth { get; set; } = 1f;
+
+    byte StartLampGroup(GridCoord cell, float range)
+    {
+        if (!hasStartArea) return 0;
+        var cs = MapGrid.CellSize;
+        var cx = (cell.x + .5f) * cs;
+        var cz = (cell.y + .5f) * cs;
+        var dx = Mathf.Max(startArea.xMin * cs - cx, 0f, cx - startArea.xMax * cs);
+        var dz = Mathf.Max(startArea.yMin * cs - cz, 0f, cz - startArea.yMax * cs);
+        if (dx * dx + dz * dz >= range * range) return 0;
+        return cell.y >= startDoorCell.y ? (byte)1 : (byte)2;
+    }
+
     void TickFixtures(float dt)
     {
         if (player == null) return;
@@ -893,14 +1110,15 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             f.level = Level(f);
             var lp = f.light.transform.position;
             var d = Vector2.Distance(new Vector2(lp.x, lp.z), new Vector2(p.x, p.z));
-            var fade = Mathf.Clamp01((lightRadius - d) / 3f);
+            var held = f.startGroup == 1 ? StartLampsNorth : f.startGroup == 2 ? StartLampsSouth : 1f;
+            var fade = Mathf.Clamp01((lightRadius - d) / 3f) * held;
             var on = fade > 0f && f.level > .01f;
             if (f.light.enabled != on) f.light.enabled = on;
             if (on) f.light.intensity = f.baseIntensity * f.level * fade;
             var shadows = f.castsShadow && on && d < shadowRadius ? LightShadows.Soft : LightShadows.None;
             if (f.light.shadows != shadows) f.light.shadows = shadows;
             f.panel.GetPropertyBlock(block);
-            block.SetColor("_EmissionColor", f.emission * Mathf.Max(.04f, f.level));
+            block.SetColor("_EmissionColor", f.emission * Mathf.Max(.04f, f.level * held));
             f.panel.SetPropertyBlock(block);
         }
     }
@@ -984,7 +1202,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         ResolveDressers();
         if (officeDress == null && officeDressOld == null && pileBuild == null) return;
         for (var r = 0; r < data.rooms.Length; r++)
-            if (data.RoomIntact(r) && Cache.Generator.Uniform(data, data.rooms[r]))
+            // A room cut by the start area is not one open space (and its props would land in the stream rooms).
+            if (data.RoomIntact(r) && Cache.Generator.Uniform(data, data.rooms[r]) && !RoomInStartArea(data, data.rooms[r]))
                 dressQueue.Enqueue(new DressJob { chunk = chunk, data = data, room = r });
     }
 
@@ -995,13 +1214,17 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         {
             var job = dressQueue.Dequeue();
             if (job.chunk.root == null || !built.TryGetValue(job.data.coord, out var current) || current != job.chunk) continue;
-            Dress(job.chunk, job.data, job.room);
+            stepWatch.Restart();
+            // A room that gets nothing (no office, no pile, no module props) does not use up the frame.
+            if (!Dress(job.chunk, job.data, job.room)) continue;
+            NoteWork("room " + job.room + " of " + job.data.coord);
             return true;
         }
         return false;
     }
 
-    void Dress(BuiltChunk chunk, MapChunk data, int r)
+    /// <summary>Furnish room r. False when it placed nothing.</summary>
+    bool Dress(BuiltChunk chunk, MapChunk data, int r)
     {
         var cs = MapGrid.CellSize;
         var room = data.rooms[r];
@@ -1010,12 +1233,25 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         var roomSeed = (int)MapHash.Hash(Cache.Generator.Seed, data.coord.x * 16 + r, data.coord.y, 307, data.revision);
         var columns = Columns(data, room);
         var clear = new List<Rect>(KeepClear(data, room));
-        // The player starts in the middle of chunk (0, 0): keep that spot clear too.
-        var mid = MapGrid.ChunkCells / 2;
-        if (data.coord.x == 0 && data.coord.y == 0 && room.Contains(mid, mid))
+        var o = data.Origin;
+        if (hasStartArea)
         {
-            var spawn = SpawnPoint();
-            clear.Add(new Rect(spawn.x - 1f, spawn.z - 1f, 2f, 2f));
+            // The stream room's door opens onto this room: keep its swing and the way in clear.
+            if (room.Contains(startDoorCell.x - o.x, startDoorCell.y - o.y))
+            {
+                var depth = ModuleUnits.DoorClearDepth + ModuleUnits.WallHalf;
+                clear.Add(new Rect((startDoorCell.x - o.x) * cs, (startDoorCell.y - o.y) * cs, cs, depth));
+            }
+        }
+        else
+        {
+            // The player starts in the middle of chunk (0, 0): keep that spot clear too.
+            var mid = MapGrid.ChunkCells / 2;
+            if (data.coord.x == 0 && data.coord.y == 0 && room.Contains(mid, mid))
+            {
+                var spawn = SpawnPoint();
+                clear.Add(new Rect(spawn.x - 1f, spawn.z - 1f, 2f, 2f));
+            }
         }
         try
         {
@@ -1023,17 +1259,18 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var module = data.ModuleOf(r);
             var obstacles = new List<Rect>(columns);
             if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module, clear));
+            var worked = obstacles.Count > columns.Count;
             var fill = module == null ? ModuleFill.Auto : module.fill;
             var office = fill == ModuleFill.Office || (fill == ModuleFill.Auto && zone.theme == ZoneTheme.Office);
             if (office)
             {
-                if (!dressOffices) return;
+                if (!dressOffices) return worked;
                 // The clear floor between wall faces; keep-clear strips and columns are in the same chunk-local metres.
                 var floor = new Rect(room.x * cs + ModuleUnits.WallHalf, room.y * cs + ModuleUnits.WallHalf,
                     room.w * cs - ModuleUnits.WallThickness, room.h * cs - ModuleUnits.WallThickness);
                 if (officeDress != null) officeDress.Invoke(null, new object[] { chunk.root.transform, floor, height, roomSeed, clear.ToArray(), obstacles.ToArray() });
                 else if (officeDressOld != null) officeDressOld.Invoke(null, new object[] { chunk.root.transform, floor, height, roomSeed, clear.ToArray() });
-                return;
+                return officeDress != null || officeDressOld != null || worked;
             }
             var pile = fill == ModuleFill.Pile
                 || (fill == ModuleFill.Auto && Mathf.Min(room.w, room.h) >= 4 && MapHash.Unit((uint)roomSeed) < (zone.height == ZoneHeight.Tall ? Mathf.Max(pileChance, .6f) : pileChance));
@@ -1043,13 +1280,32 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
                 var keepOff = new List<Rect>(clear);
                 keepOff.AddRange(obstacles.GetRange(columns.Count, obstacles.Count - columns.Count));
                 if (PileSpot(room, columns, keepOff, out var center, out var radius))
+                {
                     pileBuild.Invoke(null, new object[] { chunk.root.transform, center, radius, height, roomSeed });
+                    worked = true;
+                }
             }
+            return worked;
         }
         catch (Exception e)
         {
             Debug.LogWarning("[FrontRoomsMap] Furnishing room " + r + " of chunk " + data.coord + " failed: " + (e.InnerException ?? e).Message);
+            return true;
         }
+    }
+
+    /// <summary>
+    /// First-use loads the map would otherwise pay in the frames after the
+    /// title's handoff, where the player is watching: the kit dressers found
+    /// by reflection, every kit model and sidecar (the furniture pile reads
+    /// them all on its first pile) and the Office grade profile. Call once
+    /// while nothing is on screen (the game does it in Awake).
+    /// </summary>
+    public static void Prewarm()
+    {
+        ResolveDressers();
+        foreach (var name in FrontRoomsKitLibrary.AllNames()) FrontRoomsKitLibrary.GetInfo(name);
+        Resources.Load<VolumeProfile>("Rendering/FrontRoomsPost_Office");
     }
 
     /// <summary>
@@ -1131,9 +1387,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var runs = new List<(int, int)>();
             for (var i = 0; j < n && i < n;)
             {
-                if (Cache.ZoneOf(data.Cell(i, j)).theme != ZoneTheme.Office) { i++; continue; }
+                if (!OfficeGraded(data.Cell(i, j))) { i++; continue; }
                 var start = i;
-                while (i < n && Cache.ZoneOf(data.Cell(i, j)).theme == ZoneTheme.Office) i++;
+                while (i < n && OfficeGraded(data.Cell(i, j))) i++;
                 runs.Add((start, i));
             }
             var next = new List<(int x0, int x1, int y0, int y1)>();
@@ -1157,6 +1413,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             FrontRoomsPostStack.EnsureZoneVolume(holder, "Office", new Bounds(center, size), 2.5f);
         }
     }
+
+    // The stream rooms keep their own look: no Office grade over the start area.
+    bool OfficeGraded(GridCoord cell) => !InStartArea(cell) && Cache.ZoneOf(cell).theme == ZoneTheme.Office;
 
     /// <summary>Footprints of the columns inside a room, in chunk-local metres.</summary>
     List<Rect> Columns(MapChunk data, CellRect room)
