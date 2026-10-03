@@ -230,6 +230,47 @@ def scenario_door(out):
     s.close()
 
 
+def scenario_door_story(out, seconds=14.0):
+    """The SR07 chart as sound: each event fires when a playhead sweeping the chart's
+    72..1848 px width over `seconds` reaches that event's marker."""
+    s = Studio(os.path.join(out, "door_story.wav"))
+    at = lambda x: (x - 72) / 1776.0 * seconds
+    door, state = (0.3, 0.0, 2.0), {}
+    s.set_global("Zone", 1)
+    bed = [s.play("event:/Ambience/HumBed", keep=True), s.play("event:/Ambience/AirBed", keep=True)]
+
+    def swing(t0, t1, opening):
+        def start():
+            state["swing"] = s.play("event:/Mechanism/Door/Swing", door, keep=True, AngularVelocity=0, Openness=0)
+            state["span"] = (t0, t1, opening)
+
+        def stop():
+            s.stop(state.pop("swing"))
+        return [(t0, start), (t1, stop)]
+
+    def each(t):
+        inst = state.get("swing")
+        if inst is None:
+            return
+        t0, t1, opening = state["span"]
+        u = min(1.0, max(0.0, (t - t0) / (t1 - t0)))
+        s.set(inst, AngularVelocity=math.sin(math.pi * u) * (.7 if opening else .55), Openness=u if opening else 1 - u)
+
+    script = [(at(180), lambda: s.play("event:/Mechanism/Door/Handle", door)),
+              (at(180) + .07, lambda: s.play("event:/Mechanism/Door/Unlatch", door)),
+              (at(335), lambda: s.play("event:/Mechanism/Door/StopLimit", door, Impact=.3)),
+              (at(1023), lambda: s.play("event:/Mechanism/Door/LatchStrike", door, Impact=.62)),
+              (at(1646), lambda: s.play("event:/Mechanism/Door/Break", door)),
+              (at(1692), lambda: s.play("event:/Mechanism/Door/StopLimit", door, Impact=1.0))]
+    script += swing(at(190), at(335), True) + swing(at(890), at(1023), False)
+    script += [(at(x), (lambda k=k: s.play("event:/Mechanism/Door/Blow", door, Damage=(k + 1) / 5.0)))
+               for k, x in enumerate((1214, 1341, 1468, 1595))]
+    s.run(seconds, script, each)
+    for b in bed:
+        s.stop(b)
+    s.close()
+
+
 def scenario_relay_door(out):
     s = Studio(os.path.join(out, "door_relay_break.wav"))
     door = (0.0, 0.0, 3.0)
@@ -328,6 +369,7 @@ def render(out):
     scenario_steps(out, "steps_tile_walk", 1, 0, .15, 8, .55)
     scenario_relay(out)
     scenario_door(out)
+    scenario_door_story(out)
     scenario_relay_door(out)
     scenario_locked(out)
     scenario_room(out)

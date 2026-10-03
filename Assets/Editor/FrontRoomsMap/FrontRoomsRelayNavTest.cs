@@ -40,6 +40,7 @@ public static class FrontRoomsRelayNavTest
         public int furnitureFramesNotGhosting;
         public float averageSeconds;
         public float worstPlanMs;
+        public string doorRule;
         public List<string> failures = new List<string>();
     }
 
@@ -207,6 +208,7 @@ public static class FrontRoomsRelayNavTest
                 }
             }
             report.ghosts = hunter.Ghosts;
+            report.doorRule = DoorRule(world, cells, playerCollider, player, rng, report);
             report.averageSeconds = report.arrived > 0 ? totalSeconds / report.arrived : 0f;
         }
         finally
@@ -238,6 +240,84 @@ public static class FrontRoomsRelayNavTest
     }
 
     static float Flat(Vector3 v) => new Vector2(v.x, v.z).magnitude;
+
+    /// <summary>
+    /// The door rule: chasing, the Relay is right behind the player as they go
+    /// through a door and vanish deep beyond it. It must follow into the cell
+    /// behind the door, search there, never come near where the player really
+    /// went, and give up (Listen or Wander) afterwards.
+    /// </summary>
+    static string DoorRule(FrontRoomsMapWorld world, List<GridCoord> cells, Collider playerCollider, Transform player, System.Random rng, Report report)
+    {
+        var steps = new[] { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
+        foreach (var a in cells)
+        foreach (var s in steps)
+        {
+            var b = a + s;
+            if (!world.IsBuilt(b) || world.Cache.Edge(a, b) != EdgeKind.Door) continue;
+            // The Relay starts two open cells behind the player, on the near side (far enough not to catch them at once).
+            var c = default(GridCoord);
+            var found = false;
+            foreach (var t in steps)
+            {
+                var n = a + t;
+                if (n == b || !world.IsBuilt(n) || world.PassageBetween(a, n) != FrontRoomsMapWorld.Passage.Open) continue;
+                foreach (var u in steps)
+                {
+                    var m = n + u;
+                    if (m == a || m == b || !world.IsBuilt(m) || world.PassageBetween(n, m) != FrontRoomsMapWorld.Passage.Open) continue;
+                    c = m;
+                    found = true;
+                    break;
+                }
+                if (found) break;
+            }
+            if (!found) continue;
+            // Somewhere far beyond the door for the player to vanish to.
+            var far = Reachable(world, b, rng, 8, 12);
+            if (far == b) continue;
+
+            world.TryOpenDoor(a, b);
+            for (var k = 0; k < 60; k++) world.TickDoorsForTools(Dt);
+            Physics.SyncTransforms();
+            var tuning = new FrontRoomsHunterTuning();
+            var hunter = new FrontRoomsMapHunter(world, tuning, playerCollider, null, 11);
+            hunter.DebugPlace(world.CellCenter(c));
+            var eye = Vector3.up * ModuleUnits.PlayerEye;
+            var minToFar = float.MaxValue;
+            var reachedDoorRoom = false;
+            var searched = false;
+            var gaveUp = false;
+            var sawChase = false;
+            var caught = false;
+            hunter.Caught += () => caught = true;
+            for (var t = 0f; t < 40f; t += Dt)
+            {
+                Vector3 feet;
+                if (t < .6f) feet = world.CellCenter(a);           // in view, near side
+                else if (t < 1.0f) feet = world.CellCenter(b);     // through the door
+                else feet = world.CellCenter(far);                 // gone, deep beyond
+                player.position = feet;
+                Physics.SyncTransforms();
+                hunter.Tick(Dt, feet, feet + eye, Vector3.forward);
+                world.TickDoorsForTools(Dt);
+                if (hunter.State == HunterState.Chase) sawChase = true;
+                if (t > 1f) minToFar = Mathf.Min(minToFar, Flat(hunter.Position - world.CellCenter(far)));
+                var here = world.CellOf(hunter.Position);
+                if (here == b) reachedDoorRoom = true;
+                if (hunter.State == HunterState.Search && reachedDoorRoom) searched = true;
+                if (searched && (hunter.State == HunterState.Listen || hunter.State == HunterState.Wander)) { gaveUp = true; break; }
+            }
+            var pass = sawChase && reachedDoorRoom && searched && gaveUp && minToFar > 2f * MapGrid.CellSize && !caught;
+            if (!pass)
+            {
+                report.exceptions++; // counts as a failure
+                report.failures.Add("door rule: caught " + caught + ", chase " + sawChase + ", reached the room behind the door " + reachedDoorRoom + ", searched " + searched + ", gave up " + gaveUp + ", closest to the player's real spot " + minToFar.ToString("F1") + " m");
+            }
+            return (pass ? "PASS" : "FAIL") + " · door " + a + "→" + b + ", player vanished to " + far + ", closest approach " + minToFar.ToString("F1") + " m";
+        }
+        return "SKIPPED · no door with an open cell behind it near the spawn";
+    }
 
     /// <summary>A cell reachable from start in between minSteps and maxSteps, through open edges and doors (not glass).</summary>
     static GridCoord Reachable(FrontRoomsMapWorld world, GridCoord start, System.Random rng, int minSteps, int maxSteps)

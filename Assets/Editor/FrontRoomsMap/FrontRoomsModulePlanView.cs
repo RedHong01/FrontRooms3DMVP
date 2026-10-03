@@ -84,10 +84,7 @@ public sealed class FrontRoomsModulePlanView
         var polys = new Vector3[m.props.Length][];
         var fronts = new Vector3[m.props.Length][];
         var band = Mathf.Max(3f / metre, .08f);
-        for (var k = 0; k < m.props.Length; k++)
-        {
-            Shape(m.props[k], band, ToPlan, out polys[k], out fronts[k]);
-        }
+        for (var k = 0; k < m.props.Length; k++) Shape(m.props[k], band, ToPlan, out polys[k], out fronts[k]);
         var edges = new List<(Rect rect, int i, int j, int dx, int dy, bool vertical)>();
         for (var j = 0; j < m.depth; j++)
         for (var i = 0; i < m.width; i++)
@@ -125,7 +122,7 @@ public sealed class FrontRoomsModulePlanView
                 repaint();
             }
         }
-        if (e.type == EventType.DragExited && ghost != null)
+        if ((e.type == EventType.DragExited || e.type == EventType.MouseLeaveWindow) && ghost != null)
         {
             ghost = null;
             repaint();
@@ -258,6 +255,13 @@ public sealed class FrontRoomsModulePlanView
             }
             else if (selected >= 0 && e.keyCode == KeyCode.R) { FrontRoomsModuleEditing.TurnProp(module, selected); e.Use(); repaint(); }
             else if (selected >= 0 && (e.keyCode == KeyCode.Delete || e.keyCode == KeyCode.Backspace)) { RemoveSelected(); e.Use(); }
+        }
+        // Edit → Delete (⌘⌫, or Delete where the shortcut takes the key) arrives as a command.
+        if (selected >= 0 && (e.type == EventType.ValidateCommand || e.type == EventType.ExecuteCommand) && (e.commandName == "SoftDelete" || e.commandName == "Delete")
+            && GUIUtility.keyboardControl == 0 && !EditorGUIUtility.editingTextField)
+        {
+            if (e.type == EventType.ExecuteCommand) RemoveSelected();
+            e.Use();
         }
 
         // Right-click a cell: its lamp.

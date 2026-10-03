@@ -763,7 +763,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         {
             var motion = state == HunterState.Chase ? FrontRoomsRelayRig.MotionState.Run
                 : state == HunterState.BreakDoor ? FrontRoomsRelayRig.MotionState.BreakDoor
-                : state == HunterState.Hunt || state == HunterState.Wander ? FrontRoomsRelayRig.MotionState.Walk
+                : state == HunterState.Hunt || state == HunterState.Wander || (state == HunterState.Search && relay.Moving) ? FrontRoomsRelayRig.MotionState.Walk
                 : FrontRoomsRelayRig.MotionState.IdleListen;
             hunterRig.TickAnimation(dt, motion, relay.Moving, state == HunterState.Chase ? 1.15f : 1f);
         }

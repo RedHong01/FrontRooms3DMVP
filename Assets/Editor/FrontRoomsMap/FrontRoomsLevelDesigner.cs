@@ -29,11 +29,14 @@ public static class FrontRoomsLevelDesigner
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return;
         if (!Application.isBatchMode && SceneManager.GetActiveScene().path != ScenePath && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+        // Changing scenes unloads assets nothing holds (a module just created or found): load it again afterwards.
+        var path = module != null ? AssetDatabase.GetAssetPath(module) : null;
         // The user has saved or discarded: start from an empty scene so the designer scene can be created beside nothing.
         if (AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath) == null && SceneManager.GetActiveScene().path != ScenePath)
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         EnsureScene();
         if (SceneManager.GetActiveScene().path != ScenePath) EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        if (!string.IsNullOrEmpty(path)) module = AssetDatabase.LoadAssetAtPath<FrontRoomsRoomModule>(path);
         var preview = Object.FindFirstObjectByType<FrontRoomsModulePreview>();
         if (preview != null && module != null && preview.module != module)
         {
@@ -74,8 +77,10 @@ public static class FrontRoomsLevelDesigner
     public static void NewModule()
     {
         var module = CreateModule();
+        var path = AssetDatabase.GetAssetPath(module);
         Open(module);
-        EditorGUIUtility.PingObject(module);
+        // Opening the scene can unload the object Open was given: ping the asset by its path.
+        EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<FrontRoomsRoomModule>(path));
     }
 
     /// <summary>A new 3 x 3 room with a doorway in the middle of its south side, saved in the modules folder.</summary>

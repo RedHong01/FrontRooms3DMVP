@@ -51,14 +51,16 @@ public static class FrontRoomsLevelDesignerTests
     public static void RunBatch()
     {
         report = new Report();
+        // A new scene unloads assets nothing references: the profile is loaded after it.
+        EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         var profile = FrontRoomsLevelProfiles.Resolve();
+        var profileWasDirty = EditorUtility.IsDirty(profile);
         var savedModules = profile.modules?.ToArray();
         float savedChance = profile.generation.moduleChance;
         int savedTier = profile.generation.moduleTier;
         GameObject root = null;
         try
         {
-            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var module = TempModule();
             var kits = Placement(module);
             var preview = Conversions(module, out root);
@@ -83,6 +85,8 @@ public static class FrontRoomsLevelDesignerTests
                 profile.modules = savedModules;
                 profile.generation.moduleChance = savedChance;
                 profile.generation.moduleTier = savedTier;
+                // As it was, so the editor does not write it out again on quit.
+                if (!profileWasDirty) EditorUtility.ClearDirty(profile);
             }
             AssetDatabase.DeleteAsset(Folder);
         }
@@ -224,8 +228,9 @@ public static class FrontRoomsLevelDesignerTests
                 Close(local.Min(v => v.x), cx * cs) && Close(local.Min(v => v.z), cy * cs) && Close(local.Max(v => v.x), (cx + turned.width) * cs) && Close(local.Max(v => v.z), (cy + turned.depth) * cs),
                 "cells (" + cx + ", " + cy + ") " + turned.width + " x " + turned.depth);
 
-            // Every prop the map built, against where the conversions put it.
+            // Every prop the stamp built, against where the conversions put it.
             var tags = preview.World.GetComponentsInChildren<FrontRoomsModulePropTag>(true);
+            Check("turn " + turn + ": every tagged prop is the previewed module's (the generator's own modules stay out of the preview)", tags.All(t => t.module == preview.Stamped), tags.Length + " tagged");
             var bad = new List<string>();
             foreach (var tag in tags)
             {
@@ -246,7 +251,7 @@ public static class FrontRoomsLevelDesignerTests
     }
 
     static FrontRoomsModulePropTag Tag(FrontRoomsModulePreview preview, int index) =>
-        preview.World.GetComponentsInChildren<FrontRoomsModulePropTag>(true).FirstOrDefault(t => t.index == index);
+        preview.World.GetComponentsInChildren<FrontRoomsModulePropTag>(true).FirstOrDefault(t => t.index == index && t.module == preview.Stamped);
 
     /// <summary>
     /// Move a prop as the Move and Rotate tools do, recorded for Undo; the

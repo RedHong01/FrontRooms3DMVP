@@ -1,7 +1,8 @@
 """Hunter concept B "Night Shift" (Documentation/research/hunter/10_hunter_directions.md §4, §7.3).
 
 The building's night electrician in a faded spruce rental coverall, hood drawn tight round a
-flat opal troffer lens that is his face. Render pose: the "shrugged stalk" (Hunt): left foot
+narrow strip of flat opal troffer lens (0.13 x 0.26 m, the ceiling lens's 1 : 2, long axis
+vertical) where his face should be. Render pose: the "shrugged stalk" (Hunt): left foot
 forward, knees soft, shoulders shrugged up into the hood (no neck), torso pitched ~15 deg,
 hood bowed 18 deg like a head reading a meter, long forearms hanging the gloves to mid-thigh,
 tool pouch on the right hip, key ring on the left.
@@ -12,13 +13,17 @@ Construction (deviations from §7.3 are listed in the DESIGN note at the bottom)
 * The shrug is the torso's own top: a wide flat shoulder section tapering to a high, wide
   collar behind the hood, so the trapezius is one slope from shoulder tip to hood crown. The
   arms hang from inside the shoulder ends, so the shrug reads as mass, not as bent arms.
-* The hood is a superellipsoid cut open at the face plane (bmesh bisect) with a soft peak at
-  the back; its opening is capped and recessed, with a rolled drawcord hem round it, and the
-  lens door sits inside the opening.
+* The hood is a superellipsoid built in rings round the face axis, with a soft parka peak
+  behind the crown. Its front is gathered: a pleated band of twill runs in from the shell to a
+  rounded-rectangle drawcord opening on a flat plane, finished with a gathered rolled hem that
+  overlaps the lens border. No rim, no lens door: the dark hood edge is the only frame. The
+  flat lens sits 0.6-1.2 cm behind the opening plane, its edges buried in a short tunnel, so
+  nothing stands proud of the hood (§4 Key features, critic C1/C5).
 * Tape cuffs and the tool belt are strips cut from the garment they wrap and pushed out along
   the normals, so they hug the cloth instead of floating as cylinders.
-* Lens emission is preview-only (Hunt: dim, steady) with a procedural mask for the two lamp
-  bands and the pressed face shadow; Unity drives the real emission from HunterState.
+* Lens emission is preview-only (Hunt: dim, steady) with a procedural mask: two vertical lamp
+  bands and one soft shadow over one of them, a strip of a face pressed against the opal from
+  inside (§4 Tell). Unity drives the real emission from HunterState.
 """
 
 import math
@@ -35,7 +40,7 @@ PITCH = ("The building's night electrician went up into the ceiling and came bac
 EYE = 1.64            # lens centre after flooring; build() overwrites it with the measured value
 SMOOTH_ANGLE = 60.0
 LENS_GLOW = 3.0       # preview emission strength (Hunt state: dim, steady); 0 = Listen (off)
-PATCH_Z = 1.455       # name patch ray height before flooring (lands at ~1.44 m)
+PATCH_Z = 1.44        # name patch height (critic C6.3); the boots already floor at z 0
 
 TWILL = "Creature_TwillSpruce"
 LENS = "Creature_LensOpal"
@@ -112,9 +117,11 @@ def resample_loop(pts, count):
 
 def loop_tube(kit, pts, radius, slot, normal, verts=10, name="loop"):
     """Closed round tube along a planar loop; the ring frame uses the loop's plane normal,
-    so it never twists (kitlib.tube flips its reference near vertical tangents)."""
+    so it never twists (kitlib.tube flips its reference near vertical tangents).
+    `radius` is one number or one per point (a gathered hem)."""
     bm = bmesh.new()
     n = len(pts)
+    radii = radius if isinstance(radius, (list, tuple)) else [radius] * n
     rings = []
     for k in range(n):
         p = pts[k]
@@ -122,7 +129,7 @@ def loop_tube(kit, pts, radius, slot, normal, verts=10, name="loop"):
         side = t.cross(normal).normalized()
         up = side.cross(t).normalized()
         rings.append([bm.verts.new(p + (side * math.cos(2 * math.pi * i / verts) +
-                                        up * math.sin(2 * math.pi * i / verts)) * radius)
+                                        up * math.sin(2 * math.pi * i / verts)) * radii[k])
                       for i in range(verts)])
     for k in range(n):
         a, b = rings[k], rings[(k + 1) % n]
@@ -197,9 +204,9 @@ def se_radius(theta, ax, az, m):
     return (c ** m + s ** m) ** (-1.0 / m)
 
 
-def build_hood(kit, H, pitch, half, lens, opening=(0.073, 0.138, 0.028), cy=0.062, zc=0.01, y_rim=0.015,
-               m=2.4, n=56, shell_rings=14, band_rings=6, puff=0.008, brim=0.008, pleats=9, pleat_amp=0.005,
-               lens_depth=0.02, recess=0.03, hem_r=0.012, peak=0.03):
+def build_hood(kit, H, pitch, half, lens, opening=(0.073, 0.138, 0.022), cy=0.062, zc=0.01, y_rim=0.015,
+               m=2.4, n=48, shell_rings=12, band_rings=5, puff=0.008, brim=0.008, pleats=9, pleat_amp=0.007,
+               lens_depth=0.012, lens_drop=0.004, recess=0.024, hem_r=0.013, peak=0.03):
     """Work hood drawn tight round the lens. Head frame: origin H on the face plane at the lens
     centre, +y back into the head, pitched `pitch` deg (front face down).
 
@@ -257,7 +264,7 @@ def build_hood(kit, H, pitch, half, lens, opening=(0.073, 0.138, 0.028), cy=0.06
             p.y = S[i].y * (1 - g) - bulge - pleat_amp * w * math.cos(2 * math.pi * pleats * i / n)
             ring.append(p)
         rings.append(ring)
-    for d, yy in ((0.008, 0.012), (0.016, recess)):          # tunnel behind the hem
+    for d, yy in ((0.006, 0.008), (0.020, recess)):          # tunnel behind the hem
         rings.append([V(o.x * (1 - d / o.length), yy, o.z * (1 - d / o.length)) for o in O])
 
     def W(p):
@@ -274,11 +281,21 @@ def build_hood(kit, H, pitch, half, lens, opening=(0.073, 0.138, 0.028), cy=0.06
         bm.faces.new((vr[-1][i], vr[-1][j], floor))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     shell = kit._new_object("hood shell", bm, TWILL, "metres", "xz")
-    # Rolled drawcord hem round the opening, overlapping the lens border.
-    pts = [W(V(o.x, -0.003, o.z)) for o in rounded_rect(A, B, rc, 44)]
-    loop_tube(kit, pts, hem_r, TWILL, R @ V(0, -1, 0), verts=8, name="hood hem")
+    # Rolled drawcord hem round the opening, overlapping the lens border. It is gathered, not
+    # a bezel: thicker on each pleat of the band, and bunched where the cords leave it at the
+    # lower corners.
+    hn = 40
+    hem_o = rounded_rect(A, B, rc, hn)
+    pts, radii = [], []
+    for k, o in enumerate(hem_o):
+        wave = math.cos(2 * math.pi * pleats * k / hn)
+        bunch = max(math.exp(-((o - V(sx * A, 0, -B)).length / 0.03) ** 2) for sx in (1, -1))
+        pts.append(W(V(o.x, -0.003 - 0.002 * wave, o.z)))
+        radii.append(hem_r * (1.0 + 0.2 * wave + 0.3 * bunch))
+    loop_tube(kit, pts, radii, TWILL, R @ V(0, -1, 0), verts=6, name="hood hem")
     lw, lh = lens
-    lens_obj = kit.bulged_panel(lw, lh, 0.006, W(V(0, lens_depth, 0)), LENS, segments=12,
+    # Dropped a few mm so the bowed head's lower lens edge stays under the hem from eye level.
+    lens_obj = kit.bulged_panel(lw, lh, 0.006, W(V(0, lens_depth, -lens_drop)), LENS, segments=8,
                                 rot=(pitch, 0, 0), name="opal lens")
     return {"lens": lens_obj, "shell": shell, "centre": W(C), "R": R, "H": H, "hem": pts}
 
@@ -402,8 +419,8 @@ def lens_glow(kit, strength):
     # UV: u across the 0.13 m lens (u = 1 on the figure's left), v up the 0.26 m.
     # One soft shadow: a head pressed against the opal off to one side, half of it past the
     # lens edge, with a narrow, darker contact strip where brow, nose and lip touch it.
-    terms = [(blob(0.76, 0.55, 0.42, 0.30, 0.9), 0.40),
-             (blob(0.66, 0.53, 0.07, 0.15, 0.6), 0.20)]
+    terms = [(blob(0.76, 0.55, 0.42, 0.30, 0.9), 0.48),
+             (blob(0.66, 0.53, 0.07, 0.15, 0.6), 0.26)]
     shadow = None
     for sock, w in terms:
         s = m("MULTIPLY", sock, w)
@@ -416,7 +433,7 @@ def lens_glow(kit, strength):
         b = m("SUBTRACT", 1.0, m("DIVIDE", m("ABSOLUTE", m("SUBTRACT", u, c)), 0.14), clamp=True)
         b = m("POWER", b, 0.6)
         band = b if band is None else m("ADD", band, b)
-    glow = m("MULTIPLY", lit, m("ADD", 0.22, m("MULTIPLY", band, 1.6)))
+    glow = m("MULTIPLY", lit, m("ADD", 0.15, m("MULTIPLY", band, 1.8)))
     L.new(m("MULTIPLY", glow, strength), bsdf.inputs["Emission Strength"])
     bsdf.inputs["Emission Color"].default_value = (1.0, 0.92, 0.78, 1.0)
     base = N.new("ShaderNodeMixRGB")
@@ -534,7 +551,8 @@ def build(kit, cl):
         mid = V(mid.x, min(mid.y, (chin.y + end.y) / 2 - 0.004), mid.z)   # sag a little off the cloth
         kit.tube([start, chin, mid, end], 0.0055, VINYL, verts=8, name="drawcord")
         tip = end + (end - mid).normalized() * 0.012
-        kit.cylinder(0.0075, 0.026, tip, TAPE, verts=10, rot=deg(frame_z(end - mid)), name="aglet")
+        kit.cylinder(0.0075, 0.026, tip, TAPE, verts=8, rot=deg(frame_z(end - mid)), bevel=0.0015, segments=1,
+                     name="aglet")
 
     # ---- hood centre seam (raised strip of the shell along x = 0, front edge to nape)
     strip(kit, hood, [(V(0.0045, 0, 0), V(1, 0, 0)), (V(-0.0045, 0, 0), V(-1, 0, 0))],
@@ -578,7 +596,7 @@ def build(kit, cl):
     for k, (o, tilt, r, ln) in enumerate(((-0.035, 8, 0.013, 0.10), (0.036, -12, 0.010, 0.09))):
         tp = pc + side * o + up * 0.125 + out * 0.005
         dirn = (up + side * math.tan(math.radians(tilt))).normalized()
-        kit.cylinder(r, ln, tp, VINYL, verts=12, rot=deg(frame_z(dirn)), name="tool handle %d" % k)
+        kit.cylinder(r, ln, tp, VINYL, verts=8, rot=deg(frame_z(dirn)), segments=1, name="tool handle %d" % k)
 
     # ---- key ring on the left hip
     hit, nor = ray([torso_obj, legs_obj], V(1.0, -0.04, c.z - 0.02), V(-1, 0, 0))
@@ -592,13 +610,13 @@ def build(kit, cl):
     loop_tube(kit, ring_pts, 0.0028, TAPE, out, verts=4, name="key ring")
     for k, ang in enumerate((-25, 0, 20)):
         dirn = (V(0, 0, -1) + tang * math.tan(math.radians(ang))).normalized()
-        kit.box((0.016, 0.003, 0.05), kc + dirn * 0.045, TAPE, bevel=0.001,
+        kit.box((0.016, 0.003, 0.05), kc + dirn * 0.045, TAPE, bevel=0.001, segments=1,
                 rot=deg(frame_z(-dirn, tang)), name="key %d" % k)
 
     # ---- blank oval name patch (Prop_Paper) on the left chest at ~1.44 m (after flooring)
     hit, nor = ray([torso_obj], V(0.15, -1.0, PATCH_Z), V(0, 1, 0))
-    patch = kit.cylinder(0.044, 0.004, hit + nor * 0.002, PAPER, verts=24, rot=deg(frame_z(nor, V(1, 0, 0))),
-                         name="name patch")
+    patch = kit.cylinder(0.044, 0.004, hit + nor * 0.002, PAPER, verts=16, rot=deg(frame_z(nor, V(1, 0, 0))),
+                         bevel=0.0015, segments=1, name="name patch")
     patch.scale = (1.0, 0.58, 1.0)
 
     # ---- diagnostics: the lens sits behind the hem (nothing stands proud), chin clears the chest
@@ -630,13 +648,17 @@ def build(kit, cl):
 # DESIGN (what changed from §7.3 and why; full notes in the Figma hand-off)
 # * Shrug: §7.3's trap joints on the arm chain read as arms arching out of the neck; the
 #   trapezius is now the torso's wide shoulder section + collar (rx 0.355 / 0.235).
-# * Hood: §7.3's 0.235 m ellipsoid with a 0.25 m flat rim in front read as a pasted screen
-#   (the spec's own TV-head risk). It is now a 0.29 x 0.38 m cut-open hood with a parka peak,
-#   a rolled hem whose sides and chin recede behind the brim, hanging drawcords, and the lens
-#   door set 4 cm deep in the opening: a light inside a hood, not a box.
-# * Lens 0.18 x 0.25 m (spec 0.21 x 0.28) so the dark hood frames it on all sides.
-# * Lens door and name patch both Prop_PlasticWhite; key ring and aglets Creature_TapeSilver
-#   instead of Prop_Brass / Prop_Paper, to stay at 6 material slots.
+# * Hood: §7.3's 0.235 m ellipsoid is a 0.29 x 0.38 m twill hood here (it also caps the
+#   shrug) with a parka peak, a centre seam and hanging drawcords.
+# * Face (revision 2, after the art-director review and critic C1): the first build's
+#   0.18 x 0.25 m lens in a white enamel lens door was a 3 : 4 screen with a bezel, a TV-head.
+#   Now the lens is §4's 0.13 x 0.26 m with no rim at all; the hood is drawn in to it (pleated
+#   band, gathered hem, cords leaving at the lower corners) and the opening plane is flat, so
+#   the lens sits behind the hem instead of proud of a curved hood. The preview mask keeps
+#   the two tube bands and narrows the face to one soft, off-centre shadow (§4 Tell).
+# * Name patch: Prop_Paper on the left chest at 1.44 m (critic C6.3). Prop_PlasticWhite is
+#   gone. Key ring and aglets stay Creature_TapeSilver instead of Prop_Brass, to stay at 6
+#   material slots.
 # * Coverall read added: zip placket, chest pocket flaps, action-back yoke seam and pleats,
 #   sleeves and trouser legs cinched by the tape and bloused below it.
 # * Legs solved by IK to the boots (thigh 0.48, shin 0.44) so both knees stay soft; the

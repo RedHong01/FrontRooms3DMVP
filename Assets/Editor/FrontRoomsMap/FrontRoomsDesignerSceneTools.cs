@@ -76,13 +76,13 @@ public static class FrontRoomsDesignerSceneTools
 
     /// <summary>
     /// The tag on the prop an object belongs to (a click often picks a mesh
-    /// inside the kit), if that prop is in this preview's current map and the
-    /// map was built from the module as it is now (same props, same kits).
+    /// inside the kit), if the preview's own stamp placed that prop in its
+    /// current map and the module has not changed since (same props, same kits).
     /// </summary>
     static FrontRoomsModulePropTag TagOf(GameObject go, FrontRoomsModulePreview preview)
     {
         var tag = go != null ? go.GetComponentInParent<FrontRoomsModulePropTag>(true) : null;
-        if (tag == null || preview.module == null || preview.World == null || !tag.transform.IsChildOf(preview.World.transform) || tag.module == null) return null;
+        if (tag == null || preview.module == null || tag.module == null || tag.module != preview.Stamped) return null;
         var props = preview.module.data.props;
         return tag.index < props.Length && tag.module.props.Length == props.Length && tag.module.props[tag.index].kit == props[tag.index].kit ? tag : null;
     }
@@ -102,8 +102,8 @@ public static class FrontRoomsDesignerSceneTools
     public static void SelectProps(FrontRoomsModulePreview preview, int[] indices)
     {
         if (preview == null || preview.World == null || preview.module == null) return;
-        var tags = preview.World.GetComponentsInChildren<FrontRoomsModulePropTag>(true).Where(t => indices.Contains(t.index)).ToList();
-        if (tags.Count < indices.Length || tags.Any(t => TagOf(t.gameObject, preview) == null))
+        var tags = preview.World.GetComponentsInChildren<FrontRoomsModulePropTag>(true).Where(t => TagOf(t.gameObject, preview) == t && indices.Contains(t.index)).ToList();
+        if (tags.Count < indices.Length)
         {
             reselect = indices;
             return;

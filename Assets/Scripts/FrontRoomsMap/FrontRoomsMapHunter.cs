@@ -13,6 +13,10 @@ using UnityEngine;
 ///   random reachable places (Listen → Wander), keeping to shut doors;
 /// - it chases only once it sees the player (a ray at eye height). A noise it
 ///   hears it walks to and searches (Hunt), without running;
+/// - losing sight in a chase, it goes where it last saw the player; if it was
+///   right behind them as they went through a door, it follows into the room
+///   behind that door. Either way it then searches that room (a few spots,
+///   listening at each) and gives up, unless it hears or sees them again;
 /// - it paths through built cells with a breadth-first search, breaks shut
 ///   doors on a hunt or a chase, and cannot pass unbroken glass;
 /// - if the chase leaves it too far behind, it relays itself closer, unseen;
@@ -40,6 +44,11 @@ public sealed class FrontRoomsMapHunter
     // Wandering: a random reachable spot this many cells of walking away, at this share of hunt speed.
     const int WanderMinCells = 6, WanderMaxCells = 14;
     const float WanderPace = .8f;
+    // Searching a room: up to this many spots, a pause to listen at each, at this share of hunt speed.
+    const int SweepSpots = 3;
+    const float LookSeconds = 1.1f, SearchPace = .7f, MaxSearchSeconds = 15f;
+    // The long-range relay only once it has neither seen nor heard the player for this long.
+    const float LeashQuietSeconds = 45f;
 
     static readonly GridCoord[] Steps = { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
 
@@ -67,6 +76,15 @@ public sealed class FrontRoomsMapHunter
     Vector3 position, lastSeen, goal;
     int pathIndex;
     float releaseTimer, lostTime, blowTime, replanTimer, leashTimer;
+    // What it knows: when it last saw or heard the player, and the last door the player went through.
+    float clock, lastSeenTime = float.MinValue, lastContactTime;
+    GridCoord playerCellBefore, doorInto;
+    bool trackingPlayerCell;
+    float doorTime = float.MinValue;
+    // The room it is searching: spots to look from, in order.
+    readonly List<GridCoord> sweep = new List<GridCoord>();
+    int sweepIndex, sweepPlanned = -1;
+    float lookTimer, searchTime;
     // Steering: the aim the current plan was made for, the detour toward it
     // (empty = straight), and whether the detour ends short of the aim.
     Vector3 planTarget = new Vector3(float.MaxValue, 0f, 0f);
@@ -129,13 +147,24 @@ public sealed class FrontRoomsMapHunter
         }
 
         StateTime += dt;
+        clock += dt;
         var playerCell = world.CellOf(playerFeet);
         var myCell = world.CellOf(position);
+        // The door the player last went through. It only acts on it when it was right behind them.
+        if (trackingPlayerCell && playerCell != playerCellBefore && Mathf.Abs(playerCell.x - playerCellBefore.x) + Mathf.Abs(playerCell.y - playerCellBefore.y) == 1
+            && world.Cache.Edge(playerCellBefore, playerCell) == EdgeKind.Door)
+        {
+            doorInto = playerCell;
+            doorTime = clock;
+        }
+        playerCellBefore = playerCell;
+        trackingPlayerCell = true;
 
         // Never let the chase run off the built map, and never trail so far
         // behind that the player forgets it: relay closer, out of sight.
         leashTimer -= dt;
-        if (!world.IsBuilt(myCell) || (State != HunterState.Chase && State != HunterState.BreakDoor && leashTimer <= 0f && Distance(myCell, playerCell, LeashCells + 1) > LeashCells))
+        if (!world.IsBuilt(myCell) || (State != HunterState.Chase && State != HunterState.BreakDoor && leashTimer <= 0f
+            && clock - lastContactTime > LeashQuietSeconds && Distance(myCell, playerCell, LeashCells + 1) > LeashCells))
         {
             leashTimer = LeashCheckSeconds;
             if (Arrive(playerFeet, playerEye, playerForward)) SetState(HunterState.Listen);
@@ -147,6 +176,7 @@ public sealed class FrontRoomsMapHunter
         if (SeesPlayer)
         {
             lastSeen = playerFeet;
+            lastSeenTime = lastContactTime = clock;
             lostTime = 0f;
             if (State != HunterState.Chase && State != HunterState.BreakDoor)
             {
@@ -170,16 +200,16 @@ public sealed class FrontRoomsMapHunter
                 }
                 break;
             case HunterState.Hunt:
-                if (Follow(tuning.huntSpeed, dt)) SetState(HunterState.Search);
+                if (Follow(tuning.huntSpeed, dt)) BeginSearch(world.CellOf(goal));
                 else if (Stalled(dt))
                 {
-                    // Held in place (a covered aim, a dropped chunk): give up and search here.
+                    // Held in place (a covered aim, a dropped chunk): search where it stands.
                     ResetSteering();
-                    SetState(HunterState.Search);
+                    BeginSearch(myCell);
                 }
                 break;
             case HunterState.Search:
-                if (StateTime > tuning.searchSeconds) SetState(HunterState.Listen);
+                TickSearch(myCell, dt);
                 break;
             case HunterState.Chase:
                 replanTimer -= dt;
@@ -193,7 +223,7 @@ public sealed class FrontRoomsMapHunter
                 if (!SeesPlayer)
                 {
                     lostTime += dt;
-                    if (lostTime > tuning.lostSightSeconds) HuntToward(world.CellOf(lastSeen), lastSeen);
+                    if (lostTime > tuning.lostSightSeconds) LoseTrack();
                 }
                 break;
             case HunterState.BreakDoor:
@@ -220,15 +250,110 @@ public sealed class FrontRoomsMapHunter
         pathIndex = 0;
         breakingDoor = null;
         ResetSteering();
+        sweep.Clear();
+        sweepIndex = 0;
+        lookTimer = 0f;
         SetState(HunterState.Search);
     }
 
-    /// <summary>A sound the player made. The Relay walks to the last one it heard.</summary>
+    /// <summary>A sound the player made. The Relay walks to the last one it heard, even mid-search.</summary>
     public void Noise(Vector3 source, float radius)
     {
         if (!Released || State == HunterState.Chase || State == HunterState.BreakDoor) return;
-        if (Flat(position - source).magnitude > radius) return;
+        if (Flat(position - source).magnitude > radius * tuning.hearing) return;
+        lastContactTime = clock;
         HuntToward(world.CellOf(source), source);
+    }
+
+    /// <summary>
+    /// Sight lost in a chase. If the player went through a door around the
+    /// moment it lost them, it was right behind: it follows into the room
+    /// behind that door. Otherwise it goes where it last saw them. It searches
+    /// there and no further (BeginSearch).
+    /// </summary>
+    void LoseTrack()
+    {
+        if (doorTime >= lastSeenTime - 1f && clock - doorTime < tuning.lostSightSeconds + 1.5f)
+        {
+            HuntToward(doorInto, world.CellCenter(doorInto));
+            return;
+        }
+        HuntToward(world.CellOf(lastSeen), lastSeen);
+    }
+
+    /// <summary>
+    /// Search the room around a cell: if it is in a carved room, a few of that
+    /// room's cells; otherwise the cells within two steps that need no door.
+    /// It listens where it stands first, then walks from spot to spot.
+    /// </summary>
+    void BeginSearch(GridCoord around)
+    {
+        sweep.Clear();
+        sweepIndex = 0;
+        sweepPlanned = -1;
+        lookTimer = LookSeconds;
+        searchTime = 0f;
+        candidates.Clear();
+        if (!RoomCells(around, candidates))
+        {
+            Search(around, 2, false);
+            foreach (var pair in depth) candidates.Add(pair.Key);
+        }
+        candidates.Remove(around);
+        for (var k = 0; k < SweepSpots && candidates.Count > 0; k++)
+        {
+            var pick = (int)(Next() % (uint)candidates.Count);
+            sweep.Add(candidates[pick]);
+            candidates.RemoveAt(pick);
+        }
+        ResetSteering();
+        SetState(HunterState.Search);
+    }
+
+    void TickSearch(GridCoord myCell, float dt)
+    {
+        searchTime += dt;
+        if (lookTimer > 0f)
+        {
+            lookTimer -= dt;
+            return;
+        }
+        if (sweepIndex >= sweep.Count || searchTime > MaxSearchSeconds)
+        {
+            // Nothing found: it gives up and wanders on.
+            SetState(HunterState.Listen);
+            return;
+        }
+        if (sweepPlanned != sweepIndex)
+        {
+            Plan(myCell, sweep[sweepIndex], world.CellCenter(sweep[sweepIndex]), false);
+            sweepPlanned = sweepIndex;
+        }
+        if (Follow(tuning.huntSpeed * SearchPace, dt) || Stalled(dt))
+        {
+            sweepIndex++;
+            lookTimer = LookSeconds;
+            ResetSteering();
+        }
+    }
+
+    /// <summary>The built cells of the carved room (or module) that contains a cell, if any.</summary>
+    bool RoomCells(GridCoord cell, List<GridCoord> into)
+    {
+        if (!world.IsBuilt(cell)) return false;
+        var chunk = world.Cache.Get(MapGrid.ChunkOf(cell));
+        var o = chunk.Origin;
+        int lx = cell.x - o.x, ly = cell.y - o.y;
+        for (var r = chunk.rooms.Length - 1; r >= 0; r--)
+        {
+            var rect = chunk.rooms[r];
+            if (!chunk.RoomIntact(r) || !rect.Contains(lx, ly)) continue;
+            for (var j = rect.y; j < rect.y + rect.h; j++)
+            for (var i = rect.x; i < rect.x + rect.w; i++)
+                into.Add(chunk.Cell(i, j));
+            return true;
+        }
+        return false;
     }
 
     void HuntToward(GridCoord cell, Vector3? point)

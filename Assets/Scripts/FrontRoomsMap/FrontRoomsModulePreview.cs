@@ -39,6 +39,9 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
     /// <summary>The map world currently built, or null.</summary>
     public FrontRoomsMapWorld World => world;
 
+    /// <summary>The module data the current map was stamped with (turned), or null. The props it placed carry this very object in their tag.</summary>
+    public RoomModuleData Stamped { get; private set; }
+
     int Turns => ((rotation % 4) + 4) % 4;
 
     /// <summary>Where the module sits: chunk (0, 0), centred.</summary>
@@ -172,6 +175,8 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
         g.standardShare = data.height == ZoneHeight.Standard ? 1f : 0f;
         g.tallShare = data.height == ZoneHeight.Tall ? 1f : 0f;
         g.officeShare = data.theme == ZoneTheme.Office ? 1f : 0f;
+        // Only this module: the generator's own modules would put other designer rooms around it.
+        g.moduleChance = 0f;
         previewProfile.generation = g;
         previewProfile.buildRadius = 1;
 
@@ -184,6 +189,7 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
         world.TagModuleProps = true;
         Placement(data, out var x0, out var y0);
         world.PlaceModule(data, new GridCoord(0, 0), x0, y0);
+        Stamped = data;
         Entrance(data, x0, y0, out var spawn, out var look);
         var heading = look - spawn;
         world.OverrideSpawn(spawn, Mathf.Atan2(heading.x, heading.z) * Mathf.Rad2Deg);
@@ -248,6 +254,7 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
             if (Application.isPlaying) Destroy(world.gameObject); else DestroyImmediate(world.gameObject);
         }
         world = null;
+        Stamped = null;
         // Leftovers from a domain reload.
         for (var i = transform.childCount - 1; i >= 0; i--)
         {

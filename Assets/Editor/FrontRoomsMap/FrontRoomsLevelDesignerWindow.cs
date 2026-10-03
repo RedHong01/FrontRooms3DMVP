@@ -68,7 +68,9 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
     {
         open = this;
         titleContent = new GUIContent("Level Designer");
+        // The plan follows the mouse with an armed kit's ghost, and drops it when the mouse leaves.
         wantsMouseMove = true;
+        wantsMouseEnterLeaveWindow = true;
         plan = new FrontRoomsModulePlanView(Repaint);
         plan.SelectionChanged += OnPlanSelection;
         FrontRoomsRoomModule.Changed += OnModuleChanged;
@@ -310,6 +312,8 @@ public sealed class FrontRoomsLevelDesignerWindow : EditorWindow
                 pressedKit = kit;
                 pressedAt = e.mousePosition;
                 GUIUtility.hotControl = id;
+                // Out of the search fields, so Esc in the plan reaches the armed kit.
+                GUIUtility.keyboardControl = 0;
                 e.Use();
             }
         }

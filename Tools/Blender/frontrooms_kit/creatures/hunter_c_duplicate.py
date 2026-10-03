@@ -1,12 +1,19 @@
 """Hunter direction C — "Duplicate" (Documentation/research/hunter/10_hunter_directions.md §5, §7.4).
 
-A bad photocopy of an employee: toner-black head with a flat printed paper face,
-a white short-sleeved shirt stretched over a trunk as long as the legs, oxblood
-tie, navy trousers, soft black office shoes. Built in the "copy's step" render
-pose (Hunt slump; also the pose of every static copy).
+A bad black-and-white photocopy of an employee, in the two materials a copy has: paper and
+toner. A toner-black head with a flat printed paper face set flush into it; a long-sleeved
+paper-white shirt buttoned at the cuff, stretched over a trunk as long as the legs; toner tie,
+trousers, belt and soft shoes. Only the hands and neck are bare, and they are paper too, shaded
+with toner. No hue anywhere. Built in the "copy's step" render pose (the Hunt slump; the static
+copies stand in §7.4's upright Listen pose).
 
-Coordinates are the spec's (metres, Z up, facing -Y, left = +X) before flooring.
-Deviations from §7.4 are noted where they happen (see also the design notes).
+The one countable shape (the 12 m read): the shirt prints as a page. The trunk is a portrait
+rectangle, straight-sided from the belt to a flat, level shoulder line with square corners, the
+sleeves drop straight from those corners, and the toner head sticks up out of the middle of the
+line: a pale page between a dark head and dark legs. No other office figure has that shoulder line.
+
+Coordinates are the spec's (metres, Z up, facing -Y, left = +X; rotations X pitch, Y roll,
+Z yaw, §7.0) before flooring. Deviations from §7.4 are noted where they happen.
 """
 
 import math
@@ -18,17 +25,39 @@ from mathutils.bvhtree import BVHTree
 
 NAME = "Hunter_C_Duplicate"
 TITLE = "Duplicate"
-PITCH = ("A bad photocopy of an office worker: a flat printed face on a toner-black head, "
-         "a shirt stretched over a trunk as long as his legs, and identical copies of him in every office.")
+PITCH = ("A bad black-and-white photocopy of an office worker: a flat printed face on a toner-black head, "
+         "a white shirt stretched into a long, square-shouldered page over short toner legs, "
+         "and identical copies of him standing in every office.")
 EYE = 1.64            # replaced in build() by the measured centre of the printed face after flooring
 SMOOTH_ANGLE = 60.0
 
-PAPER = "Prop_Paper"
-TONER = "Creature_Toner"
-SKIN = "Creature_SkinPale"
-TIE = "Creature_TieOxblood"
-NAVY = "Prop_FabricNavy"
-SHOE = "Prop_PlasticBlack"
+PAPER = "Prop_Paper"          # shirt, collar, cuffs, face, hands, neck, ears (with the baked toner-edge term)
+TONER = "Creature_Toner"      # head and hair, print ink, tie, trousers, belt, shoes, pen
+
+# The shirt trunk as a page: rows (z, half-width, front y, back y) lofted with superellipse sections.
+# Front/back follow the first build's measured skin (paunch, hunched back); the half-width is held
+# nearly constant from the belt up (straight flanks), then opens under the sleeves into a level
+# shoulder block whose outer corners are square (SHOULDER_R), not sloped.
+TRUNK = [
+    (0.936, 0.180, -0.040, 0.158),     # hem, tucked inside the belt
+    (0.952, 0.199, -0.066, 0.173),
+    (1.000, 0.208, -0.103, 0.190),
+    (1.075, 0.213, -0.140, 0.190),
+    (1.150, 0.215, -0.164, 0.178),     # paunch
+    (1.225, 0.216, -0.178, 0.157),
+    (1.300, 0.216, -0.189, 0.128),
+    (1.375, 0.217, -0.199, 0.094),
+    (1.405, 0.222, -0.203, 0.080),     # armpit: the block opens out behind the sleeve tops
+    (1.435, 0.272, -0.206, 0.064),
+    (1.455, 0.310, -0.208, 0.054),
+    (1.475, 0.321, -0.209, 0.046),     # from here up the flank is plumb and flush with the sleeve
+    (1.525, 0.322, -0.210, 0.024),
+    (1.574, 0.322, -0.204, -0.004),    # start of the shoulder corner
+]
+SHOULDER_R = 0.028                     # corner radius seen from the front
+SHOULDER_TOP = 1.605                   # the level shoulder line (§5: the shirt block runs up to 1.61)
+COLLAR_RING = (0.092, 1.620, -0.172, -0.048)   # top ring round the neck: half-width, z, front y, back y
+SECTION_N = 2.5                        # superellipse exponent of the trunk sections (2 = ellipse)
 
 # Head frame: centre, rotation (deg XYZ: pitch 8 down, roll 4), half-sizes.
 HEAD_C = Vector((0.0, -0.264, 1.662))
@@ -223,38 +252,79 @@ def _strip(kit, pts, widths, normals, thick, slot, name, tip=0.0):
     return _new_mesh(kit, bm, slot, name)
 
 
+def _catmull(rows, steps=2):
+    """Dense rows through control rows (tuples), Catmull-Rom by row index; ends clamped."""
+    out = []
+    n = len(rows)
+    for i in range(n - 1):
+        p0, p1, p2, p3 = rows[max(i - 1, 0)], rows[i], rows[i + 1], rows[min(i + 2, n - 1)]
+        for k in range(steps):
+            t = k / steps
+            out.append(tuple(0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t +
+                                    (3 * b - a - 3 * c + d) * t ** 3) for a, b, c, d in zip(p0, p1, p2, p3)))
+    out.append(rows[-1])
+    return out
+
+
+def _trunk(kit, n_around=28):
+    """The shirt trunk: superellipse sections lofted through TRUNK, then a square shoulder corner
+    (a quarter round of SHOULDER_R) and a level shoulder top closing in to the collar ring."""
+    rows = _catmull(TRUNK)
+    z_c, w_c, f_c, b_c = TRUNK[-1]
+    yc, hd = (f_c + b_c) / 2, (b_c - f_c) / 2
+    for k in range(1, 7):                               # the corner: width turns in, depth rounds a little
+        th = math.radians(15 * k)
+        w = w_c - SHOULDER_R + SHOULDER_R * math.cos(th)
+        z = z_c + (SHOULDER_TOP - z_c) * math.sin(th)
+        h = hd * (1 - 0.30 * (1 - math.cos(th)))      # rounder in profile than from the front
+        rows.append((z, w, yc - h, yc + h))
+    w0, z0, f0, b0 = rows[-1][1], rows[-1][0], rows[-1][2], rows[-1][3]
+    wt, zt, ft, bt = COLLAR_RING
+    for t in (0.3, 0.6, 0.85, 1.0):                     # level top, rising only at the collar
+        rows.append((z0 + (zt - z0) * t * t, w0 + (wt - w0) * t, f0 + (ft - f0) * t, b0 + (bt - b0) * t))
+    e = 2.0 / SECTION_N
+    bm = bmesh.new()
+    rings = []
+    for z, w, f, b in rows:
+        yc, hd = (f + b) / 2, (b - f) / 2
+        ring = []
+        for i in range(n_around):
+            a = 2 * math.pi * i / n_around
+            c, s = math.cos(a), math.sin(a)
+            ring.append(bm.verts.new((w * math.copysign(abs(c) ** e, c), yc + hd * math.copysign(abs(s) ** e, s), z)))
+        rings.append(ring)
+    for ra, rb in zip(rings, rings[1:]):
+        for i in range(n_around):
+            k = (i + 1) % n_around
+            bm.faces.new((ra[i], ra[k], rb[k], rb[i]))
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    return _new_mesh(kit, bm, PAPER, "shirt")
+
+
 # ------------------------------------------------------------------ body data
 def _joints():
     j = {}
-    # Shirt torso: one vertical chain from the hem (tucked under the belt) to the collar.
-    j.update({
-        "hem": ((0, 0.072, 0.925), (0.158, 0.112)),
-        "waist": ((0, 0.07, 0.955), (0.178, 0.138)),
-        "belly": ((0, 0.012, 1.13), (0.204, 0.198)),     # the paunch (deep, not wide)
-        "chest": ((0, -0.062, 1.385), (0.208, 0.150)),
-        "upper": ((0, -0.098, 1.495), (0.228, 0.130)),
-        "shoulders": ((0, -0.115, 1.560), (0.262, 0.106)),   # the shoulder line belongs to the torso block
-        "trap": ((0, -0.128, 1.618), (0.105, 0.080)),        # trapezius slope up to the collar
-    })
-    # Short sleeves: a straight cone per side from inside the torso's shoulder corner (no bend node,
-    # so no ball-joint deltoid).
-    for s, sx, dz in (("l", 1, 0.0), ("r", -1, -0.008)):
-        j.update({
-            "shoulder_" + s: ((sx * 0.220, -0.118, 1.550 + dz), 0.062),
-            "sleeve_" + s: ((sx * 0.283, -0.126, 1.405 + dz), 0.061),
-        })
-    # Bare arms (start inside the sleeves) and hands: palm + mitten fingers + thumb.
+    # Long sleeves: shoulder (its cap hidden inside the trunk's shoulder block, the tube emerging
+    # under it flush with the block's plumb flank) -> elbow -> sleeve end at elbow->wrist 0.86 (§7.4
+    # derived joint). The arms hang nearly plumb, so the outline drops straight from the square
+    # corner with no deltoid bump. Right side 2 cm back, 8 mm low.
     for s, sx, dy, dz in (("l", 1, 0.0, 0.0), ("r", -1, 0.02, -0.008)):
+        el = Vector((sx * 0.282, -0.128 + dy, 1.305 + dz))
+        wr = Vector((sx * 0.302, -0.188 + dy, 1.035 + dz))
         j.update({
-            "armin_" + s: ((sx * 0.272, -0.124 + dy, 1.45 + dz), 0.045),
-            "elbow_" + s: ((sx * 0.296, -0.128 + dy, 1.305 + dz), 0.047),
-            "wrist_" + s: ((sx * 0.316, -0.188 + dy, 1.035 + dz), 0.035),
-            "knuckle_" + s: ((sx * 0.322, -0.206 + dy, 0.942 + dz), (0.021, 0.046)),
-            "fing_" + s: ((sx * 0.314, -0.216 + dy, 0.890 + dz), (0.018, 0.040)),
-            "tip_" + s: ((sx * 0.302, -0.210 + dy, 0.856 + dz), (0.014, 0.030)),
-            "thumb0_" + s: ((sx * 0.312, -0.214 + dy, 1.002 + dz), 0.017),
-            "thumb1_" + s: ((sx * 0.304, -0.241 + dy, 0.958 + dz), 0.015),
-            "thumb2_" + s: ((sx * 0.296, -0.250 + dy, 0.926 + dz), 0.012),
+            "shoulder_" + s: ((sx * 0.272, -0.118 + dy * 0.5, 1.505 + dz), 0.055),
+            "elbow_" + s: (tuple(el), 0.052),
+            "sleeve_" + s: (tuple(el.lerp(wr, 0.86)), 0.047),
+            # Bare hands start inside the cuff (elbow->wrist 0.80): palm + mitten fingers + thumb.
+            "handin_" + s: (tuple(el.lerp(wr, 0.80)), 0.031),
+            "wrist_" + s: (tuple(wr), 0.034),
+            "knuckle_" + s: ((sx * 0.308, -0.206 + dy, 0.942 + dz), (0.021, 0.046)),
+            "fing_" + s: ((sx * 0.300, -0.216 + dy, 0.890 + dz), (0.018, 0.040)),
+            "tip_" + s: ((sx * 0.288, -0.210 + dy, 0.856 + dz), (0.014, 0.030)),
+            "thumb0_" + s: ((sx * 0.298, -0.214 + dy, 1.002 + dz), 0.017),
+            "thumb1_" + s: ((sx * 0.290, -0.241 + dy, 0.958 + dz), 0.015),
+            "thumb2_" + s: ((sx * 0.282, -0.250 + dy, 0.926 + dz), 0.012),
         })
     # Neck: rises forward out of the collar into the hung head.
     j.update({
@@ -262,13 +332,15 @@ def _joints():
         "neck": ((0, -0.188, 1.620), 0.056),
         "neck_top": ((0, -0.240, 1.640), 0.052),
     })
-    # Trousers: a seat chain plus two separate leg chains that start inside it.
+    # Trousers: two separate leg chains, each rooted at waist_l/_r behind the belt (§7.0, §7.4);
+    # no shared pelvis node, so no crotch sheet and no trouser arch hanging under the shirt. The
+    # roots start 4.5 cm higher than §7.4 (their rounded ends hide inside the shirt, above the belt)
+    # and they and the hips sit 1-1.5 cm nearer the middle, so the two seats overlap: one seat down
+    # to the crotch, instead of two leg tops parting right under the belt.
     j.update({
-        "waist_t": ((0, 0.07, 0.972), (0.182, 0.142)),
-        "pelvis": ((0, 0.092, 0.872), (0.182, 0.122)),
-        "seat_l": ((0.090, 0.095, 0.905), 0.112), "seat_r": ((-0.090, 0.105, 0.905), 0.112),
-        "hip_l": ((0.102, 0.10, 0.78), 0.104), "hip_r": ((-0.102, 0.12, 0.78), 0.104),
-        "knee_l": ((0.11, -0.05, 0.46), 0.072), "knee_r": ((-0.11, 0.21, 0.45), 0.072),
+        "waist_l": ((0.075, 0.07, 0.975), (0.120, 0.110)), "waist_r": ((-0.075, 0.08, 0.975), (0.120, 0.110)),
+        "hip_l": ((0.095, 0.10, 0.82), 0.115), "hip_r": ((-0.095, 0.12, 0.82), 0.115),
+        "knee_l": ((0.11, -0.05, 0.46), 0.074), "knee_r": ((-0.11, 0.21, 0.45), 0.074),
         "ankle_l": ((0.11, -0.10, 0.125), 0.057), "ankle_r": ((-0.11, 0.31, 0.142), 0.057),
         "cuff_l": ((0.11, -0.106, 0.084), 0.062), "cuff_r": ((-0.11, 0.322, 0.104), 0.062),
     })
@@ -296,7 +368,7 @@ def _skin(kit, cl, j, bones, slot, name, max_tris=None):
 def _head(kit):
     """Toner skull + hair: an egg-headed ellipsoid, jaw narrower, nape tucked, front cut flat."""
     bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=40, v_segments=22, radius=1.0)
+    bmesh.ops.create_uvsphere(bm, u_segments=34, v_segments=20, radius=1.0)
     for v in bm.verts:
         x, y, z = v.co
         x *= HEAD_HX
@@ -312,9 +384,10 @@ def _head(kit):
             y = -HEAD_FRONT                          # the face has no relief
         v.co = (x, y, z)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
-    # Hair and the shadow band round the face stay toner; round the ear and down the nape is skin,
-    # so in profile the dark dome reads as hair on a hung head, not a helmet. The hairline is cut
-    # into the mesh with planes (a clean, graphic edge, like a cut-out), not stepped along faces.
+    # Hair and the shadow band round the face stay toner; round the ear and down the nape is paper
+    # (toner-shaded by the edge term), so in profile the dark dome reads as hair on a hung head, not
+    # a helmet. The hairline is cut into the mesh with planes (a clean, graphic edge, like a
+    # cut-out), not stepped along faces.
     cuts = [(HAIR_BAND, Vector((0, 1, 0)))]
     for a, b in HAIRLINE:
         d = Vector(b) - Vector(a)
@@ -322,7 +395,7 @@ def _head(kit):
     for co, no in cuts:
         bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-6, plane_co=co, plane_no=no)
     obj = _new_mesh(kit, bm, TONER, "head")
-    obj.data.materials.append(kit._material(SKIN))
+    obj.data.materials.append(kit._material(PAPER))
     for poly in obj.data.polygons:
         c = poly.center
         if all((c - co).dot(no) > 0 for co, no in cuts[:1]) and all((c - co).dot(no) < 0 for co, no in cuts[1:]):
@@ -342,7 +415,7 @@ def _shoe(kit, loc, rot, name):
             p.z += 0.010 * max(0.0, f - 0.6) ** 2 / 0.16   # toe spring
         p.x *= (1 - 0.18 * f ** 2.5) * (1 - 0.12 * b ** 2)
         return p
-    shoe = kit.soft_box((0.096, 0.255, 0.094), loc, SHOE, radius=0.026, segments=24, rings=12, rot=rot, name=name)
+    shoe = kit.soft_box((0.096, 0.255, 0.094), loc, TONER, radius=0.026, segments=20, rings=10, rot=rot, name=name)
     _reshape(shoe, shape)
     return shoe
 
@@ -365,7 +438,7 @@ def _belt(kit, objs, z, centre_y, n=48):
     for dz, grow in ((-0.024, -0.010), (-0.020, 0.0), (0.020, 0.0), (0.024, -0.010)):
         rings.append([c + Vector((math.cos(2 * math.pi * i / n) * (r + grow), math.sin(2 * math.pi * i / n) * (r + grow), dz))
                       for i, r in enumerate(rad)])
-    return _band(kit, rings, SHOE, "belt")
+    return _band(kit, rings, TONER, "belt")
 
 
 def _tube_radius(obj, point, axis, slab=0.008, reach=0.12):
@@ -381,13 +454,19 @@ def _tube_radius(obj, point, axis, slab=0.008, reach=0.12):
     return sum(ds) / len(ds) if ds else 0.05
 
 
-def _sleeve_hem(kit, top, bottom, radius, name):
-    """An open, slightly flared cuff at the end of a short sleeve (axis top -> bottom)."""
-    axis = (bottom - top).normalized()
-    prof = [(radius * 0.92, 0.028), (radius * 1.00, 0.0), (radius * 1.03, -0.010), (radius * 0.93, -0.012), (radius * 0.82, 0.010)]
-    q = Vector((0, 0, -1)).rotation_difference(axis)
+def _cuff(kit, end, axis, radius, name):
+    """A buttoned shirt cuff round the end of a long sleeve: a band 5 mm proud of the sleeve, its
+    lower lip turned in to the wrist (the hand comes out of it), and the stitch line at its top
+    printed as one thin toner ring. ``end`` is the wrist end of the cuff, ``axis`` points down the arm."""
+    q = Vector((0, 0, -1)).rotation_difference(axis)          # local +Z runs up the arm
     rot = [math.degrees(a) for a in q.to_euler("XYZ")]
-    return kit.lathe(prof, tuple(bottom), PAPER, verts=24, rot=rot, name=name, close_top=False, close_bottom=False)
+    ro = radius + 0.005
+    band = kit.lathe([(0.024, 0.0), (ro - 0.003, 0.0), (ro, 0.004), (ro, 0.050), (ro - 0.004, 0.055),
+                      (radius - 0.008, 0.058)], tuple(end), PAPER, verts=24, rot=rot, name="cuff_" + name,
+                     close_top=False, close_bottom=False)
+    seam = kit.lathe([(ro + 0.0002, 0.041), (ro + 0.0016, 0.042), (ro + 0.0016, 0.046), (ro + 0.0002, 0.047)],
+                     tuple(end), TONER, verts=16, rot=rot, name="cuff_seam_" + name, close_top=False, close_bottom=False)
+    return band, seam
 
 
 # ------------------------------------------------------------------ build
@@ -395,53 +474,49 @@ def build(kit, cl):
     global EYE
     j = _joints()
 
-    # --- shirt (paper white): one long torso chain; each short sleeve its own straight cone + open hem
-    shirt = _skin(kit, cl, j, [
-        ("hem", "waist"), ("waist", "belly"), ("belly", "chest"), ("chest", "upper"), ("upper", "shoulders"),
-        ("shoulders", "trap"),
-    ], PAPER, "shirt")
-    sleeves = []
+    # --- shirt (paper): the trunk printed as a page; long sleeves with buttoned cuffs
+    shirt = _trunk(kit)
+    sleeves, cuffs, hands = [], [], []
     for s in ("l", "r"):
-        sleeve = _skin(kit, cl, j, [("shoulder_" + s, "sleeve_" + s)], PAPER, "sleeve_" + s)
+        sleeve = _skin(kit, cl, j, [("shoulder_" + s, "elbow_" + s), ("elbow_" + s, "sleeve_" + s)], PAPER, "sleeve_" + s,
+                       max_tris=520)
         sleeves.append(sleeve)
-        sh, sl = Vector(j["shoulder_" + s][0]), Vector(j["sleeve_" + s][0])
-        ax = (sl - sh).normalized()
-        r_meas = _tube_radius(sleeve, sl - ax * 0.03, ax)      # the subdivided sleeve is thinner than its skin radius
-        _sleeve_hem(kit, sh, sl - ax * 0.012, r_meas + 0.002, "hem_" + s)
+        el, sl = Vector(j["elbow_" + s][0]), Vector(j["sleeve_" + s][0])
+        ax = (sl - el).normalized()
+        r_meas = _tube_radius(sleeve, sl - ax * 0.035, ax)    # the subdivided sleeve is thinner than its skin radius
+        band, _seam = _cuff(kit, sl + ax * 0.030, ax, r_meas, s)
+        cuffs.append(band)
+        # bare hands, paper like the rest of the print (toner-shaded by the edge term)
+        hands.append(_skin(kit, cl, j, [("handin_" + s, "wrist_" + s), ("wrist_" + s, "knuckle_" + s),
+                                         ("knuckle_" + s, "fing_" + s), ("fing_" + s, "tip_" + s),
+                                         ("thumb0_" + s, "thumb1_" + s), ("thumb1_" + s, "thumb2_" + s)],
+                           PAPER, "hand_" + s, max_tris=720))
 
-    # --- bare arms and hands
-    arms = []
-    for s in ("l", "r"):
-        arms.append(_skin(kit, cl, j, [("armin_" + s, "elbow_" + s), ("elbow_" + s, "wrist_" + s),
-                                        ("wrist_" + s, "knuckle_" + s), ("knuckle_" + s, "fing_" + s),
-                                        ("fing_" + s, "tip_" + s), ("thumb0_" + s, "thumb1_" + s),
-                                        ("thumb1_" + s, "thumb2_" + s)], SKIN, "arm_" + s, max_tris=1500))
+    # --- neck (paper)
+    neck = _skin(kit, cl, j, [("neck_base", "neck"), ("neck", "neck_top")], PAPER, "neck")
 
-    # --- neck
-    neck = _skin(kit, cl, j, [("neck_base", "neck"), ("neck", "neck_top")], SKIN, "neck")
+    # --- trousers (toner): two leg chains from waist_l/_r
+    trousers = _skin(kit, cl, j, [("waist_l", "hip_l"), ("hip_l", "knee_l"), ("knee_l", "ankle_l"), ("ankle_l", "cuff_l"),
+                                  ("waist_r", "hip_r"), ("hip_r", "knee_r"), ("knee_r", "ankle_r"), ("ankle_r", "cuff_r")],
+                     TONER, "trousers", max_tris=1600)
 
-    # --- trousers
-    trousers = _skin(kit, cl, j, [("waist_t", "pelvis"),
-                                  ("seat_l", "hip_l"), ("hip_l", "knee_l"), ("knee_l", "ankle_l"), ("ankle_l", "cuff_l"),
-                                  ("seat_r", "hip_r"), ("hip_r", "knee_r"), ("knee_r", "ankle_r"), ("ankle_r", "cuff_r")],
-                     NAVY, "trousers")
-
-    # --- shoes: soft-soled office shoes; the right heel is raised (mid-stride)
+    # --- shoes (toner): soft-soled office shoes; the right heel is raised (mid-stride)
     _shoe(kit, (0.11, -0.160, 0.047), (0, 0, 2), "shoe_l")
     _shoe(kit, (-0.11, 0.244, 0.070), (10, 0, -2), "shoe_r")
-    _skin(kit, cl, j, [("shin_l", "sock_l")], SHOE, "upper_l")
-    _skin(kit, cl, j, [("shin_r", "sock_r")], SHOE, "upper_r")
+    _skin(kit, cl, j, [("shin_l", "sock_l")], TONER, "upper_l")
+    _skin(kit, cl, j, [("shin_r", "sock_r")], TONER, "upper_r")
 
-    # --- belt fitted round shirt + trouser top
+    # --- belt (toner) fitted round shirt + trouser tops
     _belt(kit, [shirt, trousers], 0.955, 0.07)
 
-    # --- head: toner skull/hair cut flat, ears, the paper face and its print
+    # --- head: toner skull/hair cut flat, paper ears, the paper face and its print
     H = _head_matrix()
     head = _head(kit)
+    ears = []
     for sx in (1, -1):
         # Pale ears outside the toner mass: the dark dome reads as hair on a head, not a helmet.
-        cl.ellipsoid(kit, (0.024, 0.046, 0.062), tuple(H @ Vector((sx * 0.090, 0.016, -0.016))), SKIN,
-                     rot=(HEAD_ROT[0], HEAD_ROT[1], HEAD_ROT[2] + sx * 8.0), segments=12, rings=8, name="ear")
+        ears.append(cl.ellipsoid(kit, (0.024, 0.046, 0.062), tuple(H @ Vector((sx * 0.090, 0.016, -0.016))), PAPER,
+                                 rot=(HEAD_ROT[0], HEAD_ROT[1], HEAD_ROT[2] + sx * 8.0), segments=12, rings=8, name="ear"))
     face = _face_outline()
     paper_y = -HEAD_FRONT - 0.0001                  # flush with the cut skull: a print, not a mask
     _on_head(kit, face, paper_y, 0.0024, PAPER, "face_paper")
@@ -463,36 +538,36 @@ def build(kit, cl):
     _on_head(kit, [(STREAK_X - 0.002, v0 + 0.002), (STREAK_X + 0.002, v0 + 0.002),
                    (STREAK_X + 0.002, v1 - 0.002), (STREAK_X - 0.002, v1 - 0.002)], ink_y, 0.0010, TONER, "streak_face")
 
-    # --- collar: a short band round the neck base, axis along the neck
+    # --- collar (paper): a short band round the neck base, axis along the neck
     nb, nk = Vector(j["neck_base"][0]), Vector(j["neck"][0])
     axis = (nk - nb).normalized()
     tilt = math.degrees(math.atan2(-axis.y, axis.z))
-    kit.cylinder(0.067, 0.034, tuple(nb - axis * 0.004 + Vector((0, -0.004, 0))), PAPER, radius_top=0.062, verts=28,
-                 rot=(tilt, 0, 0), name="collar")
+    collar = kit.cylinder(0.067, 0.034, tuple(nb - axis * 0.004 + Vector((0, -0.004, 0))), PAPER, radius_top=0.062,
+                          verts=28, rot=(tilt, 0, 0), name="collar")
 
-    # --- tie: knot at the collar, blade lying on the shirt front; too short for the stretched trunk
+    # --- tie (toner): knot at the collar, blade lying on the shirt front; too short for the stretched trunk
     tree = _bvh([shirt])
     hits = [_front(tree, 0.0, 1.548 - 0.022 * i) for i in range(18)]
     hits = [h for h in hits if h and 1.175 <= h[0].z <= 1.548]
     if len(hits) >= 3:
         top, end = hits[0][0].z, hits[-1][0].z
         widths = [0.038 + (0.080 - 0.038) * (top - h[0].z) / (top - end) for h in hits]
-        _strip(kit, [h[0] + Vector((0, 0.002, 0)) for h in hits], widths, [Vector((0, -1, 0))] * len(hits), 0.011, TIE, "tie",
-               tip=0.042)
+        _strip(kit, [h[0] + Vector((0, 0.002, 0)) for h in hits], widths, [Vector((0, -1, 0))] * len(hits), 0.011, TONER,
+               "tie", tip=0.042)
     kn = _front(tree, 0.0, 1.562)
     if kn:
-        kit.soft_box((0.046, 0.030, 0.042), tuple(kn[0] + Vector((0, -0.010, 0))), TIE, radius=0.012, segments=12, rings=8,
-                     rot=(-12, 0, 0), name="knot")
+        kit.soft_box((0.046, 0.030, 0.042), tuple(kn[0] + Vector((0, -0.010, 0))), TONER, radius=0.012, segments=12,
+                     rings=8, rot=(-12, 0, 0), name="knot")
 
     # --- breast pocket (stretched with the trunk: 1.8x taller than wide) and a pen
-    _pocket(kit, tree, 0.104, 0.092, 1.468, 1.300)
+    pocket = _pocket(kit, tree, 0.104, 0.092, 1.468, 1.300)
     pa, pb = _front(tree, 0.086, 1.430), _front(tree, 0.086, 1.490)
     if pa and pb:
         d = (pb[0] - pa[0]).normalized()
         mid = (pa[0] + pb[0]) / 2 + pa[1] * 0.0075 + d * 0.012
         kit.cylinder(0.0055, 0.085, tuple(mid), TONER, verts=10, rot=(math.degrees(math.atan2(-d.y, d.z)), 0, 0), name="pen")
 
-    # --- the drum streak continues down the shirt front, in line with the one on the face
+    # --- page-slip mark: the drum streak continues down the shirt front, in line with the one on the face
     sh = [_front(tree, STREAK_X - 0.006, 1.56 - 0.02 * i) for i in range(30)]
     sh = [h for h in sh if h and 0.985 <= h[0].z <= 1.56]
     if len(sh) >= 3:
@@ -501,14 +576,18 @@ def build(kit, cl):
     cl.floor_parts(kit)
     head_floor = head.location.z - HEAD_C.z
     EYE = round((H @ Vector((0, paper_y, FACE_Z))).z + head_floor, 3)
-    _toner_edges(kit, {shirt: 1.0, sleeves[0]: 1.0, sleeves[1]: 1.0, neck: 0.6, arms[0]: 0.45, arms[1]: 0.45})
+    weights = {shirt: 1.0, sleeves[0]: 1.0, sleeves[1]: 1.0, cuffs[0]: 0.8, cuffs[1]: 0.8, pocket: 1.0,
+               collar: 0.6, neck: 0.8, hands[0]: 0.6, hands[1]: 0.6, head: 0.55, ears[0]: 0.55, ears[1]: 0.55}
+    _toner_edges(kit, weights)
     kit.no_collider()
 
 
 def _toner_edges(kit, weights):
-    """The 'printed' shirt: up- and front-facing planes stay paper-white, flanks and undersides go
-    toner-grey (a baked darkening toward the silhouette edge, doc 10 §5). Stored as a colour
-    attribute 'toner' on every part (1 = no change) and multiplied into the Paper/Skin slots."""
+    """The 'printed' paper: up- and front-facing planes stay paper-white, flanks and undersides go
+    toner-grey (a baked darkening toward the silhouette edge, doc 10 §5), so the figure draws its own
+    dark outline against yellow wallpaper. The back-facing term is kept small: a copy is dark at its
+    edges, not dirty all over its back. Stored as a colour attribute 'toner' on every part (1 = no
+    change) and multiplied into the Paper slot (the toner slot is dark already)."""
     for obj in kit.parts:
         me = obj.data
         attr = me.color_attributes.get("toner") or me.color_attributes.new("toner", "FLOAT_COLOR", "POINT")
@@ -519,23 +598,22 @@ def _toner_edges(kit, weights):
                 n = v.normal
                 side = _smooth(0.35, 0.90, abs(n.x))
                 down = _smooth(0.15, 0.75, -n.z)
-                back = _smooth(0.20, 0.90, n.y)
-                val = max(0.34, 1.0 - w * (0.60 * side + 0.42 * down + 0.25 * back))
+                back = _smooth(0.30, 0.95, n.y)
+                val = max(0.34, 1.0 - w * (0.60 * side + 0.42 * down + 0.08 * back))
             attr.data[i].color = (val, val, val, 1.0)
-    for slot in (PAPER, SKIN):
-        mat = bpy.data.materials.get(slot)
-        if mat is None or not mat.use_nodes:
-            continue
-        nodes, links = mat.node_tree.nodes, mat.node_tree.links
-        bsdf = nodes.get("Principled BSDF")
-        base = tuple(bsdf.inputs["Base Color"].default_value)
-        at = nodes.new("ShaderNodeAttribute")
-        at.attribute_name = "toner"
-        mix = nodes.new("ShaderNodeMix")
-        mix.data_type = "RGBA"
-        mix.blend_type = "MULTIPLY"
-        mix.inputs[0].default_value = 1.0
-        a_in, b_in = [s for s in mix.inputs if s.type == "RGBA"][:2]
-        a_in.default_value = base
-        links.new(at.outputs["Color"], b_in)
-        links.new([s for s in mix.outputs if s.type == "RGBA"][0], bsdf.inputs["Base Color"])
+    mat = bpy.data.materials.get(PAPER)
+    if mat is None or not mat.use_nodes:
+        return
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    bsdf = nodes.get("Principled BSDF")
+    base = tuple(bsdf.inputs["Base Color"].default_value)
+    at = nodes.new("ShaderNodeAttribute")
+    at.attribute_name = "toner"
+    mix = nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    mix.blend_type = "MULTIPLY"
+    mix.inputs[0].default_value = 1.0
+    a_in, b_in = [s for s in mix.inputs if s.type == "RGBA"][:2]
+    a_in.default_value = base
+    links.new(at.outputs["Color"], b_in)
+    links.new([s for s in mix.outputs if s.type == "RGBA"][0], bsdf.inputs["Base Color"])

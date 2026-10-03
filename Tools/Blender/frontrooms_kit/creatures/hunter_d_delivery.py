@@ -17,7 +17,7 @@ The tell: the cargo straps come down the load and run INTO the tops of the
 shoulders (the canvas puckers where they go in); they come back out of the front of
 the shoulders and cross the chest in an X with a buckle. It never sets the load down.
 
-Slots (6): pad navy (load, hanging corner), canvas brown (jacket), charcoal
+Slots (6): pad navy (load), canvas brown (jacket, collar), charcoal
 (trousers, cap, face, neck), paper (gloves, cap cuff, binding, label), vinyl (boots,
 straps, label print), chrome (the two buckles). No tape anywhere: the first build's
 silver tape over the eyes and mouth read as a bound hostage and sat near Little
@@ -32,8 +32,8 @@ from mathutils.bvhtree import BVHTree
 
 NAME = "Hunter_D_Delivery"
 TITLE = "Delivery"
-PITCH = ("A mover bent under a square, strapped moving-pad load whose straps run into his shoulders; "
-         "his face stays in its shadow, and every relay a fresh carrier arrives with the same load and label.")
+PITCH = ("A mover bent under a tilted, strapped moving-pad load whose straps run into his shoulders; "
+         "his face stays in its shadow, and every relay brings a fresh carrier with the same load and label.")
 EYE = 1.60            # replaced in build() by the measured centre of the face (eye line) after flooring
 SMOOTH_ANGLE = 60.0
 
@@ -71,9 +71,9 @@ L_HALF = V((0.36, 0.21, 0.25))       # 0.72 W x 0.42 D x 0.50 H
 L_R = 0.05
 L_LOC = V((0.03, 0.06, 1.59))        # 3 cm toward its left shoulder
 L_ROT = (20.0, -11.0, 0.0)           # pitch 20 with the torso; roll -11 (right end down)
-L_PUFF = 0.014                       # faces bow out a little: a pad over something hard
+L_PUFF = 0.016                       # faces bow out a little: a pad over something hard
 L_SAG = 0.008
-L_QUILT = 0.010                      # depth of a stitch line
+L_QUILT = 0.015                      # depth of a stitch line
 L_CELL = 0.15                        # target quilt cell
 L_CINCH = 0.012
 STRAP_W, STRAP_T = 0.055, 0.010
@@ -269,77 +269,20 @@ def _patch(kit, centre_xy, size, angle, off, slot, name, n=6):
     return kit._new_object(name, bm, slot, "metres", "xz")
 
 
-def _tail(kit, drop=0.24, nu=8, nv=7, thick=0.014):
-    """A loose corner of the moving blanket hanging off the bundle's bottom-back-left corner,
-    bound on both edges (the pale binding again, continuing the edge that runs down the
-    left front): the load is a blanket wrapped round something hard."""
-    h = L_HALF
-    attach = _path([(0.06, h.y - 0.035, -h.z), (h.x - 0.08, h.y - 0.035, -h.z), (h.x - 0.08, 0.02, -h.z)], 0.01)
-    top_pts = [_load_point(q, -0.006)[0] for q in attach]
-    acc = [0.0]
-    for a, b in zip(top_pts, top_pts[1:]):
-        acc.append(acc[-1] + (b - a).length)
-
-    def top(u):
-        t = u * acc[-1]
-        for k in range(len(acc) - 1):
-            if t <= acc[k + 1] or k == len(acc) - 2:
-                f = (t - acc[k]) / max(1e-9, acc[k + 1] - acc[k])
-                return top_pts[k].lerp(top_pts[k + 1], max(0.0, min(1.0, f)))
-
-    corner, cn = _load_point((h.x, h.y, -h.z), 0.0)
-    out = V((cn.x, cn.y, 0)).normalized()
-    tip = corner + out * -0.11 + V((0, 0.045, -drop))
-    side = V((-out.y, out.x, 0))
-
-    def S(u, v):
-        p = top(u).lerp(tip + side * (u - 0.5) * 0.04, v ** 0.9)
-        bow = math.sin(math.pi * v) * (0.035 + 0.02 * math.sin(math.pi * u))
-        fold = 0.012 * math.sin(2 * math.pi * (1.5 * u + 0.3 * v)) * v
-        return p + out * (bow + fold)
-
-    def N(u, v):
-        e = 1e-3
-        du = S(min(1, u + e), v) - S(max(0, u - e), v)
-        dv = S(u, min(1, v + e)) - S(u, max(0, v - e))
-        n = du.cross(dv).normalized()
-        return n if n.dot(out) > 0 else -n
-
-    bm = bmesh.new()
-    layers = []
-    for sd in (1, -1):
-        layers.append([[bm.verts.new(S(i / nu, k / nv) + N(i / nu, k / nv) * sd * thick / 2) for k in range(nv + 1)]
-                       for i in range(nu + 1)])
-    a, b = layers
-    for i in range(nu):
-        for k in range(nv):
-            bm.faces.new((a[i][k], a[i + 1][k], a[i + 1][k + 1], a[i][k + 1]))
-            bm.faces.new((b[i][k], b[i][k + 1], b[i + 1][k + 1], b[i + 1][k]))
-    loop = [(0, k) for k in range(nv + 1)] + [(i, nv) for i in range(1, nu + 1)] + [(nu, k) for k in range(nv - 1, -1, -1)]
-    for (i0, k0), (i1, k1) in zip(loop, loop[1:]):
-        bm.faces.new((a[i0][k0], a[i1][k1], b[i1][k1], b[i0][k0]))
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    kit._new_object("blanket corner", bm, PAD, "metres", "xz")
-    # binding: down one edge, round the tip, back up the other, folded over the edge
-    pts, nrm = [], []
-    e = 1e-3
-    for u, ks in ((0.0, range(1, nv + 1)), (1.0, range(nv, 0, -1))):
-        for k in ks:
-            v = k / nv
-            d = (S(min(1, u + e), v) - S(max(0, u - e), v)).normalized() * (1 if u > 0.5 else -1)
-            pts.append(S(u, v) + d * 0.006)
-            nrm.append(d)
-    _ribbon(kit, pts, nrm, thick + 0.012, 0.03, LIGHT, "corner binding")
-
-
 # ------------------------------------------------------------------ the head
 H_LOC = V((0.0, -0.255, 1.659))
 H_ROT = (36.0, 0.0, 3.0)                # hung 36 deg under the load, turned a touch to its left
 H_HALF = (0.09, 0.105, 0.1175)          # 0.18 W x 0.21 D x 0.235 H in the cap
 HR = _R(H_ROT)
 FACE_Z = 0.004                          # head-local z of the eye line (the face's centre)
-CUFF_Z = (0.022, 0.080)                 # the turned-up ecru cuff, right at the brow
+CUFF_Z = (0.030, 0.074)                 # the turned-up ecru cuff at the brow (head-local z at the front)
 CUFF_OUT = (0.011, 0.016)               # stands proud of the head, flaring a little at the fold
+CUFF_TILT = 0.04                        # a watch cap sits lower at the back (over the ears and nape)
+
+
+def _cuff_dz(v):
+    """Head-local z offset of the cuff line at angle v (-pi/2 = the brow, +pi/2 = the nape)."""
+    return -CUFF_TILT * 0.5 * (1 + math.sin(v))
 
 
 def _head_deform(p):
@@ -357,16 +300,18 @@ def _face_planes(p):
 
 def _head(kit):
     """The face (charcoal, in shadow) and the charcoal knit cap over it, cut at the cuff."""
-    for part, scale, cut in (("face", 1.0, None), ("cap", 1.045, CUFF_Z[0] - 0.004)):
+    for part, scale, cut in (("face", 1.0, None), ("cap", 1.06, CUFF_Z[0] + 0.012)):
         bm = bmesh.new()
         bmesh.ops.create_uvsphere(bm, u_segments=18, v_segments=12, radius=1.0)
         if cut is not None:
-            bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z * H_HALF[2] < cut], context="VERTS")
+            # cut along the tilted cuff line (the cuff hides the stepped edge)
+            bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z * H_HALF[2]
+                                       < cut + _cuff_dz(math.atan2(v.co.y, v.co.x))], context="VERTS")
         for v in bm.verts:
             p = V((v.co.x * H_HALF[0], v.co.y * H_HALF[1], v.co.z * H_HALF[2]))
             if cut is not None:
-                # knit cap: a little fuller, with a soft peak at the top-back
-                p = p * scale + V((0, 0.006, 0.012)) * max(0.0, p.z / H_HALF[2]) ** 3
+                # knit cap: fuller than the skull, with a soft slouch at the top-back
+                p = p * scale + V((0, 0.012, 0.016)) * max(0.0, p.z / H_HALF[2]) ** 2
             else:
                 p = _face_planes(p)
             v.co = _head_deform(p)
@@ -383,17 +328,20 @@ def _head_ring_point(v, z, off):
 
 
 def _band(kit, z0, z1, t_out, slot, name, verts=24):
-    """A full band round the head between head-local heights z0..z1, standing t_out = (bottom, top)
-    proud of the head (a turned-up knit cuff)."""
+    """A full band round the head between head-local heights z0..z1 (at the brow; lower at the
+    back, _cuff_dz), standing t_out = (bottom, top) proud of the head, with a rounded fold on top:
+    a turned-up knit cuff."""
     bm = bmesh.new()
     rings = []
+    prof = ((z0, t_out[0]), (z1 - 0.012, t_out[1]), (z1, t_out[1] - 0.005), (z1, -0.006), (z0, -0.006))
     for i in range(verts):
         v = -math.pi / 2 + 2 * math.pi * i / verts
-        rings.append([bm.verts.new(_head_ring_point(v, z, off))
-                      for z, off in ((z0, t_out[0]), (z1, t_out[1]), (z1, -0.006), (z0, -0.006))])
+        dz = _cuff_dz(v)
+        rings.append([bm.verts.new(_head_ring_point(v, z + dz, off)) for z, off in prof])
+    np_ = len(prof)
     for a, b in zip(rings, rings[1:] + rings[:1]):
-        for k in range(4):
-            m = (k + 1) % 4
+        for k in range(np_):
+            m = (k + 1) % np_
             bm.faces.new((a[k], a[m], b[m], b[k]))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     obj = kit._new_object(name, bm, slot, "metres", "xz")
@@ -531,6 +479,62 @@ def _tube_open(kit, top, bot, r_top, r_bot, slot, name, verts=20, wall=0.01, lev
     return kit._new_object(name, bm, slot, "metres", "xz")
 
 
+def _extent(tree, c, d, reach=0.6):
+    """How far the surface in tree reaches from c along direction d (0 if it does not)."""
+    hit = tree.ray_cast(c + d * reach, -d, reach)
+    return reach - hit[3] if hit[0] is not None else 0.0
+
+
+def _smoothed(fn, n=72, passes=3):
+    """fn(a) sampled round the circle, smoothed (so a measured radius has no saw teeth)."""
+    vals = [fn(2 * math.pi * i / n) for i in range(n)]
+    for _ in range(passes):
+        vals = [(vals[i - 1] + 2 * vals[i] + vals[(i + 1) % n]) / 4 for i in range(n)]
+
+    def f(a):
+        x = (a % (2 * math.pi)) / (2 * math.pi) * n
+        i = int(x) % n
+        t = x - int(x)
+        return vals[i] * (1 - t) + vals[(i + 1) % n] * t
+    return f
+
+
+def _ring_tube(kit, axis, rings_def, slot, name, verts=24, wall=0.01, gap=0.0):
+    """An open garment edge (hem band, collar) round ``axis``. rings_def: [(centre(a), radius(a))]
+    from the top ring down, as functions of the angle a round the axis (0 = +X, -pi/2 = front).
+    gap > 0 leaves the front open by +-gap radians (a collar's opening)."""
+    ex = V((1, 0, 0))
+    ex = (ex - axis * ex.dot(axis)).normalized()
+    ey = axis.cross(ex).normalized()
+    if ey.y < 0:
+        ey = -ey                                  # +ey = back, so a = -pi/2 is the front
+    closed = gap <= 0
+    n = verts if closed else verts + 1
+    angs = [-math.pi / 2 + gap + (2 * math.pi - 2 * gap) * i / verts for i in range(n)]
+    bm = bmesh.new()
+    outer, inner = [], []
+    for centre, radius in rings_def:
+        o_ring, i_ring = [], []
+        for a in angs:
+            d = ex * math.cos(a) + ey * math.sin(a)
+            c, r = centre(a), radius(a)
+            o_ring.append(bm.verts.new(c + d * r))
+            i_ring.append(bm.verts.new(c + d * (r - wall)))
+        outer.append(o_ring)
+        inner.append(i_ring)
+    profile = outer + [inner[-1]] + list(reversed(inner))[1:]     # down the outside, up the inside
+    loop = profile + [profile[0]]
+    for ra, rb in zip(loop, loop[1:]):
+        for i in range(n if closed else n - 1):
+            m = (i + 1) % n
+            bm.faces.new((ra[i], ra[m], rb[m], rb[i]))
+    if not closed:
+        for k in (0, n - 1):
+            bm.faces.new([ring[k] for ring in profile])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return kit._new_object(name, bm, slot, "metres", "xz")
+
+
 def _basis_euler(xaxis, zaxis):
     """Euler degrees of a frame with the given x and z axes."""
     from mathutils import Matrix
@@ -605,7 +609,7 @@ def build(kit, cl):
     # Jacket: torso chain (hem to chest top) and two sleeve chains starting inside the
     # chest (separate chains: no flat Skin sheets at a 3-way branch).
     torso = cl.skin_body(kit, J(["pelvis", "belly", "chest", "chest_top"],
-                                [(0.19, 0.16), (0.20, 0.17), (0.232, 0.18), (0.235, 0.15)]),
+                                [(0.236, 0.17), (0.228, 0.175), (0.232, 0.18), (0.235, 0.15)]),
                          [("pelvis", "belly"), ("belly", "chest"), ("chest", "chest_top")],
                          JACKET, name="jacket torso")
     sleeves = []
@@ -626,16 +630,25 @@ def build(kit, cl):
                                    [0.10, 0.118, 0.09, 0.082, 0.10, 0.118, 0.09, 0.082]),
                             [("seat_l", "hip_l"), ("hip_l", "knee_l"), ("knee_l", "hemt_l"),
                              ("seat_r", "hip_r"), ("hip_r", "knee_r"), ("knee_r", "hemt_r")], CLOTH, name="trousers")
-    # Jacket hem: a waist-length work jacket ends in a short, straight band at the hip,
-    # square to the pitched torso (it rides up at the back, as a jacket does when you bend).
-    # The first build's flared chore-coat skirt read from the front as an apron.
+    # Jacket hem: a boxy, waist-length work jacket (as wide at the hem as at the chest) ending
+    # in a short, straight band at the hip, square to the pitched torso (it rides up at the
+    # back, as a jacket does when you bend). The first build's flared chore-coat skirt over
+    # a narrow waist read from the front as an apron.
+    # Per angle, the band hugs the jacket (it does not flare) and only clears the trousers.
     axis = (j["belly"] - j["pelvis"]).normalized()
-    c0 = j["pelvis"] + axis * 0.06
-    bot = j["pelvis"] - axis * 0.045
-    rx, ry = _section(torso, c0, axis, rmax=0.4)
-    trx, tryy = _section(trousers, bot, axis, slab=0.025, rmax=0.4)
-    _tube_open(kit, c0, bot, (rx * 0.97, ry * 0.97), (max(rx * 1.04, trx + 0.014), max(ry * 1.04, tryy + 0.014)),
-               JACKET, "jacket hem", verts=24, wall=0.012)
+    t_tree, l_tree = _bvh([torso]), _bvh([trousers])
+    ex = (V((1, 0, 0)) - axis * axis.x).normalized()
+    ey = axis.cross(ex).normalized()
+    ey = ey if ey.y > 0 else -ey
+
+    def _d(a):
+        return ex * math.cos(a) + ey * math.sin(a)
+
+    c_top, c_mid = j["pelvis"] + axis * 0.07, j["pelvis"] + axis * 0.03
+    bot = lambda a: j["pelvis"] - axis * (0.04 - 0.02 * max(0.0, -math.sin(a)))  # noqa: E731  shorter in front
+    r_top = _smoothed(lambda a: 0.97 * _extent(t_tree, c_top, _d(a)))
+    r_bot = _smoothed(lambda a: max(1.0 * _extent(t_tree, c_mid, _d(a)), _extent(l_tree, bot(a), _d(a)) + 0.014))
+    _ring_tube(kit, axis, [(lambda a: c_top, r_top), (bot, r_bot)], JACKET, "jacket hem", verts=28, wall=0.012)
     cl.decimate_to(trousers, 900)
     for s in ("l", "r"):
         # trouser bottoms break over the boot tops: an open hem flush with the leg
@@ -662,10 +675,20 @@ def build(kit, cl):
                 rot=rot, name="heel " + s)
     # Neck and face: charcoal, big plain planes, in the load's shadow; the ecru cuff turned
     # up at the brow is the only light on the head.
-    cl.skin_body(kit, J(["neck_base", "neck"], [0.068, 0.062]), [("neck_base", "neck")], CLOTH, name="neck")
+    j["neck_top"] = H_LOC + HR @ V((0, 0.012, -0.045))           # inside the skull: no ball under the chin
+    cl.skin_body(kit, J(["neck_base", "neck", "neck_top"], [0.068, 0.06, 0.052]),
+                 [("neck_base", "neck"), ("neck", "neck_top")], CLOTH, name="neck")
+    # A low canvas collar lying open at the front (a jacket neckline, not a turtleneck).
+    axis = (j["neck"] - j["neck_base"]).normalized()
+    nb = j["neck_base"]
+    _ring_tube(kit, axis, [(lambda a: nb + axis * 0.025, lambda a: 0.086),
+                           (lambda a: nb - axis * 0.01, lambda a: 0.118),
+                           (lambda a: nb - axis * 0.03, lambda a: 0.122)],
+               JACKET, "collar", verts=18, wall=0.01, gap=math.radians(28))
     _head(kit)
-    cl.ellipsoid(kit, (0.03, 0.034, 0.05), tuple(H_LOC + HR @ V((0, -0.097, -0.016))), CLOTH,
-                 rot=(H_ROT[0] - 14, 0, H_ROT[2]), segments=10, rings=6, name="nose")
+    # one plane for the nose: a blunt wedge from under the cuff, sloping with the face
+    kit.soft_box((0.028, 0.03, 0.07), tuple(H_LOC + HR @ V((0, -0.095, -0.008))), CLOTH, radius=0.012,
+                 segments=10, rings=6, rot=(H_ROT[0] - 12, 0, H_ROT[2]), name="nose")
     _band(kit, CUFF_Z[0], CUFF_Z[1], CUFF_OUT, LIGHT, "cap cuff", verts=22)
     # Gloves.
     for s in ("l", "r"):
@@ -682,7 +705,6 @@ def build(kit, cl):
         bpts.append(p)
         bnrm.append(n)
     _ribbon(kit, bpts, bnrm, 0.046, 0.012, LIGHT, "binding")
-    _tail(kit)
     # Shipping label on the top face (it faces up into the troffers and forward), askew, with print.
     lab_c, lab_a = (-0.03, 0.0), 7.0
     _patch(kit, lab_c, (0.21, 0.26), lab_a, 0.004, LIGHT, "label")

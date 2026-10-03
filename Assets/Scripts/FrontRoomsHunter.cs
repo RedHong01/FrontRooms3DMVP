@@ -28,6 +28,8 @@ public sealed class FrontRoomsHunterTuning
     public float catchDistance = .7f;
     public float sprintNoiseRadius = 26f;
     public float doorNoiseRadius = 14f;
+    [Range(.5f, 3f), Tooltip("How far it hears, as a multiple of every noise radius (sprint, door, glass). 1.4: sprint 36 m, door 20 m, glass 56 m. The planned tiers raise it.")]
+    public float hearing = 1.4f;
 }
 
 /// <summary>
