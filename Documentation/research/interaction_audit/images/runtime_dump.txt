@@ -1,0 +1,280 @@
+# Runtime pipeline state (Play mode, after the run started)
+activeBuildTarget = StandaloneOSX; quality level = 3 High; graphics = Metal / Apple M3 Max; colorSpace = Linear
+GraphicsSettings.currentRenderPipeline = FrontRooms_URP; defaultRenderPipeline = FrontRooms_URP; QualitySettings.renderPipeline = FrontRooms_URP
+  quality[0] Very Low → FrontRooms_URP
+  quality[1] Low → FrontRooms_URP
+  quality[2] Medium → FrontRooms_URP
+  quality[3] High → FrontRooms_URP
+  quality[4] Very High → FrontRooms_URP
+  quality[5] Ultra → FrontRooms_URP
+QualitySettings: antiAliasing=4 anisotropicFiltering=Enable globalTextureMipmapLimit=0 realtimeReflectionProbes=True lodBias=1 shadows=All vSyncCount=1 Application.targetFrameRate=60
+## URP asset (runtime) (UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset)
+  additionalLightsRenderingMode = PerPixel
+  additionalLightsShadowmapResolution = 4096
+  additionalLightsShadowResolutionTierHigh = 1024
+  additionalLightsShadowResolutionTierLow = 256
+  additionalLightsShadowResolutionTierMedium = 512
+  allowPostProcessAlphaOutput = False
+  autodeskInteractiveMaskedShader = Universal Render Pipeline/Autodesk Interactive/AutodeskInteractiveMasked
+  autodeskInteractiveShader = Universal Render Pipeline/Autodesk Interactive/AutodeskInteractive
+  autodeskInteractiveTransparentShader = Universal Render Pipeline/Autodesk Interactive/AutodeskInteractiveTransparent
+  cascade2Split = 0.25
+  cascade3Split = (0.10, 0.30)
+  cascade4Split = (0.07, 0.20, 0.47)
+  cascadeBorder = 0.2
+  colorGradingLutSize = 32
+  colorGradingMode = HighDynamicRange
+  conservativeEnclosingSphere = True
+  debugLevel = Disabled
+  decalMaterial = Decal
+  default2DMaskMaterial = null
+  default2DMaterial = Sprite-Unlit-Default
+  defaultLineMaterial = ParticlesUnlit
+  defaultMaterial = Lit
+  defaultParticleMaterial = ParticlesUnlit
+  defaultShader = Universal Render Pipeline/Lit
+  defaultSpeedTree7Shader = Universal Render Pipeline/Nature/SpeedTree7
+  defaultSpeedTree8Shader = Universal Render Pipeline/Nature/SpeedTree8_PBRLit
+  defaultSpeedTree9Shader = Universal Render Pipeline/Nature/SpeedTree9_URP
+  defaultTerrainMaterial = TerrainLit
+  defaultUIETC1SupportedMaterial = null
+  defaultUIMaterial = null
+  defaultUIOverdrawMaterial = null
+  enableLODCrossFade = True
+  enableRenderGraph = True
+  fsrOverrideSharpness = False
+  fsrSharpness = 0.92
+  gpuResidentDrawerEnableOcclusionCullingInCameras = False
+  gpuResidentDrawerMode = Disabled
+  hdrColorBufferPrecision = _32Bits
+  hideFlags = None
+  intermediateTextureMode = Auto
+  isImmediateModeSupported = False
+  isStpUsed = False
+  lightLayerMaskNames = []
+  lightProbeSystem = LegacyLightProbes
+  lodCrossFadeDitheringType = BlueNoise
+  mainLightRenderingMode = PerPixel
+  mainLightShadowmapResolution = 2048
+  maxAdditionalLightsCount = 8
+  maxSHBands = SphericalHarmonicsL1
+  msaaSampleCount = 4
+  name = FrontRooms_URP
+  numIterationsEnclosingSphere = 64
+  opaqueDownsampling = _2xBilinear
+  pipelineType = UnityEngine.Rendering.Universal.UniversalRenderPipeline
+  prefixedRenderingLayerMaskNames = []
+  probeVolumeBlendingMemoryBudget = MemoryBudgetMedium
+  probeVolumeMemoryBudget = MemoryBudgetMedium
+  probeVolumeSceneData = null
+  probeVolumeSHBands = SphericalHarmonicsL1
+  reflectionProbeAtlas = True
+  reflectionProbeBlending = False
+  reflectionProbeBoxProjection = False
+  rendererDataList = <TargetInvocationException>
+  renderers = <TargetInvocationException>
+  renderingLayerMaskNames = [Default]
+  renderPipelineShaderTag = UniversalPipeline
+  renderScale = 1
+  scriptableRenderer = UnityEngine.Rendering.Universal.UniversalRenderer
+  shaderVariantLogLevel = Disabled
+  shadowCascadeCount = 2
+  shadowCascadeOption = TwoCascades
+  shadowDepthBias = 0.6
+  shadowDistance = 40
+  shadowNormalBias = 0.6
+  shEvalMode = Auto
+  smallMeshScreenPercentage = 0
+  storeActionsOptimization = Auto
+  supportDataDrivenLensFlare = True
+  supportProbeVolume = False
+  supportProbeVolumeDiskStreaming = False
+  supportProbeVolumeGPUStreaming = False
+  supportProbeVolumeScenarioBlending = False
+  supportProbeVolumeScenarios = False
+  supportProbeVolumeStreaming = False
+  supportsAdditionalLightShadows = True
+  supportsCameraDepthTexture = True
+  supportsCameraOpaqueTexture = False
+  supportScreenSpaceLensFlare = True
+  supportsDynamicBatching = False
+  supportsHDR = True
+  supportsLightCookies = True
+  supportsLightLayers = False
+  supportsMainLightShadows = True
+  supportsMixedLighting = True
+  supportsSoftShadows = True
+  supportsTerrainHoles = True
+  terrainBrushPassIndex = 2500
+  terrainDetailGrassBillboardShader = Hidden/TerrainEngine/Details/UniversalPipeline/BillboardWavingDoublePass
+  terrainDetailGrassShader = Hidden/TerrainEngine/Details/UniversalPipeline/WavingDoublePass
+  terrainDetailLitShader = Hidden/TerrainEngine/Details/UniversalPipeline/Vertexlit
+  textures = UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset+TextureResources
+  upscalerName = 
+  upscalingFilter = Auto
+  useAdaptivePerformance = True
+  useFastSRGBLinearConversion = False
+  useRenderingLayers = False
+  useSRPBatcher = True
+  volumeFrameworkUpdateMode = EveryFrame
+  volumeProfile = null
+## Renderer data FrontRooms_URP_Renderer (UnityEngine.Rendering.Universal.UniversalRendererData)
+  accurateGbufferNormals = False
+  copyDepthMode = AfterTransparents
+  defaultStencilState = UnityEngine.Rendering.Universal.StencilStateData
+  depthAttachmentFormat = Default
+  depthPrimingMode = Disabled
+  depthTextureFormat = Default
+  hideFlags = None
+  intermediateTextureMode = Always
+  name = FrontRooms_URP_Renderer
+  opaqueLayerMask = UnityEngine.LayerMask
+  prepassLayerMask = UnityEngine.LayerMask
+  rendererFeatures = System.Collections.Generic.List`1[UnityEngine.Rendering.Universal.ScriptableRendererFeature]
+  renderingMode = ForwardPlus
+  shadowTransparentReceive = True
+  transparentLayerMask = UnityEngine.LayerMask
+  useNativeRenderPass = False
+  usesClusterLightLoop = True
+  usesDeferredLighting = False
+  feature Screen Space Ambient Occlusion (ScreenSpaceAmbientOcclusion) active=True
+##     settings of Screen Space Ambient Occlusion (UnityEngine.Rendering.Universal.ScreenSpaceAmbientOcclusionSettings)
+  AOMethod = BlueNoise
+  Downsample = False
+  AfterOpaque = False
+  Source = DepthNormals
+  NormalSamples = High
+  Intensity = 1.6
+  DirectLightingStrength = 0.35
+  Radius = 0.45
+  Samples = High
+  BlurQuality = High
+  Falloff = 40
+  SampleCount = -1
+## Game camera 'First-person camera': allowHDR=True allowMSAA=True fov=76 near=0.06 far=46 clearFlags=SolidColor bg=RGBA(0.133, 0.137, 0.110, 1.000) occlusion=True targetTexture=null pixelSize(batch)=640x480
+## Game camera URP data (UnityEngine.Rendering.Universal.UniversalAdditionalCameraData)
+  allowHDROutput = True
+  allowXRRendering = True
+  animation = <TargetInvocationException>
+  antialiasing = None
+  antialiasingQuality = High
+  audio = <TargetInvocationException>
+  camera = <TargetInvocationException>
+  cameraStack = System.Collections.Generic.List`1[UnityEngine.Camera]
+  clearDepth = True
+  collider = <TargetInvocationException>
+  collider2D = <TargetInvocationException>
+  constantForce = <TargetInvocationException>
+  destroyCancellationToken = System.Threading.CancellationToken
+  didAwake = True
+  didStart = True
+  dithering = True
+  enabled = True
+  gameObject = First-person camera
+  hideFlags = None
+  hingeJoint = <TargetInvocationException>
+  history = UnityEngine.Rendering.Universal.UniversalCameraHistory
+  isActiveAndEnabled = True
+  light = <TargetInvocationException>
+  name = First-person camera
+  networkView = <TargetInvocationException>
+  particleSystem = <TargetInvocationException>
+  renderer = <TargetInvocationException>
+  renderPostProcessing = True
+  renderShadows = True
+  renderType = Base
+  requiresColorOption = UsePipelineSettings
+  requiresColorTexture = False
+  requiresDepthOption = UsePipelineSettings
+  requiresDepthTexture = True
+  requiresVolumeFrameworkUpdate = True
+  resetHistory = False
+  rigidbody = <TargetInvocationException>
+  rigidbody2D = <TargetInvocationException>
+  runInEditMode = True
+  screenCoordScaleBias = (0.00, 0.00, 0.00, 0.00)
+  screenSizeOverride = (0.00, 0.00, 0.00, 0.00)
+  scriptableRenderer = UnityEngine.Rendering.Universal.UniversalRenderer
+  stopNaN = False
+  taaSettings = <NotSupportedException>
+  tag = Untagged
+  transform = First-person camera
+  transformHandle = UnityEngine.TransformHandle
+  useGUILayout = True
+  useScreenCoordOverride = False
+  version = 3
+  volumeLayerMask = UnityEngine.LayerMask
+  volumeStack = null
+  volumeTrigger = null
+hdrEnabled (game, from PlayerPrefs FrontRooms.Display.HDR) = True; SystemInfo.SupportsRenderTextureFormat(DefaultHDR) = True
+## ReflectionProbes at runtime (FindObjectsByType, include inactive): 0
+RenderSettings: skybox=null defaultReflectionMode=Skybox defaultReflectionResolution=128 customReflectionTexture=null reflectionIntensity=0.3 reflectionBounces=1 ambientMode=Trilight ambientSky=RGBA(0.200, 0.190, 0.150, 1.000) ambientEquator=RGBA(0.260, 0.240, 0.170, 1.000) ambientGround=RGBA(0.400, 0.360, 0.240, 1.000) fog=True ExponentialSquared density 0.014 color RGBA(0.160, 0.150, 0.110, 1.000)
+ReflectionProbe.defaultTexture = Default-Skybox-Cubemap Cube 128x128 R8G8B8A8_SRGB; defaultTextureHDRDecodeValues = (2.53, 2.20, 0.00, 1.00)
+Lightmaps: 0; light probes: 0; lightmapsMode Single, Dual
+Lights (active objects): 1582; enabled 24; with shadows 9; types Spot×1581, Directional×1
+Directional 'Soft ambient direction': intensity 0.16 shadows Soft strength 0.18 color RGBA(0.769, 0.816, 0.800, 1.000)
+## Volumes at runtime: 45 (global 1, local 44)
+## Volume 'Post / FrontRooms film look' global=True priority=0 weight=1 profile=FrontRoomsPost
+### VolumeProfile FrontRoomsPost
+  Tonemapping active=True · mode=ACES; neutralHDRRangeReductionMode=BT2390; acesPreset=ACES1000Nits; hueShiftAmount=0; detectPaperWhite=False; paperWhite=300; detectBrightnessLimits=True; minNits=0.005; maxNits=1000; 
+  Bloom active=True · skipIterations=1; threshold=1.05; intensity=0.55; scatter=0.72; clamp=65472; tint=RGBA(1.000, 0.930, 0.780, 1.000); highQualityFiltering=True; filter=Gaussian; downscale=Half; maxIterations=6; dirtTexture=null; dirtIntensity=0; 
+  WhiteBalance active=True · temperature=9; tint=-7; 
+  ColorAdjustments active=True · postExposure=0.15; contrast=-6; colorFilter=RGBA(1.000, 1.000, 1.000, 1.000); hueShift=0; saturation=-8; 
+  LiftGammaGain active=True · lift=(1.00, 0.99, 0.94, 0.04); gamma=(1.00, 1.00, 1.00, 0.00); gain=(1.00, 1.00, 1.00, 0.00); 
+  ShadowsMidtonesHighlights active=True · shadows=(0.97, 1.00, 0.94, 0.00); midtones=(1.00, 1.00, 1.00, 0.00); highlights=(1.00, 0.99, 0.93, 0.00); shadowsStart=0; shadowsEnd=0.3; highlightsStart=0.55; highlightsEnd=1; 
+  Vignette active=True · color=RGBA(0.050, 0.045, 0.030, 1.000); center=(0.50, 0.50); intensity=0.26; smoothness=0.45; rounded=False; 
+  FilmGrain active=True · type=Medium3; intensity=0.22; response=0.75; texture=null; 
+  ChromaticAberration active=True · intensity=0.06; 
+  LensDistortion active=True · intensity=-0.04; xMultiplier=1; yMultiplier=1; center=(0.50, 0.50); scale=1.01; 
+### VolumeProfile FrontRoomsPost_Office
+  WhiteBalance active=True · temperature=1; tint=-14; 
+  ColorAdjustments active=True · postExposure=0; contrast=4; colorFilter=RGBA(0.950, 0.990, 0.970, 1.000); hueShift=0; saturation=-22; 
+  LiftGammaGain active=True · lift=(0.98, 1.00, 0.98, 0.02); gamma=(1.00, 1.00, 1.00, 0.00); gain=(1.00, 1.00, 1.00, 0.00); 
+  ShadowsMidtonesHighlights active=True · shadows=(0.95, 1.00, 1.00, 0.00); midtones=(1.00, 1.00, 1.00, 0.00); highlights=(1.00, 1.00, 0.97, 0.00); shadowsStart=0; shadowsEnd=0.3; highlightsStart=0.55; highlightsEnd=1; 
+  FilmGrain active=True · type=Thin1; intensity=0.18; response=0.8; texture=null; 
+  ChromaticAberration active=True · intensity=0.03; 
+## Material map runtime glass (FrontRoomsMapWorld.glass): name 'Map test / glass' shader 'Universal Render Pipeline/Lit' renderQueue 3000 RenderType tag 'Transparent'
+  shaderKeywords: [_ALPHAPREMULTIPLY_ON, _SURFACE_TYPE_TRANSPARENT]
+  enabledKeywords: [_SURFACE_TYPE_TRANSPARENT, _ALPHAPREMULTIPLY_ON]
+  passes: UniversalForward=True, ShadowCaster=True, DepthOnly=True, DepthNormals=True, Meta=True, MotionVectors=True
+  props: _WorkflowMode=1; _BaseMap=none; _BaseColor=RGBA(0.750, 0.850, 0.880, 0.280); _Cutoff=0.5; _Smoothness=0.9; _SmoothnessTextureChannel=0; _Metallic=0; _MetallicGlossMap=none; _SpecColor=RGBA(0.200, 0.200, 0.200, 1.000); _SpecGlossMap=none; _SpecularHighlights=1; _EnvironmentReflections=1; _BumpScale=1; _BumpMap=none; _Parallax=0.005; _ParallaxMap=none; _OcclusionStrength=1; _OcclusionMap=none; _EmissionColor=RGBA(0.000, 0.000, 0.000, 1.000); _EmissionMap=none; _DetailMask=none; _DetailAlbedoMapScale=1; _DetailAlbedoMap=none; _DetailNormalMapScale=1; _DetailNormalMap=none; _ClearCoatMask=0; _ClearCoatSmoothness=0; _Surface=1; _Blend=0; _Cull=2; _AlphaClip=0; _SrcBlend=1; _DstBlend=10; _SrcBlendAlpha=1; _DstBlendAlpha=0; _ZWrite=0; _BlendModePreserveSpecular=1; _AlphaToMask=0; _AddPrecomputedVelocity=0; _XRMotionVectorsPass=1; _ReceiveShadows=1; _QueueOffset=0; _MainTex=none; _Color=RGBA(1.000, 1.000, 1.000, 1.000); _GlossMapScale=0; _Glossiness=0; _GlossyReflections=0; unity_Lightmaps=none; unity_LightmapsInd=none; unity_ShadowMasks=none; 
+## Material project Prop_Glass (Resources/Surfaces): name 'Prop_Glass' shader 'Universal Render Pipeline/Lit' renderQueue 3000 RenderType tag 'Transparent'
+  shaderKeywords: [_ALPHAPREMULTIPLY_ON, _SURFACE_TYPE_TRANSPARENT]
+  enabledKeywords: [_SURFACE_TYPE_TRANSPARENT, _ALPHAPREMULTIPLY_ON]
+  passes: UniversalForward=True, ShadowCaster=False, DepthOnly=False, DepthNormals=True, Meta=True, MotionVectors=False
+  props: _WorkflowMode=1; _BaseMap=none; _BaseColor=RGBA(0.820, 0.880, 0.880, 0.160); _Cutoff=0.5; _Smoothness=0.92; _SmoothnessTextureChannel=0; _Metallic=0; _MetallicGlossMap=none; _SpecColor=RGBA(0.200, 0.200, 0.200, 1.000); _SpecGlossMap=none; _SpecularHighlights=1; _EnvironmentReflections=1; _BumpScale=1; _BumpMap=none; _Parallax=0.005; _ParallaxMap=none; _OcclusionStrength=1; _OcclusionMap=none; _EmissionColor=RGBA(0.000, 0.000, 0.000, 1.000); _EmissionMap=none; _DetailMask=none; _DetailAlbedoMapScale=1; _DetailAlbedoMap=none; _DetailNormalMapScale=1; _DetailNormalMap=none; _ClearCoatMask=0; _ClearCoatSmoothness=0; _Surface=1; _Blend=0; _Cull=2; _AlphaClip=0; _SrcBlend=1; _DstBlend=10; _SrcBlendAlpha=1; _DstBlendAlpha=10; _ZWrite=0; _BlendModePreserveSpecular=1; _AlphaToMask=0; _AddPrecomputedVelocity=0; _XRMotionVectorsPass=1; _ReceiveShadows=1; _QueueOffset=0; _MainTex=none; _Color=RGBA(0.820, 0.880, 0.880, 0.160); _GlossMapScale=0; _Glossiness=0; _GlossyReflections=0; unity_Lightmaps=none; unity_LightmapsInd=none; unity_ShadowMasks=none; 
+## Material project Prop_BottleBlue: name 'Prop_BottleBlue' shader 'Universal Render Pipeline/Lit' renderQueue 3000 RenderType tag 'Transparent'
+  shaderKeywords: [_ALPHAPREMULTIPLY_ON, _SURFACE_TYPE_TRANSPARENT]
+  enabledKeywords: [_SURFACE_TYPE_TRANSPARENT, _ALPHAPREMULTIPLY_ON]
+  passes: UniversalForward=True, ShadowCaster=False, DepthOnly=False, DepthNormals=True, Meta=True, MotionVectors=False
+  props: _WorkflowMode=1; _BaseMap=none; _BaseColor=RGBA(0.360, 0.580, 0.800, 0.420); _Cutoff=0.5; _Smoothness=0.9; _SmoothnessTextureChannel=0; _Metallic=0; _MetallicGlossMap=none; _SpecColor=RGBA(0.200, 0.200, 0.200, 1.000); _SpecGlossMap=none; _SpecularHighlights=1; _EnvironmentReflections=1; _BumpScale=1; _BumpMap=none; _Parallax=0.005; _ParallaxMap=none; _OcclusionStrength=1; _OcclusionMap=none; _EmissionColor=RGBA(0.000, 0.000, 0.000, 1.000); _EmissionMap=none; _DetailMask=none; _DetailAlbedoMapScale=1; _DetailAlbedoMap=none; _DetailNormalMapScale=1; _DetailNormalMap=none; _ClearCoatMask=0; _ClearCoatSmoothness=0; _Surface=1; _Blend=0; _Cull=2; _AlphaClip=0; _SrcBlend=1; _DstBlend=10; _SrcBlendAlpha=1; _DstBlendAlpha=10; _ZWrite=0; _BlendModePreserveSpecular=1; _AlphaToMask=0; _AddPrecomputedVelocity=0; _XRMotionVectorsPass=1; _ReceiveShadows=1; _QueueOffset=0; _MainTex=none; _Color=RGBA(0.360, 0.580, 0.800, 0.420); _GlossMapScale=0; _Glossiness=0; _GlossyReflections=0; unity_Lightmaps=none; unity_LightmapsInd=none; unity_ShadowMasks=none; 
+## Material project Office_BlackedGlass: name 'Office_BlackedGlass' shader 'FrontRooms/Surface' renderQueue 2000 RenderType tag 'Opaque'
+  shaderKeywords: []
+  enabledKeywords: []
+  passes: UniversalForward=True, ShadowCaster=True, DepthOnly=True, DepthNormals=True, Meta=True, MotionVectors=True
+  props: _BaseMap=none; _BaseColor=RGBA(0.018, 0.020, 0.022, 1.000); _BumpMap=none; _BumpScale=1; _MaskMap=none; _Smoothness=0.95; _Metallic=0; _OcclusionStrength=0.8; _TileSize=(1.00, 1.00, 0.00, 0.00); _MeshUV=0; _MacroMap=MacroWear_M 1024x1024 BC7 mips 11; _MacroTone=0.1; _MacroDirt=0.2; _StainColor=RGBA(0.420, 0.310, 0.160, 1.000); _StainStrength=0; _WetStrength=0; _FloorGrime=0; _FloorGrimeHeight=0.35; _CeilingGrime=0; _CeilingHeight=2.9; _UseEmission=0; _EmissionMap=none; _EmissionColor=RGBA(0.000, 0.000, 0.000, 1.000); _Cutoff=0.5; _Cull=2; 
+## Material map runtime key (FrontRoomsMapWorld.keyGlow): name 'Map test / key' shader 'Universal Render Pipeline/Lit' renderQueue 2000 RenderType tag 'Opaque'
+  shaderKeywords: [_EMISSION]
+  enabledKeywords: [_EMISSION]
+  passes: UniversalForward=True, ShadowCaster=True, DepthOnly=True, DepthNormals=True, Meta=True, MotionVectors=True
+  props: _WorkflowMode=1; _BaseMap=none; _BaseColor=RGBA(0.960, 0.870, 0.230, 1.000); _Cutoff=0.5; _Smoothness=0.4; _SmoothnessTextureChannel=0; _Metallic=0; _MetallicGlossMap=none; _SpecColor=RGBA(0.200, 0.200, 0.200, 1.000); _SpecGlossMap=none; _SpecularHighlights=1; _EnvironmentReflections=1; _BumpScale=1; _BumpMap=none; _Parallax=0.005; _ParallaxMap=none; _OcclusionStrength=1; _OcclusionMap=none; _EmissionColor=RGBA(0.768, 0.696, 0.184, 0.800); _EmissionMap=none; _DetailMask=none; _DetailAlbedoMapScale=1; _DetailAlbedoMap=none; _DetailNormalMapScale=1; _DetailNormalMap=none; _ClearCoatMask=0; _ClearCoatSmoothness=0; _Surface=0; _Blend=0; _Cull=2; _AlphaClip=0; _SrcBlend=1; _DstBlend=0; _SrcBlendAlpha=1; _DstBlendAlpha=0; _ZWrite=1; _BlendModePreserveSpecular=1; _AlphaToMask=0; _AddPrecomputedVelocity=0; _XRMotionVectorsPass=1; _ReceiveShadows=1; _QueueOffset=0; _MainTex=none; _Color=RGBA(1.000, 1.000, 1.000, 1.000); _GlossMapScale=0; _Glossiness=0; _GlossyReflections=0; unity_Lightmaps=none; unity_LightmapsInd=none; unity_ShadowMasks=none; 
+## Material door leaf material: name 'Door_Veneer' shader 'FrontRooms/Surface' renderQueue 2000 RenderType tag 'Opaque'
+  shaderKeywords: [_FR_MESH_UV]
+  enabledKeywords: [_FR_MESH_UV]
+  passes: UniversalForward=True, ShadowCaster=True, DepthOnly=True, DepthNormals=True, Meta=True, MotionVectors=True
+  props: _BaseMap=DoorVeneer_A 1024x2048 BC7 mips 12; _BaseColor=RGBA(1.000, 1.000, 1.000, 1.000); _BumpMap=DoorVeneer_N 1024x2048 BC7 mips 12; _BumpScale=1; _MaskMap=DoorVeneer_S 1024x2048 BC7 mips 12; _Smoothness=1; _Metallic=0; _OcclusionStrength=0.8; _TileSize=(1.12, 2.62, 0.00, 0.00); _MeshUV=1; _MacroMap=MacroWear_M 1024x1024 BC7 mips 11; _MacroTone=0.15; _MacroDirt=0.1; _StainColor=RGBA(0.420, 0.310, 0.160, 1.000); _StainStrength=0; _WetStrength=0; _FloorGrime=0; _FloorGrimeHeight=0.35; _CeilingGrime=0; _CeilingHeight=2.9; _UseEmission=0; _EmissionMap=none; _EmissionColor=RGBA(0.000, 0.000, 0.000, 1.000); _Cutoff=0.5; _Cull=2; 
+## Material Level 0 wallpaper: name 'L0_Wallpaper' shader 'FrontRooms/Surface' renderQueue 2000 RenderType tag 'Opaque'
+  shaderKeywords: []
+  enabledKeywords: []
+  passes: UniversalForward=True, ShadowCaster=True, DepthOnly=True, DepthNormals=True, Meta=True, MotionVectors=True
+  props: _BaseMap=Wallpaper_Chevron_A 2048x3072 RGBA32 mips 12; _BaseColor=RGBA(1.000, 1.000, 1.000, 1.000); _BumpMap=Wallpaper_Chevron_N 2048x3072 RGBA32 mips 12; _BumpScale=0.8; _MaskMap=Wallpaper_Chevron_S 2048x3072 RGBA32 mips 12; _Smoothness=1; _Metallic=0; _OcclusionStrength=0.8; _TileSize=(0.75, 1.13, 0.00, 0.00); _MeshUV=0; _MacroMap=MacroWear_M 1024x1024 BC7 mips 11; _MacroTone=0.45; _MacroDirt=0.3; _StainColor=RGBA(0.420, 0.310, 0.160, 1.000); _StainStrength=0.18; _WetStrength=0; _FloorGrime=0.6; _FloorGrimeHeight=0.35; _CeilingGrime=0.5; _CeilingHeight=2.9; _UseEmission=0; _EmissionMap=none; _EmissionColor=RGBA(0.000, 0.000, 0.000, 1.000); _Cutoff=0.5; _Cull=2; 
+Renderers currently using Prop_Glass: 12
+## Editor batch-mode player-loop frame time (no game view is drawn in batch mode, so this is CPU simulation only): median 16.689 ms, p95 16.814 ms
+## Game camera render + GPU sync, 1920x1080 4x MSAA, this Mac (Apple M3 Max, Metal): median 13.9 ms, min 13.0 ms, max 21.8 ms (20 samples; editor, includes readback sync)
+## Renderer window_L0 pane: object 'Window pane (282, 206)-(282, 207)' mesh 'Cube (24 verts)' material 'Map test / glass' lossyScale (1.40, 1.65, 0.03) shadowCasting On receiveShadows True reflectionProbeUsage BlendProbes lightProbeUsage BlendProbes collider BoxCollider
+## window_L0 after break: colliders within 1.5 m: Post / zone Office, Collision, Player; ParticleSystems in scene: 0; DecalProjectors: 0
+## Renderer window_Office pane: object 'Window pane (281, 206)-(281, 207)' mesh 'Cube (24 verts)' material 'Map test / glass' lossyScale (1.40, 1.65, 0.03) shadowCasting On receiveShadows True reflectionProbeUsage BlendProbes lightProbeUsage BlendProbes collider BoxCollider
+## window_Office after break: colliders within 1.5 m: Post / zone Office, Collision, Player; ParticleSystems in scene: 0; DecalProjectors: 0
+## Renderer door leaf: object 'Door leaf' mesh 'Cube (24 verts)' material 'Door_Veneer' lossyScale (0.05, 2.08, 0.98) shadowCasting On receiveShadows True reflectionProbeUsage BlendProbes lightProbeUsage BlendProbes collider BoxCollider
+## Renderer key: object 'Key · zone (34, 23)' mesh 'Cube (24 verts)' material 'Map test / key' lossyScale (0.32, 0.12, 0.12) shadowCasting On receiveShadows True reflectionProbeUsage BlendProbes lightProbeUsage BlendProbes collider none
+## Camera.CopyFrom check (how the autopilot's look-at shots are made): new camera after CopyFrom → renderPostProcessing=False, antialiasing=None, dithering=False (game camera: renderPostProcessing=True)

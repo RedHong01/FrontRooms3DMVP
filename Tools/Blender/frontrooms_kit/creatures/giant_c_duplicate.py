@@ -4,22 +4,26 @@ human-scale module creatures/hunter_c_duplicate.py, whose helpers are copied her
 
 The copy is an ENLARGEMENT: the same black-and-white print of an employee (paper shirt, toner head,
 tie, trousers and shoes, a flat printed sad face, the drum streak, the baked toner edge) blown up
-~1.75x past the page, so the printed face, the streak and the pocket scale with it. It never fits
-the rooms it hunts in: the long "page" trunk is pressed up into the ceiling tiles and folds over
-forward like a sheet too tall for its frame, the back of the shirt stretched round the fold (printed
-tension creases across it, the contact patch flattened), the head hanging down out of the front of
-the fold to the player's eye line, the elbows splayed, the sleeves bunched, the collar shoved up.
-Where the enlargement ran off the page, the outer edge of one elbow is simply cut off flat, its cut
-face toner-black like the margin of a copy made with the lid up.
+~1.75x, so the printed face, the 3 cm drum streak, the pocket and pen scale with it, and the page
+slipped further: the trunk is stretched 25 % more than the base's. It never fits the rooms it hunts
+in. Under a ceiling the long page trunk folds forward and over to its right like a sheet too tall
+for its frame (the "crooked copy"): the left shoulder and the rounded back are jammed flat against
+the tiles, the shirt is strained round the fold (printed tension creases across the back), the head
+is forced down beside the low shoulder and tipped, face to the player, the elbows splay, the sleeves
+bunch, the collar is shoved up at the nape and the tie hangs straight down under gravity. In the
+door it folds sideways through the opening, head and right shoulder first, fingers hooked round the
+jamb. Only in a Tall zone does the page show whole (the reveal).
 
 Rig: one rest body (the upright print) and one parameter set per pose (POSE below):
 - the trunk is built upright in its rest frame and bent along a posed spine (pitch/roll/yaw rates
-  per spine section, about a bend axis that runs near the chest front, so the back stretches and
-  the chest creases); every shirt detail (belt, tie, pocket, pen, streak, creases) is built on the
-  rest shirt and bent with it;
-- arms and legs are two-bone IK chains of fixed length from the bent trunk's shoulders/hips to
-  per-pose wrist/ankle targets with pole vectors; hands, shoes and head follow those frames;
-- a soft ceiling clamp flattens whatever the pose pushes into the tiles.
+  per spine section, about a bend axis that runs toward the chest front higher up, so the back
+  stretches and the chest creases); every shirt detail (belt, tie knot, pocket, pen, streak,
+  creases) is built on the rest shirt and bent with it;
+- arms and legs are two-bone IK chains of fixed length (fingertips at mid-thigh when it stands)
+  from the bent trunk's shoulders/hips to per-pose wrist/ankle targets with pole vectors; hands,
+  shoes, neck and head follow those frames;
+- a soft ceiling clamp presses whatever the pose pushes into the tiles into a flat band just under
+  them, spreading it sideways a little.
 
 Conventions: metres, Z up, facing -Y, left = +X; rotations X pitch, Y roll, Z yaw (Blender XYZ
 Euler); feet on z = 0 after cl.floor_parts(); centred on the nav axis x = y = 0, except the door
@@ -35,17 +39,17 @@ from mathutils.bvhtree import BVHTree
 
 NAME = "Giant_C_Duplicate"
 TITLE = "Duplicate (giant)"
-PITCH = ("The photocopied office worker blown up past the page: a 3.3 m black-and-white print whose long "
-         "paper shirt is folded over under the ceiling tiles, its toner head with the flat printed sad face "
-         "hanging down out of the fold to your eye line.")
+PITCH = ("The photocopied office worker enlarged past the page: a black-and-white print too big for the "
+         "room, its paper shirt folded over crooked against the ceiling tiles and its toner head with the "
+         "flat printed sad face forced down beside its shoulder to your eye line.")
 SMOOTH_ANGLE = 60.0
 
 POSES = {"low": {"top": 2.37, "halfWidth": 0.80}, "std": {"top": 2.86, "halfWidth": 0.80},
          "door": {"top": 2.9, "door": True}, "tall": {"top": 3.30, "halfWidth": 0.85}}
 SIL_FRAME = (2.4, 3.6)
-EYE = {"low": 1.45, "std": 1.80, "door": 1.45, "tall": 2.95}   # replaced in build() by the measured face centre
+EYE = {"low": 1.366, "std": 1.808, "door": 1.309, "tall": 3.013}   # replaced in build() by the measured face centre
 
-DEBUG = {}
+DEBUG = {}                    # per-pose build measurements (raw top before the ceiling press), for tuning
 PAPER = "Prop_Paper"          # shirt, collar, cuffs, face, hands, neck, ears (with the baked toner-edge term)
 TONER = "Creature_Toner"      # head and hair, print ink, tie, trousers, belt, shoes, pen, creases, cut faces
 
@@ -59,8 +63,9 @@ def _rz(z):
 
 
 # Trunk rows above the hip joint: (z, half-width, front y, back y). The base page shirt scaled ~1.75x in
-# length, ~1.45x in width (shoulders 0.93 m across the cloth), ~1.6x in depth: a heavy, deep trunk,
-# straight-sided from the belt, opening under the sleeves into the level, square-cornered shoulder block.
+# length, ~1.45x in width (shoulders 0.95 m across the cloth), ~1.6x in depth: a heavy, deep trunk with a
+# rounded upper back, straight-sided from the belt, opening under the sleeves into the level,
+# square-cornered shoulder block.
 TRUNK = [
     (0.180, 0.330, -0.215, 0.240),     # hem, tucked inside the belt
     (0.210, 0.365, -0.270, 0.265),
@@ -81,18 +86,17 @@ TRUNK = [
 ]
 TRUNK = [(_rz(r[0]),) + r[1:] for r in TRUNK]
 SHOULDER_R = 0.050                     # corner radius seen from the front
-SHOULDER_TOP = _rz(1.430)                  # the level shoulder line
+SHOULDER_TOP = _rz(1.430)              # the level shoulder line
 COLLAR_RING = (0.165, _rz(1.455), -0.255, -0.020)   # half-width, z, front y, back y
 SECTION_N = (2.6, 2.15)                # superellipse exponent of the trunk sections: boxy page at the belly,
                                        # a rounder back over the shoulder blades (2 = ellipse)
-ROW_STEP = 0.021                       # rest spacing of the lofted rows (the folded back stretches 3-4x)
-# The line the trunk bends about, (rest z, rest y): centred in the pelvis, near the chest front higher up,
+ROW_STEP = 0.021                       # rest spacing of the lofted rows (a folded back stretches 2-3x)
+# The line the trunk bends about, (rest z, rest y): centred in the pelvis, toward the chest higher up,
 # so a forward fold creases the chest and stretches the back round the fold.
 BEND_AXIS = [(-0.6, 0.0), (0.42, 0.0), (0.95, -0.06), (2.0, -0.06)]
 
-# Printed tension creases on the back of the shirt, design (x, z) polylines (z before the stretch).
+# Printed creases on the back of the shirt, design (x, z) polylines (z before the stretch).
 CREASES = [   # (polyline, width, taper)
-    ([(0.0, 0.600), (0.0, 0.900), (0.0, 1.200), (0.0, 1.400)], 0.013, 0.6),                    # centre-back fold over the spine
     ([(-0.33, 0.990), (-0.15, 1.070), (0.0, 1.090), (0.16, 1.065), (0.34, 0.985)], 0.018, 0.75),  # strain, armpit
     ([(-0.29, 0.870), (-0.11, 0.935), (0.04, 0.950), (0.19, 0.925), (0.32, 0.860)], 0.016, 0.75), # to armpit
     ([(-0.36, 1.180), (-0.24, 1.140), (-0.12, 1.080)], 0.014, 0.8),                              # pulled from
@@ -100,36 +104,41 @@ CREASES = [   # (polyline, width, taper)
 ]
 HIP_REST = (0.190, 0.060, 0.0)         # hip joints in the trunk's rest frame (mirrored for the right)
 WAIST_REST = (0.140, 0.090, 0.215)     # trouser roots, behind the belt
-SHOULDER_REST = (0.392, -0.030, _rz(1.290)) # shoulder joints, inside the shoulder block
-NECK_REST = (0.0, -0.135, _rz(1.385))      # neck base, inside the collar
+SHOULDER_REST = (0.392, -0.030, _rz(1.290))  # shoulder joints, inside the shoulder block
+NECK_REST = (0.0, -0.135, _rz(1.385))  # neck base, inside the collar
 THIGH, SHIN = 0.660, 0.620
 ANKLE_H = 0.220                        # ankle joint above the sole (flat shoe)
 UPPER_ARM, FOREARM = 0.600, 0.580      # fingertips at mid-thigh when it stands
 NECK_LEN = (0.160, 0.150)
 HEAD_S = 1.55                          # the base head and its printed face, enlarged (0.42 m tall)
-HEAD_NECK = Vector((0.0, -0.130, -0.070))  # head centre from the neck end, head-local: the craned neck enters high on the back of the skull, so the head hangs
+HEAD_NECK = Vector((0.0, -0.120, -0.100))  # head centre from the neck end, head-local: the craned neck enters
+                                           # high on the back of the skull, so the head hangs from it
+HEAD_CARRIED = Vector((0.0, -0.130, -0.055))  # ... and when it is not pressed it hangs a little less
 
 # ------------------------------------------------------------------ the poses (one parameter set each)
 # root: pelvis centre (world); yaw: body yaw; pelvis: (pitch, roll); spine: (z0, z1, pitch, roll, yaw)
-# bends spread evenly over each rest section; neck: absolute (pitch, roll, yaw) of its two segments;
-# head: absolute (pitch, roll, yaw); arm: wrist target, elbow pole, finger direction, palm normal, curl;
-# leg: ankle target, knee pole, foot yaw, heel lift; ceiling: the tiles the pose presses (None = free).
+# bends spread evenly over each rest section; shoulder: rest shoulder joint (the clavicle: shrugged up
+# onto the hump when pressed); neck: (pitch, roll, yaw) of its two segments and head: (pitch, roll, yaw),
+# both in the body-yaw frame; arm: wrist target, elbow pole, finger direction, palm normal, curl;
+# leg: ankle target, knee pole, foot yaw, heel lift; ceiling: the tiles the pose presses (None = free);
+# tie: "hang" (from the knot, under gravity) or "lie" (on the shirt); collar: (front, back) height;
+# head_neck: head centre from the neck end (head-local); cut: optional page-edge crop height (unused).
 POSE = {
     "std": {
         # Lopsided: the trunk folds forward and over to its right under the tiles, the left shoulder jammed
         # into the ceiling, the head forced down beside the low shoulder and tipped, face to the player.
-        "root": (0.24, 0.22, 1.30), "yaw": 0.0, "pelvis": (-2.0, -2.0),
+        "root": (0.24, 0.22, 1.28), "yaw": 0.0, "pelvis": (-2.0, -2.0),
         "spine": [(0.00, 0.42, 3.0, -6.0, 0.0), (0.42, 1.02, 24.0, -20.0, 0.0),
                   (1.02, 1.43, 58.0, -36.0, 0.0), (1.43, 1.74, 30.0, -20.0, 0.0)],
         "shoulder": (0.400, 0.070, 1.30),
-        "neck": ((160.0, 0.0, -36.0), (140.0, 0.0, -26.0)), "head": (18.0, -30.0, 0.0),
+        "neck": ((165.0, 0.0, -36.0), (150.0, 0.0, -26.0)), "head": (22.0, -30.0, 0.0),
         "arm_l": {"wrist": (0.50, -0.55, 1.60), "pole": (1.0, 0.6, 0.0), "down": (-0.2, -0.3, -1.0),
                   "palm": (-1.0, 0.3, 0.0), "curl": 40.0},
         "arm_r": {"wrist": (-0.40, -0.66, 1.50), "pole": (-0.7, 0.6, 0.0), "down": (0.15, -0.3, -1.0),
                   "palm": (1.0, 0.3, 0.0), "curl": 50.0},
         "leg_l": {"ankle": (0.44, 0.02, ANKLE_H), "pole": (0.55, -1.0, 0.0), "yaw": 18.0, "heel": 0.0},
         "leg_r": {"ankle": (-0.40, 0.46, ANKLE_H + 0.03), "pole": (-0.60, -1.0, 0.0), "yaw": -18.0, "heel": 12.0},
-        "ceiling": 2.90, "tie": "hang",
+        "ceiling": 2.90, "tie": "hang", "collar": (0.055, 0.115),
     },
     "tall": {
         # The reveal under a 5.4 m ceiling: it straightens its legs and back, still round-shouldered,
@@ -144,7 +153,7 @@ POSE = {
                   "palm": (1.0, 0.2, 0.0), "curl": 25.0},
         "leg_l": {"ankle": (0.36, -0.06, ANKLE_H), "pole": (0.35, -1.0, 0.0), "yaw": 12.0, "heel": 0.0},
         "leg_r": {"ankle": (-0.34, 0.30, ANKLE_H), "pole": (-0.35, -1.0, 0.0), "yaw": -10.0, "heel": 0.0},
-        "ceiling": None, "tie": "lie", "collar": (0.075, 0.105),
+        "ceiling": None, "tie": "lie", "collar": (0.075, 0.105), "head_neck": HEAD_CARRIED,
     },
     "low": {
         # Under the 2.4 m Low ceiling: squatting, knees up and out, folded forward and over to its right,
@@ -156,11 +165,28 @@ POSE = {
         "neck": ((160.0, 0.0, -30.0), (135.0, 0.0, -20.0)), "head": (14.0, -26.0, 0.0),
         "arm_l": {"wrist": (0.56, -0.30, 1.12), "pole": (1.0, 0.6, 0.3), "down": (0.05, -0.75, -0.65),
                   "palm": (-0.2, 0.3, -1.0), "curl": 35.0},
-        "arm_r": {"wrist": (-0.44, -0.18, 1.08), "pole": (-1.0, 0.5, 0.3), "down": (0.0, -0.75, -0.65),
+        "arm_r": {"wrist": (-0.44, -0.18, 1.08), "pole": (-0.5, 1.0, 0.3), "down": (0.0, -0.75, -0.65),
                   "palm": (0.2, 0.3, -1.0), "curl": 40.0},
         "leg_l": {"ankle": (0.44, 0.00, ANKLE_H), "pole": (0.55, -1.0, 0.2), "yaw": 22.0, "heel": 0.0},
         "leg_r": {"ankle": (-0.40, 0.30, ANKLE_H + 0.05), "pole": (-0.55, -1.0, 0.2), "yaw": -20.0, "heel": 18.0},
-        "ceiling": 2.40, "tie": "hang", "collar": (0.07, 0.19),
+        "ceiling": 2.40, "tie": "hang", "collar": (0.055, 0.110),
+    },
+    "door": {
+        # Halfway through the 1.0 x 2.1 m door (plane y = 0, origin = door centre): turned 80 deg, folded
+        # over sideways at the waist so the right shoulder and the hung head go through under the head
+        # jamb first; hips and legs still behind, the right hand's fingers hooked round the jamb.
+        "root": (0.0, 0.55, 1.05), "yaw": 80.0, "pelvis": (4.0, -20.0),
+        "spine": [(0.00, 0.42, 2.0, -28.0, 0.0), (0.42, 1.02, 6.0, -38.0, 0.0),
+                  (1.02, 1.43, 6.0, -20.0, 0.0), (1.43, 1.74, 4.0, -8.0, 0.0)],
+        "shoulder": (0.400, 0.070, 1.30),
+        "neck": ((10.0, -125.0, 0.0), (25.0, -100.0, 0.0)), "head": (8.0, -45.0, -60.0),
+        "arm_l": {"wrist": (-0.50, 0.55, 1.40), "pole": (-1.0, 0.6, 0.0), "down": (0.0, 0.2, -1.0),
+                  "palm": (1.0, 0.0, 0.0), "curl": 40.0},
+        "arm_r": {"wrist": (0.38, -0.10, 1.50), "pole": (0.0, -1.0, 0.5), "down": (0.15, -1.0, 0.0),
+                  "palm": (1.0, 0.0, 0.0), "curl": 80.0},    # fingers hooked round the jamb
+        "leg_l": {"ankle": (-0.12, 0.95, ANKLE_H), "pole": (0.9, 0.3, 0.0), "yaw": 80.0, "heel": 10.0},
+        "leg_r": {"ankle": (0.28, 0.48, ANKLE_H), "pole": (1.0, 0.1, 0.0), "yaw": 60.0, "heel": 0.0},
+        "ceiling": 2.90, "tie": "hang", "collar": (0.055, 0.110),
     },
 }
 
@@ -473,7 +499,7 @@ class Body:
         return obj
 
 
-def _squasher(body, ceiling, w=0.08, gap=0.050, bulge=0.05):
+def _squasher(body, ceiling, w=0.05, gap=0.052, bulge=0.05):
     """Soft ceiling: points pushed into the tiles are pressed into a flat band just under them,
     and spread sideways a little (the body would be bigger if the room let it)."""
     if ceiling is None:
@@ -725,7 +751,7 @@ def _collar(kit, base, axis, lat, r=0.128, h_front=0.070, h_back=0.185, n=28):
         d = lat * math.cos(a) + fwd * math.sin(a)
         back = 0.5 - 0.5 * math.sin(a)        # 0 at the throat, 1 at the nape
         h = h_front + (h_back - h_front) * back ** 1.5
-        flare = 1.0 + 0.10 * back
+        flare = 1.0 + 0.18 * back
         rings[0].append(base + d * (r - 0.012))
         rings[1].append(base + d * r)
         rings[2].append(base + d * r * flare + axis * h)
@@ -780,8 +806,8 @@ def build(kit, cl, pose="std"):
     if len(sh) >= 3:
         rest_parts.append(_strip(kit, [h[0] + h[1] * 0.0012 for h in sh], [0.030] * len(sh), [h[1] for h in sh],
                                  0.0016, TONER, "streak_shirt"))
-    # printed tension creases: pulled from the collar to the shoulder corners across the yoke, and
-    # strained armpit to armpit across the shoulder blades (a copy prints a fold as a dark line)
+    # printed tension creases strained armpit to armpit across the shoulder blades and pulled from the
+    # sleeves (a copy prints a fold as a dark line)
     for k, (line, cw, taper) in enumerate(CREASES):
         pts, nrm = [], []
         for (x0, z0), (x1, z1) in zip(line, line[1:]):
@@ -810,7 +836,6 @@ def build(kit, cl, pose="std"):
         knot = kit.soft_box((0.082, 0.054, 0.076), tuple(kn[0] + Vector((0, -0.018, 0))), TONER, radius=0.021,
                             segments=12, rings=8, rot=(-12, 0, 0), name="knot")
         rest_parts.append(_bake(knot))
-    tie_rest = None
     if P.get("tie") == "lie":
         hits = [_front(tree, 0.0, _rz(1.37) - 0.035 * i) for i in range(22)]
         hits = [h for h in hits if h and _rz(0.72) <= h[0].z <= _rz(1.37)]
@@ -826,7 +851,6 @@ def build(kit, cl, pose="std"):
 
     # --- the hanging tie: from the knot straight down under gravity, its face to the front
     if P.get("tie") == "hang" and knot is not None:
-        kb = Vector(knot.matrix_world.translation)
         top = Vector(sum((v.co for v in knot.data.vertices), Vector())) / len(knot.data.vertices)
         swing = Vector(P.get("tie_swing", (0.0, 0.0)))
         pts = []
@@ -842,7 +866,6 @@ def build(kit, cl, pose="std"):
         A = P["arm_" + s]
         SR = P.get("shoulder", SHOULDER_REST)
         S = body.map((sxn * SR[0], SR[1], SR[2]))
-        DEBUG.setdefault("_joints", {})[s] = (tuple(round(c, 2) for c in S), A["wrist"])
         E, W = _ik(S, A["wrist"], UPPER_ARM, FOREARM, A["pole"])
         up, fo = (E - S).normalized(), (W - E).normalized()
         j = {
@@ -853,6 +876,9 @@ def build(kit, cl, pose="std"):
         }
         sleeve = _skin(kit, cl, j, [("sh", "u1"), ("u1", "b1"), ("b1", "b2"), ("b2", "el"), ("el", "b3"), ("b3", "b4"),
                                     ("b4", "f1"), ("f1", "sl")], PAPER, "sleeve_" + s, max_tris=820)
+        if squash:                             # the shoulder cap is pressed into the tiles with the back
+            for v in sleeve.data.vertices:
+                v.co = squash(v.co)
         sleeves.append(sleeve)
         sl = E.lerp(W, 0.86)
         r_meas = _tube_radius(sleeve, sl - fo * 0.06, fo)
@@ -900,7 +926,7 @@ def build(kit, cl, pose="std"):
     neck = _skin(kit, cl, {"nb": (tuple(nb), 0.104), "n1": (tuple(n1), 0.100), "n2": (tuple(n2), 0.092)},
                  [("nb", "n1"), ("n1", "n2")], PAPER, "neck")
     Rh = body.Ryaw @ _rot(*P["head"])
-    hc = n2 + Rh @ HEAD_NECK
+    hc = n2 + Rh @ Vector(P.get("head_neck", HEAD_NECK))
     Mh = Matrix.Translation(hc) @ Rh.to_4x4() @ Matrix.Scale(HEAD_S, 4)
     hp, face_pt = _head_parts(kit)
     head_objs = [hp["head"], hp["face"]] + hp["ears"] + hp["print"]
@@ -921,8 +947,9 @@ def build(kit, cl, pose="std"):
     lo = cl.floor_parts(kit)
     cut = P.get("cut")
     if cut:
-        # The enlargement ran past the page: whatever the tiles would have to make room for is simply
-        # not printed. Everything above the page edge is cut off flat, the cut face toner-black.
+        # Optional, off in every pose: the enlargement ran past the page, so whatever the tiles would have
+        # to make room for is not printed; everything above the page edge is cut off flat, the cut face
+        # toner-black. (Tried on std: from behind the flat cap read as a headless neck stump.)
         for obj in list(kit.parts):
             _bake(obj)
             if max(v.co.z for v in obj.data.vertices) > cut:
@@ -931,14 +958,11 @@ def build(kit, cl, pose="std"):
                     obj.data.materials.append(kit._material(TONER))
                     mats.append(TONER)
                 _cut(obj, Vector((0, 0, cut)), Vector((0, 0, 1)), mats.index(TONER))
-    DEBUG.setdefault("_knees", {})[pose] = {k: tuple(round(c - (lo if i == 2 else 0), 2) for i, c in enumerate(v[0]))
-                                             for k, v in leg_j.items() if k.startswith("knee")}
     global EYE
     eye = (Mh @ face_pt).z - lo
     EYE = dict(EYE) if isinstance(EYE, dict) else {}
     EYE[pose] = round(eye, 3)
-    DEBUG[pose] = {"rawTop": round(body.raw_top - lo, 3), "neckEnd": tuple(round(c, 3) for c in n2),
-                   "collar": tuple(round(c, 3) for c in nb)}
+    DEBUG[pose] = {"rawTop": round(body.raw_top - lo, 3)}
     weights = {shirt: 1.0, pocket: 1.0, collar: 0.6, neck: 0.8, hp["head"]: 0.55,
                hp["ears"][0]: 0.55, hp["ears"][1]: 0.55}
     for o in sleeves:

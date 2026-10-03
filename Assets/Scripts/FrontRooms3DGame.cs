@@ -108,12 +108,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     bool inStartRooms, leftStartRooms, startDoorOpened;
     GridCoord startDoorCell;
     Vector3 startDoorPoint;
-    float titleFarClip;
     Light[] streamLights;
     float[] streamLightLevels;
     float streamFade = -1f, startRearZ, startDoorHeldFor;
-    // The door opens once the chunks round it are built and furnished (what
-    // can be seen through it), and never later than this after Space.
+    // The door opens once the map in sight through it is built and
+    // furnished, and never later than this after Space.
     const float StreamFadeSeconds = 1.2f, StartDoorShutDistance = 4f, StartDoorHoldLimit = 3f, StartLampsRiseSeconds = .6f;
     // The stream rooms take a 5-cell (15 m) strip of the map: the 11.76 m room plus the gaps to the map's walls.
     const int StartAreaHalfCells = 2;
@@ -498,6 +497,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // A retry starts in the title's first room with a fresh maze (or the
         // same one when Map Seed is set) behind its door, like a first run.
         RequestTitleStart();
+        // The title never crawled here, so there is no drift to ease out.
+        glide = Vector3.zero;
         Log("RESTART · in the first stream room, maze behind its door");
     }
 
@@ -550,7 +551,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         // The player is a capsule the camera rides on, standing where the
         // camera is. Walls and doors are colliders: the stream rooms' boxes,
         // then the map's.
-        titleFarClip = cam.farClipPlane;
         var eye = cam.transform.position;
         playerRoot = new GameObject("Player").transform;
         playerRoot.SetParent(transform, false);
@@ -711,16 +711,22 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             map.StreamFocus = null;
             Event("start rooms", "left");
         }
+        // Out of the rooms, the player sees into them only through the door,
+        // and walks straight into the cells beside them: bring those lamps up.
+        if (leftStartRooms) map.StartLampsSouth = Mathf.MoveTowards(map.StartLampsSouth, 1f, dt / StreamFadeSeconds);
         inStartRooms = inside;
         // Far enough to see down the stream rooms to their rear wall, never
-        // past the map built beyond the door (at least 51 m north of it).
-        cam.farClipPlane = inside ? Mathf.Clamp(feet.z - startRearZ + 2f, map.SightDistance, titleFarClip) : map.SightDistance;
+        // further past the door than the map is built (SightDistance of it).
+        cam.farClipPlane = inside
+            ? Mathf.Clamp(feet.z - startRearZ + 2f, map.SightDistance, map.SightDistance + Mathf.Max(0f, startDoorPoint.z - feet.z))
+            : map.SightDistance;
         if (streamFade < 0f)
         {
             roomStream.Tick(dt);
             if (!startDoorOpened)
             {
-                var ready = map.ReadyAround(1);
+                // Everything in sight through the door: every chunk in range built and furnished.
+                var ready = map.ReadyAround(map.BuildRadius);
                 if (!ready && elapsed > StartDoorHoldLimit && roomStream.TerminalDoorHeld) Log("START · map round the door not ready after " + StartDoorHoldLimit + " s; opening anyway");
                 roomStream.TerminalDoorHeld = !ready && elapsed <= StartDoorHoldLimit;
                 if (roomStream.TerminalDoorHeld && inside && Vector2.Distance(Flat(feet), Flat(startDoorPoint)) < 4f) startDoorHeldFor += dt;
@@ -740,8 +746,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             }
             if (!roomStream.TerminalDoorShut) return;
             // Nothing of the stream can be seen any more: fade its lamps out,
-            // gently, for their light on the map's side and the hum that
-            // reads them, and bring up the maze's lamps beside the rooms.
+            // gently, for their light on the map's side and the hum that reads them.
             streamFade = 0f;
             streamLights = titleWorld.GetComponentsInChildren<Light>();
             streamLightLevels = new float[streamLights.Length];
@@ -753,7 +758,6 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         {
             streamFade = Mathf.Min(1f, streamFade + dt / StreamFadeSeconds);
             map.StartLampsNorth = 1f;
-            map.StartLampsSouth = streamFade;
             for (var i = 0; i < streamLights.Length; i++)
             {
                 if (streamLights[i] == null) continue;

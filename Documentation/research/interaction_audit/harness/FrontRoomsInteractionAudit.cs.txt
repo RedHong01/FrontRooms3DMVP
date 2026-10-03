@@ -1,0 +1,1166 @@
+// AUDIT HARNESS (private clone only — never copied into the real project).
+// Plays Assets/Scenes/FrontRooms3D.unity, starts a run through the game's own
+// title handoff, then drives the game's own APIs (FrontRoomsMapWorld.Hold /
+// Use / BreakDoor, the Relay's DebugPlace / Noise) and renders the game's own
+// first-person camera to 1920x1080 PNGs in Verification/interaction_audit.
+// Run: Unity -batchmode -projectPath <clone> -executeMethod FrontRoomsInteractionAudit.RunBatch -logFile <f>
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using FrontRooms.Map;
+using Unity.Profiling;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using UnityEngine.UI;
+
+[InitializeOnLoad]
+public static class FrontRoomsInteractionAudit
+{
+    const string ScenePath = "Assets/Scenes/FrontRooms3D.unity";
+    const string ActiveKey = "FrontRooms.Audit.Active";
+    const string DeadlineKey = "FrontRooms.Audit.Deadline";
+    const int W = 1920, H = 1080;
+    const BindingFlags BF = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+
+    static int waitUntilFrame = -1;
+    static bool finished;
+    static string outDir;
+    static readonly StringBuilder log = new StringBuilder();
+    static readonly StringBuilder frames = new StringBuilder();
+    static readonly StringBuilder dump = new StringBuilder();
+
+    static FrontRooms3DGame game;
+    static FrontRoomsMapWorld map;
+    static Camera cam;
+    static RenderTexture rt;
+
+    static FrontRoomsInteractionAudit()
+    {
+        if (SessionState.GetBool(ActiveKey, false)) EditorApplication.update += Tick;
+    }
+
+    public static void RunBatch()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        SessionState.SetBool(ActiveKey, true);
+        SessionState.SetFloat(DeadlineKey, (float)EditorApplication.timeSinceStartup + 1500f);
+        EditorApplication.update -= Tick;
+        EditorApplication.update += Tick;
+        EditorApplication.EnterPlaymode();
+    }
+
+    static string OutDir
+    {
+        get
+        {
+            if (outDir == null)
+            {
+                outDir = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", "interaction_audit");
+                Directory.CreateDirectory(outDir);
+            }
+            return outDir;
+        }
+    }
+
+    static void Log(string s)
+    {
+        var line = "[" + Time.frameCount + " t=" + Time.time.ToString("0.000", CultureInfo.InvariantCulture) + "] " + s;
+        log.AppendLine(line);
+        Debug.Log("[Audit] " + line);
+        try { File.WriteAllText(Path.Combine(OutDir, "audit_log.txt"), log.ToString()); } catch { }
+    }
+
+    const string DoneKey = "FrontRooms.Audit.Done";
+    static readonly Stack<IEnumerator> stack = new Stack<IEnumerator>();
+
+    static void Finish()
+    {
+        finished = true;
+        Time.captureDeltaTime = 0f;
+        SessionState.SetBool(DoneKey, true);
+        Flush();
+    }
+
+    static void Tick()
+    {
+        var timedOut = EditorApplication.timeSinceStartup > SessionState.GetFloat(DeadlineKey, float.MaxValue);
+        if (finished || timedOut || SessionState.GetBool(DoneKey, false))
+        {
+            if (timedOut && !finished && !SessionState.GetBool(DoneKey, false)) { Log("TIMEOUT"); Finish(); }
+            if (EditorApplication.isPlaying) { EditorApplication.ExitPlaymode(); return; }
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            EditorApplication.update -= Tick;
+            SessionState.EraseBool(ActiveKey);
+            SessionState.EraseBool(DoneKey);
+            if (Application.isBatchMode) EditorApplication.Exit(0);
+            return;
+        }
+        if (!EditorApplication.isPlaying) return;
+        if (stack.Count == 0)
+        {
+            stack.Push(Main());
+            Log("routine created");
+        }
+        if (Time.frameCount < waitUntilFrame) return;
+        try
+        {
+            for (var guard = 0; guard < 1000; guard++)
+            {
+                var top = stack.Peek();
+                if (!top.MoveNext())
+                {
+                    stack.Pop();
+                    if (stack.Count == 0) { Finish(); return; }
+                    continue;
+                }
+                var cur = top.Current;
+                if (cur is IEnumerator sub) { stack.Push(sub); continue; }
+                waitUntilFrame = Time.frameCount + (cur is int n ? Mathf.Max(1, n) : 1);
+                return;
+            }
+        }
+        catch (Exception e)
+        {
+            Log("EXCEPTION " + e);
+            Finish();
+        }
+    }
+
+    static void Flush()
+    {
+        try
+        {
+            File.WriteAllText(Path.Combine(OutDir, "audit_log.txt"), log.ToString());
+            File.WriteAllText(Path.Combine(OutDir, "frames.txt"), frames.ToString());
+            File.WriteAllText(Path.Combine(OutDir, "runtime_dump.txt"), dump.ToString());
+        }
+        catch (Exception e) { Debug.LogError(e); }
+    }
+
+    // ---------------- reflection helpers ----------------
+    static FieldInfo FI(Type t, string n)
+    {
+        for (; t != null; t = t.BaseType)
+        {
+            var f = t.GetField(n, BF);
+            if (f != null) return f;
+        }
+        return null;
+    }
+    static object Get(object o, string n) => FI(o.GetType(), n)?.GetValue(o);
+    static T Get<T>(object o, string n) => (T)Get(o, n);
+    static void Set(object o, string n, object v) => FI(o.GetType(), n).SetValue(o, v);
+    static object Call(object o, string n, params object[] a) => o.GetType().GetMethod(n, BF).Invoke(o, a);
+
+    static string Phase => Get(game, "phase").ToString();
+    static Transform PlayerRoot => Get<Transform>(game, "playerRoot");
+    static FrontRoomsMapHunter Relay => Get<FrontRoomsMapHunter>(game, "relay");
+
+    static string V(Vector3 v) => "(" + v.x.ToString("0.00", CultureInfo.InvariantCulture) + ", " + v.y.ToString("0.00", CultureInfo.InvariantCulture) + ", " + v.z.ToString("0.00", CultureInfo.InvariantCulture) + ")";
+    static string F2(float f) => f.ToString("0.###", CultureInfo.InvariantCulture);
+
+    // ---------------- capture ----------------
+    static void EnsureRT()
+    {
+        if (rt != null) return;
+        // 4 samples: with a target texture URP takes the camera's MSAA count from the texture, so this matches the pipeline's 4x MSAA.
+        rt = new RenderTexture(W, H, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { antiAliasing = 4, name = "Audit capture" };
+        rt.Create();
+    }
+
+    static Texture2D ReadBack()
+    {
+        var active = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D(W, H, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, W, H), 0, 0);
+        tex.Apply();
+        RenderTexture.active = active;
+        return tex;
+    }
+
+    static void RenderWith(Camera c)
+    {
+        EnsureRT();
+        var prev = c.targetTexture;
+        c.targetTexture = rt;
+        c.Render();
+        c.Render();
+        c.targetTexture = prev;
+    }
+
+    static int shotIndex;
+    static string Capture(string name, string note, bool hud = false, Camera camOverride = null)
+    {
+        var c = camOverride != null ? camOverride : cam;
+        EnsureRT();
+        Canvas hudCanvas = null;
+        RenderMode prevMode = RenderMode.ScreenSpaceOverlay;
+        Camera prevWorldCam = null;
+        float prevPlane = 0f;
+        if (hud)
+        {
+            hudCanvas = GameObject.Find("Minimal HUD")?.GetComponent<Canvas>();
+            if (hudCanvas != null)
+            {
+                prevMode = hudCanvas.renderMode;
+                prevWorldCam = hudCanvas.worldCamera;
+                prevPlane = hudCanvas.planeDistance;
+            }
+        }
+        var prev = c.targetTexture;
+        c.targetTexture = rt;
+        if (hudCanvas != null)
+        {
+            hudCanvas.renderMode = RenderMode.ScreenSpaceCamera;
+            hudCanvas.worldCamera = c;
+            hudCanvas.planeDistance = .2f;
+            Canvas.ForceUpdateCanvases();
+        }
+        c.Render();
+        if (hudCanvas != null) Canvas.ForceUpdateCanvases();
+        c.Render();
+        c.targetTexture = prev;
+        if (hudCanvas != null)
+        {
+            hudCanvas.renderMode = prevMode;
+            hudCanvas.worldCamera = prevWorldCam;
+            hudCanvas.planeDistance = prevPlane;
+        }
+        var tex = ReadBack();
+        var file = (shotIndex < 10 ? "0" : "") + shotIndex + "_" + name + (hud ? "_hud" : "") + ".png";
+        shotIndex++;
+        File.WriteAllBytes(Path.Combine(OutDir, file), tex.EncodeToPNG());
+        UnityEngine.Object.Destroy(tex);
+        var prompt = Get<Text>(game, "promptText")?.text ?? "";
+        var context = Get<Text>(game, "contextText")?.text ?? "";
+        var holdBar = Get<GameObject>(game, "holdBar");
+        var keyPanel = Get<GameObject>(game, "keyPanel");
+        frames.AppendLine(file + " | frame " + Time.frameCount + " | t " + F2(Time.time) + " | cam " + V(c.transform.position) + " fwd " + V(c.transform.forward)
+            + " | hudPrompt \"" + prompt + "\" | hudContext \"" + context + "\" | holdBar " + (holdBar != null && holdBar.activeSelf) + " | keyPanel " + (keyPanel != null && keyPanel.activeSelf)
+            + " | " + note);
+        try { File.WriteAllText(Path.Combine(OutDir, "frames.txt"), frames.ToString()); } catch { }
+        Log("captured " + file + " — " + note);
+        return file;
+    }
+
+    // ---------------- player placement ----------------
+    static void Place(Vector3 feet, Vector3 lookAt)
+    {
+        var root = PlayerRoot;
+        var body = Get<CharacterController>(game, "playerBody");
+        body.enabled = false;
+        root.position = feet;
+        body.enabled = true;
+        Physics.SyncTransforms();
+        Look(lookAt);
+    }
+
+    static void Look(Vector3 lookAt)
+    {
+        var root = PlayerRoot;
+        var eye = root.position + Vector3.up * ModuleUnits.PlayerEye;
+        var d = lookAt - eye;
+        var yaw = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+        var pitch = -Mathf.Asin(Mathf.Clamp(d.y / Mathf.Max(1e-4f, d.magnitude), -1f, 1f)) * Mathf.Rad2Deg;
+        Set(game, "yaw", yaw);
+        Set(game, "pitch", pitch);
+        root.rotation = Quaternion.Euler(0f, yaw, 0f);
+        cam.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+    }
+
+    static IEnumerator Settle(int extra = 20)
+    {
+        yield return 3;
+        var start = Time.frameCount;
+        while (!map.Settled && Time.frameCount - start < 1500) yield return 1;
+        Log("settled after " + (Time.frameCount - start) + " frames (Settled=" + map.Settled + ", chunks " + map.BuiltChunkCount + ")");
+        yield return extra;
+    }
+
+    static void Resume()
+    {
+        if (Phase != "Paused") return;
+        var phaseType = typeof(FrontRooms3DGame).GetNestedType("Phase", BindingFlags.NonPublic);
+        Call(game, "SetPhase", Enum.Parse(phaseType, "Playing"));
+        Log("phase was Paused (focus) — set back to Playing");
+    }
+
+    // ---------------- map queries ----------------
+    static readonly GridCoord[] Steps = { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
+
+    static IEnumerable<GridCoord> CellsAround(GridCoord center, int radiusCells)
+    {
+        for (var r = 0; r <= radiusCells; r++)
+        for (var dy = -r; dy <= r; dy++)
+        for (var dx = -r; dx <= r; dx++)
+        {
+            if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
+            yield return new GridCoord(center.x + dx, center.y + dy);
+        }
+    }
+
+    static Vector3 Dir(GridCoord a, GridCoord b)
+    {
+        var d = map.CellCenter(b) - map.CellCenter(a);
+        d.y = 0f;
+        return d.normalized;
+    }
+
+    static bool FreeStanding(Vector3 feet)
+    {
+        var r = ModuleUnits.PlayerRadius;
+        var root = PlayerRoot;
+        foreach (var c in Physics.OverlapCapsule(feet + Vector3.up * (r + .15f), feet + Vector3.up * (ModuleUnits.PlayerHeight - r), r, ~0, QueryTriggerInteraction.Ignore))
+            if (root == null || !c.transform.IsChildOf(root)) return false;
+        return true;
+    }
+
+    static Collider WindowCollider(GridCoord a, GridCoord b)
+    {
+        var dict = Get(map, "windowByCollider") as IDictionary;
+        var p = map.CrossingPoint(a, b);
+        foreach (DictionaryEntry e in dict)
+        {
+            var pos = (Vector3)Get(e.Value, "position");
+            if ((new Vector2(pos.x - p.x, pos.z - p.z)).sqrMagnitude < .01f) return (Collider)e.Key;
+        }
+        return null;
+    }
+
+    static int StraightRun(GridCoord c, GridCoord step, int max = 12)
+    {
+        var n = 0;
+        var cur = c;
+        while (n < max)
+        {
+            var next = cur + step;
+            if (!map.IsBuilt(next) || map.PassageBetween(cur, next) != FrontRoomsMapWorld.Passage.Open) break;
+            cur = next;
+            n++;
+        }
+        return n;
+    }
+
+    // ---------------- main ----------------
+    static IEnumerator Main()
+    {
+        ShaderUtil.allowAsyncCompilation = false;
+        Log("start · build target " + EditorUserBuildSettings.activeBuildTarget + " · quality " + QualitySettings.names[QualitySettings.GetQualityLevel()] + " (" + QualitySettings.GetQualityLevel() + ")"
+            + " · gfx " + SystemInfo.graphicsDeviceType + " " + SystemInfo.graphicsDeviceName + " · screen " + Screen.width + "x" + Screen.height);
+        foreach (var old in Directory.GetFiles(OutDir, "*.png")) File.Delete(old);
+
+        // Wait for the game root and the title stream.
+        while ((game = UnityEngine.Object.FindFirstObjectByType<FrontRooms3DGame>()) == null) yield return 1;
+        cam = Get<Camera>(game, "cam");
+        Log("game found, phase " + Phase + ", camera " + (cam != null ? cam.name : "null"));
+        while (Time.time < 2.0f) yield return 1;
+        UnityEngine.Random.InitState(4242);
+        for (var tries = 0; tries < 60 && !Get<bool>(game, "mapPlay"); tries++)
+        {
+            Call(game, "RequestTitleStart");
+            if (!Get<bool>(game, "mapPlay")) yield return 15;
+        }
+        if (!Get<bool>(game, "mapPlay")) { Log("FAILED: could not start a run"); yield break; }
+        map = Get<FrontRoomsMapWorld>(game, "map");
+        Log("run started · seed " + Get<int>(game, "runSeed") + " · map root " + V(map.transform.position));
+
+        // Keep the Relay dormant until the door-break sequence (harness change to the tuning object only).
+        var tuning = Get<FrontRoomsHunterTuning>(game, "hunterTuning");
+        var originalRelease = tuning.releaseDelaySeconds;
+        tuning.releaseDelaySeconds = 1e6f;
+        Log("relay release delay " + originalRelease + " s → held dormant by the harness");
+
+        // Wait for the start door like a real run, then for the map round it.
+        var t0 = Time.time;
+        while (!Get<bool>(game, "startDoorOpened") && Time.time - t0 < 8f) { Resume(); yield return 1; }
+        Log("start door opened=" + Get<bool>(game, "startDoorOpened") + " after " + F2(Time.time - t0) + " s");
+        yield return 30;
+        // Frame 0: the real start-room frame through the open door (no teleport yet).
+        Capture("start_room_view", "handoff frame: player in the title stream room right after Space (no teleport yet)");
+
+        // Deterministic game time per frame from here on (PNG encodes no longer jump animations).
+        Time.captureDeltaTime = 1f / 60f;
+
+        // ---------- runtime state dumps ----------
+        DumpPipeline();
+
+        var startCell = map.CellOf(PlayerRoot.position);
+        var startDoorCell = (GridCoord)Get(game, "startDoorCell");
+        var origin = startDoorCell + new GridCoord(0, 3);
+
+        // ===== Find targets in the generated data (the cache is pure data; nothing is built by this). =====
+        var windowsL0 = new List<(GridCoord a, GridCoord b)>();
+        var windowsOffice = new List<(GridCoord a, GridCoord b)>();
+        var keyCells = new List<(GridCoord cell, GridCoord zone)>();
+        foreach (var c in CellsAround(origin, 60))
+        {
+            if (map.InStartArea(c)) continue;
+            foreach (var s in new[] { new GridCoord(1, 0), new GridCoord(0, 1) })
+            {
+                var n = c + s;
+                if (map.InStartArea(n)) continue;
+                var e = map.Cache.Edge(c, n);
+                if (e != EdgeKind.Window) continue;
+                var za = map.Cache.ZoneOf(c);
+                var zb = map.Cache.ZoneOf(n);
+                if (za.theme == ZoneTheme.Office || zb.theme == ZoneTheme.Office)
+                {
+                    if (windowsOffice.Count < 6) windowsOffice.Add(za.theme == ZoneTheme.Office ? (c, n) : (n, c));
+                }
+                else if (windowsL0.Count < 6) windowsL0.Add((c, n));
+            }
+            if (windowsL0.Count >= 6 && windowsOffice.Count >= 6) break;
+        }
+        Log("window candidates · Level 0 " + windowsL0.Count + " · Office " + windowsOffice.Count);
+
+        // ===== (8a) Level 0 corridor (near the start) =====
+        yield return Representative("L0", origin);
+        yield return Perf();
+        Time.captureDeltaTime = 1f / 60f;
+        // ===== (1) windows =====
+        if (windowsL0.Count > 0) yield return WindowSequence("window_L0", windowsL0); else Log("NO Level 0 window found within 60 cells");
+        if (windowsOffice.Count > 0) yield return WindowSequence("window_Office", windowsOffice); else Log("NO Office window found within 60 cells");
+        // ===== (8b) Office, (8c) dark =====
+        yield return Representative("Office", origin);
+        yield return Representative("Dark", origin);
+        // ===== (6) normal door =====
+        yield return DoorSequence();
+        // ===== (2)(3)(4)(5) locked door → key → unlock =====
+        yield return KeySequence(origin);
+        // ===== (7) Relay breaks a door =====
+        yield return RelaySequence(originalRelease);
+        Log("DONE");
+    }
+
+    // ---------------- representative frames ----------------
+    static IEnumerator Representative(string kind, GridCoord origin)
+    {
+        // Coarse: walk the data for a cell of the right kind; then fine-pick among built cells.
+        GridCoord? coarse = null;
+        foreach (var c in CellsAround(origin, 50))
+        {
+            if (map.InStartArea(c)) continue;
+            var z = map.Cache.ZoneOf(c);
+            if (kind == "L0" && z.theme == ZoneTheme.Level0 && z.height == ZoneHeight.Standard) { coarse = c; break; }
+            if (kind == "Office" && z.theme == ZoneTheme.Office) { coarse = c; break; }
+            if (kind == "Dark") { coarse = origin; break; }
+        }
+        if (!coarse.HasValue) { Log(kind + ": no cell found"); yield break; }
+        Place(map.CellCenter(coarse.Value), map.CellCenter(coarse.Value) + Vector3.forward * 5f + Vector3.up * 1.5f);
+        yield return Settle(30);
+        Resume();
+        var here = map.CellOf(PlayerRoot.position);
+        GridCoord best = here; GridCoord bestStep = Steps[0]; float bestScore = float.MinValue;
+        var fixtures = AllFixtures();
+        foreach (var c in CellsAround(here, 14))
+        {
+            if (!map.IsBuilt(c) || map.InStartArea(c)) continue;
+            var z = map.ZoneOf(c);
+            if (kind == "L0" && (z.theme != ZoneTheme.Level0 || z.height != ZoneHeight.Standard)) continue;
+            if (kind == "Office" && z.theme != ZoneTheme.Office) continue;
+            if (!FreeStanding(map.CellCenter(c))) continue;
+            foreach (var s in Steps)
+            {
+                var run = StraightRun(c, s);
+                float score;
+                if (kind == "Dark")
+                {
+                    if (run < 2) continue;
+                    var light = 0f;
+                    var p = map.CellCenter(c);
+                    foreach (var f in fixtures)
+                    {
+                        var mode = (int)Get(f, "mode");
+                        var lt = Get<Light>(f, "light");
+                        if (lt == null) continue;
+                        var d = Vector3.Distance(new Vector3(lt.transform.position.x, 0f, lt.transform.position.z), p);
+                        var bi = (float)Get(f, "baseIntensity");
+                        light += (mode == 3 ? .02f : mode == 4 ? .3f : mode == 2 ? .6f : 1f) * bi / (1f + d * d);
+                    }
+                    score = -light + run * .001f;
+                }
+                else if (kind == "Office")
+                {
+                    if (run < 2) continue;
+                    score = run + (DressingNear(map.CellCenter(c), 5f) ? 20f : 0f);
+                }
+                else score = run;
+                if (score > bestScore) { bestScore = score; best = c; bestStep = s; }
+            }
+        }
+        var feet = map.CellCenter(best);
+        var look = map.CellCenter(best + bestStep + bestStep + bestStep) + Vector3.up * 1.45f;
+        Place(feet, look);
+        yield return Settle(20);
+        Resume();
+        var z2 = map.ZoneOf(best);
+        Capture("rep_" + kind, "representative " + kind + " frame · cell " + best + " zone " + z2.theme + "/" + z2.height + " · looking " + bestStep + " (run " + StraightRun(best, bestStep) + " cells) · score " + F2(bestScore));
+        if (kind == "Office")
+        {
+            // A second angle, quarter turn.
+            var side = new GridCoord(bestStep.y, -bestStep.x);
+            Look(map.CellCenter(best + side + side) + Vector3.up * 1.3f);
+            yield return 3;
+            Capture("rep_Office_b", "Office, quarter turn from the previous frame");
+            // How the playtest autopilot's look-around/relay shots are rendered: Camera.CopyFrom without the URP camera data.
+            var go = new GameObject("AUDIT / autopilot-style camera");
+            var ap = go.AddComponent<Camera>();
+            ap.CopyFrom(cam);
+            ap.enabled = false;
+            go.transform.SetPositionAndRotation(cam.transform.position, cam.transform.rotation);
+            Capture("rep_Office_b_AUTOPILOT_STYLE_camera", "same view through a Camera.CopyFrom copy, as FrontRooms3DGame.AutopilotLookAround makes it (URP data not copied: renderPostProcessing=" + ap.GetUniversalAdditionalCameraData().renderPostProcessing + ")", camOverride: ap);
+            UnityEngine.Object.Destroy(go);
+        }
+    }
+
+    static bool DressingNear(Vector3 point, float radius)
+    {
+        foreach (Transform chunk in map.transform)
+        foreach (Transform t in chunk)
+            if (t.name == "office dressing")
+                foreach (var r in t.GetComponentsInChildren<Renderer>())
+                    if ((r.bounds.center - point).sqrMagnitude < radius * radius) return true;
+        return false;
+    }
+
+    static List<object> AllFixtures()
+    {
+        var list = new List<object>();
+        var built = Get(map, "built") as IDictionary;
+        foreach (DictionaryEntry e in built)
+            foreach (var f in (IEnumerable)Get(e.Value, "fixtures")) list.Add(f);
+        return list;
+    }
+
+    // ---------------- windows ----------------
+    static IEnumerator WindowSequence(string label, List<(GridCoord a, GridCoord b)> candidates)
+    {
+        foreach (var (a0, b0) in candidates)
+        {
+            // Stand 1.5 m from the glass (the middle of the cell on the chosen side), looking straight at it.
+            var a = a0; var b = b0;
+            var cross = map.CrossingPoint(a, b);
+            var dir = Dir(a, b);
+            var center = cross + Vector3.up * ((ModuleUnits.WindowSill + ModuleUnits.WindowTop) * .5f);
+            Place(cross - dir * 1.5f, center);
+            yield return Settle(20);
+            Resume();
+            var col = WindowCollider(a, b);
+            if (col == null) { Log(label + ": window " + a + "-" + b + " not built / no collider; next"); continue; }
+            if (!FreeStanding(cross - dir * 1.5f))
+            {
+                // Try the other side.
+                var t = a; a = b; b = t; dir = -dir;
+                if (!FreeStanding(cross - dir * 1.5f)) { Log(label + ": both sides blocked by furniture; next"); continue; }
+            }
+            Place(cross - dir * 1.5f, center);
+            yield return 5;
+            Resume();
+            var za = map.ZoneOf(a); var zb = map.ZoneOf(b);
+            var where = "window " + a + "→" + b + " · camera side zone " + za.theme + "/" + za.height + " · far side " + zb.theme + "/" + zb.height;
+            DumpGlass(col, label);
+            Capture(label + "_intact_1.5m", "intact glass from 1.5 m, straight on · " + where);
+            Capture(label + "_intact_1.5m", "same frame with the game HUD (prompt) composited by flipping the HUD canvas to ScreenSpaceCamera", hud: true);
+            // Oblique view: 1.2 m back, 1.4 m to the side, to see what the glass reflects at a grazing angle.
+            var side = Vector3.Cross(Vector3.up, dir).normalized;
+            Place(cross - dir * 1.2f + side * 1.4f, center);
+            yield return 4;
+            Capture(label + "_intact_oblique", "intact glass at ~50° incidence (1.2 m back, 1.4 m to the side) · " + where);
+            Place(cross - dir * .7f, center);
+            yield return 4;
+            Capture(label + "_intact_0.7m", "intact glass from 0.7 m · " + where);
+            // Steep view (~60°): inside the window's own cell, with a clear line of sight to the pane's centre.
+            var grazeFeet = Vector3.zero;
+            var steepOk = false;
+            foreach (var off in new[] { .6f, .7f, .8f })
+            foreach (var along in new[] { 1.15f, -1.15f, 1.0f, -1.0f })
+            {
+                if (steepOk) break;
+                var f = cross - dir * off + side * along;
+                if (!FreeStanding(f)) continue;
+                var eye = f + Vector3.up * ModuleUnits.PlayerEye;
+                var blocked = false;
+                foreach (var h in Physics.RaycastAll(eye, (center - eye).normalized, (center - eye).magnitude - .02f, ~0, QueryTriggerInteraction.Ignore))
+                    if (h.collider != col && !h.collider.transform.IsChildOf(PlayerRoot)) { blocked = true; break; }
+                if (blocked) continue;
+                grazeFeet = f;
+                steepOk = true;
+            }
+            if (steepOk)
+            {
+                Place(grazeFeet, center);
+                yield return 4;
+                Capture(label + "_intact_steep", "intact glass at ~60° incidence (camera " + F2(Vector3.Distance(new Vector3(grazeFeet.x, 0f, grazeFeet.z), new Vector3(cross.x, 0f, cross.z))) + " m from the opening centre, same cell, clear line of sight) · " + where);
+            }
+            else Log(label + ": no clear steep viewpoint in the window's cell");
+            if (label == "window_L0")
+            {
+                // Experiments (not the game): a realtime local reflection probe; the project's Prop_Glass material on the pane.
+                Place(cross - dir * 1.2f + side * 1.4f, center);
+                var probeGo = new GameObject("AUDIT / experiment probe");
+                var probe = probeGo.AddComponent<ReflectionProbe>();
+                probeGo.transform.position = cross - dir * 1.5f + Vector3.up * 1.4f;
+                probe.mode = ReflectionProbeMode.Realtime;
+                probe.refreshMode = ReflectionProbeRefreshMode.ViaScripting;
+                probe.timeSlicingMode = ReflectionProbeTimeSlicingMode.NoTimeSlicing;
+                probe.size = new Vector3(8f, 4f, 8f);
+                probe.resolution = 256;
+                probe.importance = 10;
+                probe.intensity = 1f;
+                probe.RenderProbe();
+                yield return 6;
+                Capture(label + "_EXPERIMENT_with_probe", "EXPERIMENT (harness-added realtime ReflectionProbe, 256 px, at the window; NOT in the game) · oblique view");
+                var r = col.GetComponent<Renderer>();
+                var gameGlass = r.sharedMaterial;
+                // Clear-glass experiment: same shader and blend, near-black base colour (no lit 'veil'), low alpha, the probe still present.
+                var clear = new Material(gameGlass) { name = "AUDIT clear glass" };
+                clear.SetColor("_BaseColor", new Color(.02f, .025f, .025f, .12f));
+                clear.SetFloat("_Smoothness", .96f);
+                r.sharedMaterial = clear;
+                yield return 3;
+                Capture(label + "_EXPERIMENT_clear_glass_probe", "EXPERIMENT (NOT in the game): same URP/Lit transparent blend, base colour (0.02,0.025,0.025,0.12), smoothness 0.96, plus the harness probe · oblique view");
+                if (steepOk)
+                {
+                    Place(grazeFeet, center);
+                    yield return 4;
+                    Capture(label + "_EXPERIMENT_clear_glass_probe_steep", "EXPERIMENT (NOT in the game): clear glass + probe · ~65° view");
+                    r.sharedMaterial = gameGlass;
+                    yield return 2;
+                    Capture(label + "_EXPERIMENT_game_glass_probe_steep", "EXPERIMENT (NOT in the game): game glass + probe · same ~65° view, for comparison");
+                }
+                Place(cross - dir * 1.5f, center);
+                r.sharedMaterial = clear;
+                yield return 4;
+                Capture(label + "_EXPERIMENT_clear_glass_probe_1.5m", "EXPERIMENT (NOT in the game): clear glass + probe · straight on from 1.5 m");
+                r.sharedMaterial = gameGlass;
+                UnityEngine.Object.Destroy(probeGo);
+                UnityEngine.Object.Destroy(clear);
+                Place(cross - dir * 1.2f + side * 1.4f, center);
+                yield return 3;
+                var propGlass = Resources.Load<Material>("Surfaces/Prop_Glass");
+                if (propGlass != null)
+                {
+                    r.sharedMaterial = propGlass;
+                    yield return 3;
+                    Capture(label + "_EXPERIMENT_prop_glass", "EXPERIMENT (pane drawn with the project's Prop_Glass material instead of the map's runtime glass; NOT in the game) · oblique view");
+                    r.sharedMaterial = gameGlass;
+                }
+                yield return 3;
+            }
+            // Hold to break, from 1.5 m, aimed at the pane.
+            Place(cross - dir * 1.5f, center);
+            yield return 5;
+            Resume();
+            var described = map.Describe(col, out var hold);
+            Log(label + ": Describe → \"" + described + "\" hold=" + hold);
+            // UpdateAim (FrontRooms3DGame) releases the hold every frame E is up, so the 0.5 s is applied in one call right before the render.
+            map.Hold(col, .5f, out var progress);
+            var holdBar = Get<GameObject>(game, "holdBar");
+            var fill = Get<Image>(game, "holdBarFill");
+            Capture(label + "_hold_0.5s", "mid hold-to-break: FrontRoomsMapWorld.Hold progress " + F2(progress) + " (window.hold 0.5 s) — world only");
+            if (holdBar != null && fill != null)
+            {
+                holdBar.SetActive(true);
+                fill.rectTransform.sizeDelta = new Vector2(120f * progress, 4f);
+            }
+            Capture(label + "_hold_0.5s", "mid hold-to-break with HUD; hold bar set by the harness to what UpdateHud draws at progress " + F2(progress), hud: true);
+            map.ReleaseHold(col);
+            var pane = col.gameObject;
+            var broke = map.Hold(col, 1.0f, out progress);
+            Log(label + ": Hold(1.0) broke=" + broke + " (pane object still alive this frame: " + (pane != null) + ")");
+            Capture(label + "_break_same_tick", "the tick GlassBroken fired (Destroy is deferred, so the pane may still draw)");
+            var waited = 0;
+            while (pane != null && waited < 10) { waited++; yield return 1; }
+            Capture(label + "_break_next_frame", "first frame after the pane object is gone (" + waited + " frame(s) later)");
+            Capture(label + "_break_next_frame", "same, with HUD (flash text from OnGlassBroken)", hud: true);
+            yield return 15;
+            Capture(label + "_break_+0.25s", "0.25 s after the break");
+            yield return 45;
+            Capture(label + "_after_1s", "1 s after the break: what remains of the window");
+            Place(cross - dir * 1.2f + side * 1.4f, center);
+            yield return 4;
+            Capture(label + "_after_1s_oblique", "after the break, oblique view of the empty frame and floor");
+            // Is anything left near the window (shards, particles, decals)?
+            var near = Physics.OverlapSphere(cross + Vector3.up * 1f, 1.5f, ~0, QueryTriggerInteraction.Collide);
+            var names = string.Join(", ", near.Select(c => c.name).Distinct().Take(20));
+            var ps = UnityEngine.Object.FindObjectsByType<ParticleSystem>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length;
+            var decals = UnityEngine.Object.FindObjectsByType<DecalProjector>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length;
+            Log(label + ": after break · colliders within 1.5 m: " + names + " · ParticleSystems in scene " + ps + " · DecalProjectors " + decals
+                + " · IsBrokenWindow=" + map.IsBrokenWindow(a, b) + " · passage " + map.PassageBetween(a, b));
+            dump.AppendLine("## " + label + " after break: colliders within 1.5 m: " + names + "; ParticleSystems in scene: " + ps + "; DecalProjectors: " + decals);
+            yield break;
+        }
+        Log(label + ": no usable window among candidates");
+    }
+
+    // ---------------- doors ----------------
+    static (GridCoord a, GridCoord b)? FindDoor(GridCoord near, int radius, Func<GridCoord, GridCoord, bool> ok)
+    {
+        foreach (var c in CellsAround(near, radius))
+        {
+            if (!map.IsBuilt(c) || map.InStartArea(c)) continue;
+            foreach (var s in Steps)
+            {
+                var n = c + s;
+                if (!map.IsBuilt(n) || map.InStartArea(n)) continue;
+                if (map.Cache.Edge(c, n) != EdgeKind.Door) continue;
+                var door = map.DoorBetween(c, n);
+                if (door == null || door.open || door.broken) continue;
+                var cross = map.CrossingPoint(c, n);
+                var feet = cross - Dir(c, n) * 1.5f;
+                if (!FreeStanding(feet)) continue;
+                if (!ok(c, n)) continue;
+                return (c, n);
+            }
+        }
+        return null;
+    }
+
+    static IEnumerator SwingSeries(string label, FrontRoomsMapWorld.Door door, string note)
+    {
+        for (var i = 0; i <= 6; i++)
+        {
+            var hingeY = door.hinge.localRotation.eulerAngles.y;
+            Capture(label + "_t" + (i * 250).ToString("0000") + "ms", note + " · t=" + F2(i * .25f) + " s · door.progress " + F2(door.progress) + " open=" + door.open + " hinge local Y " + F2(hingeY));
+            if (i < 6) yield return 15;
+        }
+    }
+
+    static IEnumerator DoorSequence()
+    {
+        Set(map, "doorsNeedKeys", false);
+        var here = map.CellOf(PlayerRoot.position);
+        var found = FindDoor(here, 20, (a, b) => true);
+        if (!found.HasValue)
+        {
+            Log("door: none near " + here + "; trying wider");
+            found = FindDoor(here, 40, (a, b) => true);
+        }
+        if (!found.HasValue) { Log("door: no closed door found"); yield break; }
+        var (c, n) = found.Value;
+        var cross = map.CrossingPoint(c, n);
+        var dir = Dir(c, n);
+        Place(cross - dir * 1.5f, cross + Vector3.up * 1.2f);
+        yield return Settle(10);
+        Resume();
+        var door = map.DoorBetween(c, n);
+        Log("door (normal): " + c + "→" + n + " zones " + map.ZoneOf(c).theme + "/" + map.ZoneOf(c).height + " → " + map.ZoneOf(n).theme + "/" + map.ZoneOf(n).height + " · Describe \"" + map.Describe(door.leaf, out _) + "\"");
+        DumpRenderer(door.leaf.GetComponent<Renderer>(), "door leaf");
+        Capture("door_normal_before", "closed door from 1.5 m, doorsNeedKeys=false (as shipped)");
+        Capture("door_normal_before", "same with HUD prompt", hud: true);
+        map.Use(door.leaf);
+        yield return SwingSeries("door_normal", door, "FrontRoomsMapWorld.Use on the leaf (the E press)");
+    }
+
+    static IEnumerator KeySequence(GridCoord origin)
+    {
+        // Find a built key; teleport near it first if none is built here.
+        GameObject key = null;
+        for (var attempt = 0; attempt < 3 && key == null; attempt++)
+        {
+            key = NearestKey();
+            if (key != null) break;
+            GridCoord? kc = null;
+            foreach (var cc in CellsAround(MapGrid.ChunkOf(map.CellOf(PlayerRoot.position)), 4))
+            {
+                var data = map.Cache.Get(cc);
+                if (data.hasKey && !map.InStartArea(data.keyCell)) { kc = data.keyCell; break; }
+            }
+            if (!kc.HasValue) break;
+            Place(map.CellCenter(kc.Value) + new Vector3(1.2f, 0f, 0f), map.CellCenter(kc.Value));
+            yield return Settle(20);
+        }
+        if (key == null) { Log("key: no key found"); yield break; }
+        var keyPos = key.transform.position;
+        var keyCell = map.CellOf(keyPos);
+        var zone = map.ZoneOf(keyCell);
+        var dupes = map.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("Key · zone") && (t.position - keyPos).sqrMagnitude < .01f).Count();
+        Log("key: " + key.name + " at " + V(keyPos) + " cell " + keyCell + " zone " + zone.id + " " + zone.theme + "/" + zone.height + " · key objects at that exact spot: " + dupes);
+        DumpRenderer(key.GetComponent<Renderer>(), "key");
+
+        // A door in the key's zone, standing on the zone's side.
+        Set(map, "doorsNeedKeys", true);
+        var found = FindDoor(keyCell, 10, (a, b) => map.ZoneOf(a).id == zone.id);
+        if (found.HasValue)
+        {
+            var (c, n) = found.Value;
+            var cross = map.CrossingPoint(c, n);
+            var dir = Dir(c, n);
+            Place(cross - dir * 1.5f, cross + Vector3.up * 1.2f);
+            yield return Settle(10);
+            Resume();
+            var door = map.DoorBetween(c, n);
+            Log("locked door: " + c + "→" + n + " · doorsNeedKeys forced TRUE by the harness (shipped profile has it false) · Describe \"" + map.Describe(door.leaf, out _) + "\"");
+            Capture("door_locked_before", "door in the key's zone, no key held, doorsNeedKeys forced on (shipped: off)");
+            Capture("door_locked_before", "same with HUD: the locked prompt", hud: true);
+            map.Use(door.leaf);
+            yield return 1;
+            Capture("door_locked_after_use", "the frame after Use on a locked door (DoorLocked raised; door.open=" + door.open + ", progress " + F2(door.progress) + ")");
+            Capture("door_locked_after_use", "same with HUD", hud: true);
+            yield return 30;
+            Capture("door_locked_0.5s", "0.5 s after the locked press");
+        }
+        else Log("locked door: no door found in zone " + zone.id);
+
+        // The key from 2 m and close, at eye height looking at it.
+        Place(new Vector3(keyPos.x, map.transform.position.y, keyPos.z) + new Vector3(1.5f, 0f, 0f), keyPos);
+        yield return Settle(10);
+        key = NearestKey();
+        if (key == null || (key.transform.position - keyPos).sqrMagnitude > .01f) { Log("key: lost the key object after the locked-door step"); yield break; }
+        var flatAway = new Vector3(1f, 0f, 0f);
+        foreach (var s in Steps)
+        {
+            var d = new Vector3(s.x, 0f, s.y);
+            if (FreeStanding(new Vector3(keyPos.x, 0f, keyPos.z) + d * 2f) && !Physics.Linecast(keyPos, keyPos + d * 2f + Vector3.up * .5f)) { flatAway = d; break; }
+        }
+        var floorY = map.transform.position.y;
+        Place(new Vector3(keyPos.x, floorY, keyPos.z) + flatAway * 2f, keyPos);
+        yield return Settle(10);
+        Resume();
+        Capture("key_2m", "zone key from 2 m, camera aimed at it · key is a primitive cube " + V(key.transform.lossyScale) + " at height " + F2(keyPos.y - floorY) + " m");
+        Capture("key_2m", "same with HUD", hud: true);
+        Place(new Vector3(keyPos.x, floorY, keyPos.z) + flatAway * 1.0f, keyPos);
+        yield return 3;
+        Capture("key_1.0m", "key from 1.0 m (pickup radius is 0.9 m, so this is as close as the player sees it)");
+        // Pickup: step to 0.8 m.
+        Place(new Vector3(keyPos.x, floorY, keyPos.z) + flatAway * .8f, keyPos);
+        var frames0 = Time.frameCount;
+        while (key != null && Time.frameCount - frames0 < 10) yield return 1;
+        Capture("key_pickup_frame", "first frame after CollectKeys removed the key (" + (Time.frameCount - frames0) + " frame(s) after stepping into 0.9 m); keys held " + map.KeysHeld);
+        yield return 2;
+        Capture("key_pickup_+2f", "2 frames later, with HUD (flash + key panel; the HUD updates the frame after KeyTaken)", hud: true);
+        yield return 30;
+        Capture("key_pickup_0.5s", "0.5 s after pickup", hud: true);
+
+        // Open the zone door with the key.
+        if (found.HasValue)
+        {
+            var (c, n) = found.Value;
+            var cross = map.CrossingPoint(c, n);
+            var dir = Dir(c, n);
+            Place(cross - dir * 1.5f, cross + Vector3.up * 1.2f);
+            yield return 10;
+            Resume();
+            var door = map.DoorBetween(c, n);
+            if (door == null) { Log("key door no longer built"); yield break; }
+            Log("unlock: HasKeyFor(zone)=" + map.HasKeyFor(zone.id) + " · Describe \"" + map.Describe(door.leaf, out _) + "\"");
+            Capture("door_key_before", "same door with the key held", hud: true);
+            map.Use(door.leaf);
+            yield return SwingSeries("door_key_open", door, "Use with the zone key held");
+        }
+    }
+
+    static GameObject NearestKey()
+    {
+        GameObject best = null;
+        var bestD = float.MaxValue;
+        var p = PlayerRoot.position;
+        foreach (var t in map.GetComponentsInChildren<Transform>())
+        {
+            if (!t.name.StartsWith("Key · zone")) continue;
+            var d = (t.position - p).sqrMagnitude;
+            if (d < bestD) { bestD = d; best = t.gameObject; }
+        }
+        return best;
+    }
+
+    // ---------------- Relay ----------------
+    static IEnumerator RelaySequence(float originalRelease)
+    {
+        Set(map, "doorsNeedKeys", false);
+        var relay = Relay;
+        var here = map.CellOf(PlayerRoot.position);
+        var found = FindDoor(here, 20, (a, b) => FreeStanding(map.CellCenter(b)));
+        if (!found.HasValue) { Log("relay: no door"); yield break; }
+        var (c, n) = found.Value;
+        var cross = map.CrossingPoint(c, n);
+        var dir = Dir(c, n);
+        // Player 2.2 m (or 1.6 m) back from the door, facing it; the Relay in the cell beyond.
+        var back = FreeStanding(cross - dir * 2.2f) ? 2.2f : 1.6f;
+        Place(cross - dir * back, cross + Vector3.up * 1.2f);
+        yield return Settle(10);
+        Resume();
+        var door = map.DoorBetween(c, n);
+        var relayFeet = map.CellCenter(n) + dir * .6f;
+        relay.DebugPlace(relayFeet);
+        var tuning = Get<FrontRoomsHunterTuning>(game, "hunterTuning");
+        Log("relay placed at " + V(relayFeet) + " (beyond door " + c + "→" + n + ") · state " + relay.State + " · breakDoorSeconds " + tuning.breakDoorSeconds);
+        yield return 2;
+        relay.Noise(PlayerRoot.position, 40f);
+        Log("relay noise → state " + relay.State);
+        var witness = MakeWitness();
+        var start = Time.frameCount;
+        float breakStart = -1f, brokeAt = -1f;
+        var nextShot = 0f;
+        var shotsAfter = new[] { 0f, .1f, .25f, .5f, 1f };
+        var afterIdx = 0;
+        while (Time.frameCount - start < 60 * 20)
+        {
+            Resume();
+            if (relay.State == HunterState.BreakDoor && breakStart < 0f)
+            {
+                breakStart = Time.time;
+                nextShot = breakStart;
+                Log("relay BreakDoor began; door " + (relay.Position - cross).magnitude.ToString("0.00") + " m away");
+            }
+            if (breakStart >= 0f && brokeAt < 0f && Time.time >= nextShot && !door.broken)
+            {
+                Capture("relay_break_t" + ((Time.time - breakStart) * 1000f).ToString("0000") + "ms", "Relay in BreakDoor, player's view of the door (relay state " + relay.State + ")");
+                if (Mathf.Abs(Time.time - breakStart - 1f) < .05f || nextShot == breakStart)
+                {
+                    witness.transform.position = map.CellCenter(n) + dir * 1.4f + Vector3.Cross(Vector3.up, dir) * 1.1f + Vector3.up * 1.6f;
+                    witness.transform.LookAt(relay.Position + Vector3.up * 1.2f);
+                    Capture("relay_break_witness_t" + ((Time.time - breakStart) * 1000f).ToString("0000") + "ms", "NON-PLAYER witness camera on the Relay's side (same URP setup) showing the rig at the door", camOverride: witness);
+                    if (nextShot != breakStart) Capture("relay_break_t" + ((Time.time - breakStart) * 1000f).ToString("0000") + "ms", "player view with HUD during BreakDoor", hud: true);
+                }
+                nextShot += .5f;
+            }
+            if (door.broken && brokeAt < 0f)
+            {
+                brokeAt = Time.time;
+                Log("door broken at " + F2(brokeAt - breakStart) + " s after BreakDoor began");
+            }
+            if (brokeAt >= 0f && afterIdx < shotsAfter.Length && Time.time - brokeAt >= shotsAfter[afterIdx] - 1e-4f)
+            {
+                Capture("relay_broken_+" + (shotsAfter[afterIdx] * 1000f).ToString("0000") + "ms", "after BreakDoor: door.progress " + F2(door.progress) + " · relay " + relay.State + " at " + F2((relay.Position - PlayerRoot.position).magnitude) + " m · phase " + Phase);
+                if (afterIdx == 1)
+                {
+                    witness.transform.position = map.CellCenter(n) + dir * 1.4f + Vector3.Cross(Vector3.up, dir) * 1.1f + Vector3.up * 1.6f;
+                    witness.transform.LookAt(cross + Vector3.up * 1.1f);
+                    Capture("relay_broken_witness", "NON-PLAYER witness view of the broken door from the Relay's side", camOverride: witness);
+                }
+                afterIdx++;
+            }
+            if (afterIdx >= shotsAfter.Length) break;
+            yield return 1;
+        }
+        if (breakStart < 0f) Log("relay: never entered BreakDoor (state " + relay.State + ", at " + V(relay.Position) + ")");
+        UnityEngine.Object.Destroy(witness.gameObject);
+    }
+
+    static Camera MakeWitness()
+    {
+        var go = new GameObject("AUDIT / witness camera");
+        var c = go.AddComponent<Camera>();
+        c.CopyFrom(cam);
+        c.enabled = false;
+        var data = c.GetUniversalAdditionalCameraData();
+        dump.AppendLine("## Camera.CopyFrom check (how the autopilot's look-at shots are made): new camera after CopyFrom → renderPostProcessing=" + data.renderPostProcessing
+            + ", antialiasing=" + data.antialiasing + ", dithering=" + data.dithering + " (game camera: renderPostProcessing=" + cam.GetUniversalAdditionalCameraData().renderPostProcessing + ")");
+        FrontRoomsPostStack.ConfigureCamera(c);
+        return c;
+    }
+
+    // ---------------- perf ----------------
+    static IEnumerator Perf()
+    {
+        Time.captureDeltaTime = 0f;
+        yield return 10;
+        var cpu = new List<float>();
+        for (var i = 0; i < 120; i++) { cpu.Add(Time.unscaledDeltaTime * 1000f); yield return 1; }
+        cpu.Sort();
+        dump.AppendLine("## Editor batch-mode player-loop frame time (no game view is drawn in batch mode, so this is CPU simulation only): median " + F2(cpu[cpu.Count / 2]) + " ms, p95 " + F2(cpu[(int)(cpu.Count * .95f)]) + " ms");
+        // Render cost: game camera → 1920x1080 4x MSAA target, synchronised by a 1-pixel readback.
+        EnsureRT();
+        var tiny = new Texture2D(1, 1, TextureFormat.RGB24, false);
+        var times = new List<double>();
+        for (var i = 0; i < 24; i++)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var prev = cam.targetTexture;
+            cam.targetTexture = rt;
+            cam.Render();
+            cam.targetTexture = prev;
+            var active = RenderTexture.active;
+            RenderTexture.active = rt;
+            tiny.ReadPixels(new Rect(0, 0, 1, 1), 0, 0);
+            tiny.Apply();
+            RenderTexture.active = active;
+            sw.Stop();
+            if (i >= 4) times.Add(sw.Elapsed.TotalMilliseconds);
+            yield return 1;
+        }
+        times.Sort();
+        dump.AppendLine("## Game camera render + GPU sync, 1920x1080 4x MSAA, this Mac (" + SystemInfo.graphicsDeviceName + ", " + SystemInfo.graphicsDeviceType + "): median " + times[times.Count / 2].ToString("0.0") + " ms, min " + times[0].ToString("0.0") + " ms, max " + times[times.Count - 1].ToString("0.0") + " ms (20 samples; editor, includes readback sync)");
+        UnityEngine.Object.Destroy(tiny);
+        Flush();
+    }
+
+    // ---------------- dumps ----------------
+    static void DumpProps(object o, string title)
+    {
+        dump.AppendLine("## " + title + " (" + o.GetType().FullName + ")");
+        foreach (var p in o.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public).OrderBy(p => p.Name))
+        {
+            if (p.GetIndexParameters().Length > 0) continue;
+            string v;
+            try { var val = p.GetValue(o); v = val is UnityEngine.Object uo ? (uo == null ? "null" : uo.name) : val is Array arr ? "[" + string.Join(", ", arr.Cast<object>().Select(x => x?.ToString())) + "]" : val?.ToString() ?? "null"; }
+            catch (Exception e) { v = "<" + e.GetType().Name + ">"; }
+            dump.AppendLine("  " + p.Name + " = " + v);
+        }
+    }
+
+    static void DumpFields(object o, string title)
+    {
+        if (o == null) { dump.AppendLine("## " + title + ": null"); return; }
+        dump.AppendLine("## " + title + " (" + o.GetType().FullName + ")");
+        foreach (var f in o.GetType().GetFields(BF))
+        {
+            object v;
+            try { v = f.GetValue(o); } catch { v = "?"; }
+            dump.AppendLine("  " + f.Name + " = " + v);
+        }
+    }
+
+    static void DumpPipeline()
+    {
+        dump.AppendLine("# Runtime pipeline state (Play mode, after the run started)");
+        dump.AppendLine("activeBuildTarget = " + EditorUserBuildSettings.activeBuildTarget + "; quality level = " + QualitySettings.GetQualityLevel() + " " + QualitySettings.names[QualitySettings.GetQualityLevel()]
+            + "; graphics = " + SystemInfo.graphicsDeviceType + " / " + SystemInfo.graphicsDeviceName + "; colorSpace = " + QualitySettings.activeColorSpace);
+        var rp = GraphicsSettings.currentRenderPipeline;
+        dump.AppendLine("GraphicsSettings.currentRenderPipeline = " + (rp != null ? rp.name : "null") + "; defaultRenderPipeline = " + (GraphicsSettings.defaultRenderPipeline != null ? GraphicsSettings.defaultRenderPipeline.name : "null")
+            + "; QualitySettings.renderPipeline = " + (QualitySettings.renderPipeline != null ? QualitySettings.renderPipeline.name : "null"));
+        for (var i = 0; i < QualitySettings.names.Length; i++)
+        {
+            var qrp = QualitySettings.GetRenderPipelineAssetAt(i);
+            dump.AppendLine("  quality[" + i + "] " + QualitySettings.names[i] + " → " + (qrp != null ? qrp.name : "null"));
+        }
+        dump.AppendLine("QualitySettings: antiAliasing=" + QualitySettings.antiAliasing + " anisotropicFiltering=" + QualitySettings.anisotropicFiltering + " globalTextureMipmapLimit=" + QualitySettings.globalTextureMipmapLimit
+            + " realtimeReflectionProbes=" + QualitySettings.realtimeReflectionProbes + " lodBias=" + QualitySettings.lodBias + " shadows=" + QualitySettings.shadows + " vSyncCount=" + QualitySettings.vSyncCount
+            + " Application.targetFrameRate=" + Application.targetFrameRate);
+        if (rp != null) DumpProps(rp, "URP asset (runtime)");
+        if (rp is UniversalRenderPipelineAsset urp)
+        {
+            var list = Get(urp, "m_RendererDataList") as ScriptableRendererData[];
+            if (list != null)
+                foreach (var rd in list)
+                {
+                    if (rd == null) continue;
+                    DumpProps(rd, "Renderer data " + rd.name);
+                    foreach (var feat in rd.rendererFeatures)
+                    {
+                        if (feat == null) continue;
+                        dump.AppendLine("  feature " + feat.name + " (" + feat.GetType().Name + ") active=" + feat.isActive);
+                        var settings = Get(feat, "m_Settings");
+                        if (settings != null) DumpFields(settings, "    settings of " + feat.name);
+                    }
+                }
+        }
+        // Camera
+        dump.AppendLine("## Game camera '" + cam.name + "': allowHDR=" + cam.allowHDR + " allowMSAA=" + cam.allowMSAA + " fov=" + cam.fieldOfView + " near=" + cam.nearClipPlane + " far=" + cam.farClipPlane
+            + " clearFlags=" + cam.clearFlags + " bg=" + cam.backgroundColor + " occlusion=" + cam.useOcclusionCulling + " targetTexture=" + (cam.targetTexture != null ? cam.targetTexture.name : "null")
+            + " pixelSize(batch)=" + cam.pixelWidth + "x" + cam.pixelHeight);
+        DumpProps(cam.GetUniversalAdditionalCameraData(), "Game camera URP data");
+        dump.AppendLine("hdrEnabled (game, from PlayerPrefs FrontRooms.Display.HDR) = " + Get(game, "hdrEnabled") + "; SystemInfo.SupportsRenderTextureFormat(DefaultHDR) = " + SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.DefaultHDR));
+        // Lighting / reflections
+        var probes = UnityEngine.Object.FindObjectsByType<ReflectionProbe>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        dump.AppendLine("## ReflectionProbes at runtime (FindObjectsByType, include inactive): " + probes.Length + (probes.Length > 0 ? " → " + string.Join(", ", probes.Select(p => p.name + " " + p.mode)) : ""));
+        dump.AppendLine("RenderSettings: skybox=" + (RenderSettings.skybox != null ? RenderSettings.skybox.name : "null") + " defaultReflectionMode=" + RenderSettings.defaultReflectionMode + " defaultReflectionResolution=" + RenderSettings.defaultReflectionResolution
+            + " customReflectionTexture=" + (RenderSettings.customReflectionTexture != null ? RenderSettings.customReflectionTexture.name : "null") + " reflectionIntensity=" + RenderSettings.reflectionIntensity + " reflectionBounces=" + RenderSettings.reflectionBounces
+            + " ambientMode=" + RenderSettings.ambientMode + " ambientSky=" + RenderSettings.ambientSkyColor + " ambientEquator=" + RenderSettings.ambientEquatorColor + " ambientGround=" + RenderSettings.ambientGroundColor
+            + " fog=" + RenderSettings.fog + " " + RenderSettings.fogMode + " density " + RenderSettings.fogDensity + " color " + RenderSettings.fogColor);
+        var def = ReflectionProbe.defaultTexture;
+        dump.AppendLine("ReflectionProbe.defaultTexture = " + (def != null ? def.name + " " + def.dimension + " " + def.width + "x" + def.height + " " + def.graphicsFormat : "null") + "; defaultTextureHDRDecodeValues = " + ReflectionProbe.defaultTextureHDRDecodeValues);
+        dump.AppendLine("Lightmaps: " + LightmapSettings.lightmaps.Length + "; light probes: " + (LightmapSettings.lightProbes != null ? LightmapSettings.lightProbes.count : 0) + "; lightmapsMode " + LightmapSettings.lightmapsMode);
+        var lights = UnityEngine.Object.FindObjectsByType<Light>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        dump.AppendLine("Lights (active objects): " + lights.Length + "; enabled " + lights.Count(l => l.enabled) + "; with shadows " + lights.Count(l => l.enabled && l.shadows != LightShadows.None)
+            + "; types " + string.Join(", ", lights.GroupBy(l => l.type).Select(g => g.Key + "×" + g.Count())));
+        var dl = lights.FirstOrDefault(l => l.type == LightType.Directional);
+        if (dl != null) dump.AppendLine("Directional '" + dl.name + "': intensity " + dl.intensity + " shadows " + dl.shadows + " strength " + dl.shadowStrength + " color " + dl.color);
+        // Volumes
+        var vols = UnityEngine.Object.FindObjectsByType<Volume>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        dump.AppendLine("## Volumes at runtime: " + vols.Length + " (global " + vols.Count(v => v.isGlobal) + ", local " + vols.Count(v => !v.isGlobal) + ")");
+        foreach (var vol in vols.Where(v => v.isGlobal))
+        {
+            dump.AppendLine("## Volume '" + vol.name + "' global=" + vol.isGlobal + " priority=" + vol.priority + " weight=" + vol.weight + " profile=" + (vol.sharedProfile != null ? vol.sharedProfile.name : "null"));
+            DumpProfile(vol.sharedProfile);
+        }
+        DumpProfile(Resources.Load<VolumeProfile>("Rendering/FrontRoomsPost_Office"));
+        // Materials of interest
+        DumpMaterial(Get<Material>(map, "glass"), "map runtime glass (FrontRoomsMapWorld.glass)");
+        DumpMaterial(Resources.Load<Material>("Surfaces/Prop_Glass"), "project Prop_Glass (Resources/Surfaces)");
+        DumpMaterial(Resources.Load<Material>("Surfaces/Prop_BottleBlue"), "project Prop_BottleBlue");
+        DumpMaterial(Resources.Load<Material>("Surfaces/Office_BlackedGlass"), "project Office_BlackedGlass");
+        DumpMaterial(Get<Material>(map, "keyGlow"), "map runtime key (FrontRoomsMapWorld.keyGlow)");
+        DumpMaterial(Get<Material>(map, "doorLeaf"), "door leaf material");
+        DumpMaterial(FrontRoomsSurfaces.Room(RoomRule.Lobby, FrontRoomsSurfaces.Slot.Wall), "Level 0 wallpaper");
+        var propGlassUsers = UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None).Count(r => r.sharedMaterials.Any(m => m != null && m.name.StartsWith("Prop_Glass")));
+        dump.AppendLine("Renderers currently using Prop_Glass: " + propGlassUsers);
+        Flush();
+    }
+
+    static void DumpProfile(VolumeProfile profile)
+    {
+        if (profile == null) return;
+        dump.AppendLine("### VolumeProfile " + profile.name);
+        foreach (var comp in profile.components)
+        {
+            if (comp == null) continue;
+            var sb = new StringBuilder();
+            foreach (var f in comp.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public))
+            {
+                if (!typeof(VolumeParameter).IsAssignableFrom(f.FieldType)) continue;
+                var p = (VolumeParameter)f.GetValue(comp);
+                if (p == null || !p.overrideState) continue;
+                object val;
+                try { val = p.GetType().GetProperty("value").GetValue(p); } catch { val = "?"; }
+                sb.Append(f.Name + "=" + (val is UnityEngine.Object uo ? (uo != null ? uo.name : "null") : val) + "; ");
+            }
+            dump.AppendLine("  " + comp.GetType().Name + " active=" + comp.active + " · " + sb);
+        }
+    }
+
+    static void DumpMaterial(Material m, string title)
+    {
+        if (m == null) { dump.AppendLine("## Material " + title + ": null"); return; }
+        var s = m.shader;
+        dump.AppendLine("## Material " + title + ": name '" + m.name + "' shader '" + s.name + "' renderQueue " + m.renderQueue + " RenderType tag '" + m.GetTag("RenderType", false) + "'");
+        dump.AppendLine("  shaderKeywords: [" + string.Join(", ", m.shaderKeywords) + "]");
+        dump.AppendLine("  enabledKeywords: [" + string.Join(", ", m.enabledKeywords.Select(k => k.name)) + "]");
+        dump.AppendLine("  passes: " + string.Join(", ", new[] { "UniversalForward", "ShadowCaster", "DepthOnly", "DepthNormals", "Meta", "MotionVectors" }.Select(p => p + "=" + m.GetShaderPassEnabled(p))));
+        var sb = new StringBuilder();
+        for (var i = 0; i < s.GetPropertyCount(); i++)
+        {
+            var n = s.GetPropertyName(i);
+            var t = s.GetPropertyType(i);
+            string v;
+            switch (t)
+            {
+                case ShaderPropertyType.Color: v = m.GetColor(n).ToString(); break;
+                case ShaderPropertyType.Vector: v = m.GetVector(n).ToString(); break;
+                case ShaderPropertyType.Float:
+                case ShaderPropertyType.Range: v = F2(m.GetFloat(n)); break;
+                case ShaderPropertyType.Int: v = m.GetInteger(n).ToString(); break;
+                case ShaderPropertyType.Texture: var tx = m.GetTexture(n); v = tx != null ? tx.name + " " + tx.width + "x" + tx.height + (tx is Texture2D t2 ? " " + t2.format + " mips " + t2.mipmapCount : "") : "none"; break;
+                default: v = "?"; break;
+            }
+            sb.Append(n + "=" + v + "; ");
+        }
+        dump.AppendLine("  props: " + sb);
+    }
+
+    static void DumpGlass(Collider col, string label)
+    {
+        var r = col.GetComponent<Renderer>();
+        DumpRenderer(r, label + " pane");
+    }
+
+    static void DumpRenderer(Renderer r, string title)
+    {
+        if (r == null) { dump.AppendLine("## Renderer " + title + ": null"); return; }
+        var mf = r.GetComponent<MeshFilter>();
+        dump.AppendLine("## Renderer " + title + ": object '" + r.name + "' mesh '" + (mf != null && mf.sharedMesh != null ? mf.sharedMesh.name + " (" + mf.sharedMesh.vertexCount + " verts)" : "-") + "' material '" + (r.sharedMaterial != null ? r.sharedMaterial.name : "null")
+            + "' lossyScale " + V(r.transform.lossyScale) + " shadowCasting " + r.shadowCastingMode + " receiveShadows " + r.receiveShadows + " reflectionProbeUsage " + r.reflectionProbeUsage + " lightProbeUsage " + r.lightProbeUsage
+            + " collider " + (r.GetComponent<Collider>() != null ? r.GetComponent<Collider>().GetType().Name : "none"));
+        Flush();
+    }
+}

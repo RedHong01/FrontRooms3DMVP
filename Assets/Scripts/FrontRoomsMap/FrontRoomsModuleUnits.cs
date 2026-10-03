@@ -54,6 +54,8 @@ namespace FrontRooms.Map
         /// <summary>Door rough opening, centred on the edge. Only on Low ↔ Standard zone borders.</summary>
         public const float DoorWidth = 1f, DoorHeight = 2.1f;
         public const float DoorLeafThickness = .05f, DoorLeafGap = .02f, DoorSwingDegrees = 95f;
+        /// <summary>The lock and handle: this high, this far in from the latch jamb, this far proud of the leaf face (ADA 0.86–1.22 m; FrontRoomsMapWorld.LockPoint).</summary>
+        public const float DoorHandleHeight = 1f, DoorHandleInset = .08f, DoorHandleProud = .03f;
 
         /// <summary>Breakable glass, centred on the edge. Only on borders with a Tall zone.</summary>
         public const float WindowWidth = 1.4f, WindowSill = .35f, WindowTop = 2.0f, GlassThickness = .03f;

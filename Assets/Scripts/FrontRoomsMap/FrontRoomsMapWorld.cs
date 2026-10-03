@@ -371,8 +371,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
     /// <summary>
     /// True while a built chunk has geometry shaped by the start area: one that
-    /// overlaps it, or owns a wall on its west or south side (the neighbours
-    /// own those edges).
+    /// overlaps it or the ring of cells round it (walls on its west and south
+    /// sides belong to the neighbours; wall ends and grades change beside it).
     /// </summary>
     public bool StartAreaBuilt
     {
@@ -382,8 +382,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             foreach (var coord in built.Keys)
             {
                 var o = MapGrid.ChunkOrigin(coord);
-                if (o.x < startArea.xMax && startArea.xMin - 1 < o.x + MapGrid.ChunkCells
-                    && o.y < startArea.yMax && startArea.yMin - 1 < o.y + MapGrid.ChunkCells) return true;
+                // The closed ring Build shapes round the area: its walls, the wall ends that stop short of it, the grades left off beside it.
+                if (o.x <= startArea.xMax && startArea.xMin - 1 < o.x + MapGrid.ChunkCells
+                    && o.y <= startArea.yMax && startArea.yMin - 1 < o.y + MapGrid.ChunkCells) return true;
             }
             return false;
         }
@@ -1084,7 +1085,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     /// rooms' walls, so one switching on as its chunk streams in would
     /// brighten the room the player is standing in. North: lamps past the
     /// door line (they come up as the door opens). South: lamps beside and
-    /// behind the rooms (they come up once the door has shut for good).
+    /// behind the rooms (they come up once the player has left the rooms).
     /// 0 is dark, 1 normal.
     /// </summary>
     public float StartLampsNorth { get; set; } = 1f;
@@ -1264,7 +1265,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var module = data.ModuleOf(r);
             var obstacles = new List<Rect>(columns);
             if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module, clear, doorway));
-            var worked = obstacles.Count > columns.Count;
+            var worked = obstacles.Count > columns.Count || (module?.props != null && module.props.Length > 0);
             var fill = module == null ? ModuleFill.Auto : module.fill;
             var office = fill == ModuleFill.Office || (fill == ModuleFill.Auto && zone.theme == ZoneTheme.Office);
             if (office)

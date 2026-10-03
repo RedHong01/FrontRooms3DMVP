@@ -64,7 +64,7 @@ def sequence(parts, dst, total):
         ms = int(at * 1000)
         fc += "[%d:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=%sdB,adelay=%d|%d[s%d];" % (i, g, ms, ms, i)
     fc += "".join("[s%d]" % i for i in range(len(parts)))
-    fc += "amix=inputs=%d:normalize=0,apad=whole_dur=%.3f,atrim=0:%.3f" % (len(parts), total, total)
+    fc += "amix=inputs=%d:normalize=0,apad=pad_dur=%.3f,atrim=0:%.3f" % (len(parts), total, total)
     ff(*(args + ["-filter_complex", fc, dst]))
 
 

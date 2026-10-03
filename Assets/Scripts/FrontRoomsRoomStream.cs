@@ -581,7 +581,6 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         room.doorOpen = false;
         room.doorOpening = false;
         room.doorClosing = true;
-        room.doorSoundPlayed = false;
     }
 
     /// <summary>
