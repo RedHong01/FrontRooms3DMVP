@@ -109,16 +109,14 @@
       "mark": "M5 pressure door",
       "orient": "rotated",
       "repeats": 2,
-      "tracking_mm": -1.0,
-      "tracking_limited_to_mm": -1.0,
-      "word_space_mm": -3.42,
-      "cap_mm_used": 21.0,
-      "mean": 0.881,
+      "tracking_mm": -0.96,
+      "cap_mm_used": 20.0,
+      "mean": 0.893,
       "seam_xy": [
         0.0,
-        1.4
+        2.1
       ],
-      "min_mean_100mm": 0.857
+      "min_mean_100mm": 0.869
     },
     {
       "layer": 8,

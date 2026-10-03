@@ -1,0 +1,226 @@
+// CLONE-ONLY research tool (outlet workflow, 2026-10-03). Not for the real project.
+// Walks every wall face of generated chunks with the game's own generator and
+// counts what an outlet planner would see: faces by edge kind, by zone theme,
+// corridor vs room, chunk-border faces, solid wall metres at outlet height, and
+// the cost of enumerating them. Run:
+//   Unity -batchmode -nographics -projectPath <clone> -executeMethod FrontRoomsOutletFaceCensus.Run -logFile <log>
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Text;
+using FrontRooms.Map;
+using UnityEditor;
+using UnityEngine;
+
+public static class FrontRoomsOutletFaceCensus
+{
+    static MethodInfo hashFn, unitFn;
+
+    static uint Mix(uint h) { unchecked { h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16; return h; } }
+    // Copy of FrontRooms.Map.MapHash.Hash (internal there); checked against it by reflection in Run.
+    static uint Hash(int seed, int a, int b, int salt, int rev = 0)
+    {
+        unchecked
+        {
+            var h = Mix((uint)seed ^ 0x9e3779b9u);
+            h = Mix(h ^ (uint)a * 0x85ebca6bu);
+            h = Mix(h ^ (uint)b * 0xc2b2ae35u);
+            h = Mix(h ^ (uint)salt * 0x27d4eb2fu);
+            h = Mix(h ^ (uint)rev * 0x165667b1u);
+            return h;
+        }
+    }
+    static float Unit(uint h) => (h >> 8) * (1f / 16777216f);
+
+    // Same as FrontRoomsMapWorld.ArchOpening (private there).
+    static void Arch(int seed, GridCoord lo, bool alongX, out float width, out float centre)
+    {
+        var edgeHash = Hash(seed, lo.x * 2 + (alongX ? 1 : 0), lo.y, 97);
+        width = ModuleUnits.ArchMinWidth + ModuleUnits.ArchWidthSpread * Unit(edgeHash);
+        var margin = ModuleUnits.ArchCornerMargin + width * .5f;
+        centre = Mathf.Lerp(margin, MapGrid.CellSize - margin, Unit(Hash((int)edgeHash, 3, 7, 11)));
+    }
+
+    sealed class Tally
+    {
+        public int chunks, faces, wall, arch, door, window;
+        public int corridorFaces, roomDressableFaces, roomCutFaces, officeFaces, level0Faces, lowFaces, standardFaces, tallFaces;
+        public int officeDressedRoomFaces, borderFacesBuiltByNeighbour;
+        public float solidMetres, solidMetresOffice, solidMetresCorridor;
+        public int stretches06, innerCorners;
+        public int rooms, roomsDressable, officeRoomsDressable;
+        public double enumerateMs; public int runs, runFaces, runsCrossingChunk, longestRunFaces; public List<int> runLen = new List<int>();
+        public List<int> facesPerChunk = new List<int>();
+        public List<float> metresPerChunk = new List<float>();
+    }
+
+    public static void Run()
+    {
+        var asm = typeof(MapGrid).Assembly;
+        var mapHash = asm.GetType("FrontRooms.Map.MapHash");
+        hashFn = mapHash.GetMethod("Hash", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        unitFn = mapHash.GetMethod("Unit", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        for (var k = 0; k < 50; k++)
+        {
+            int a = k * 7919 - 1000, b = k * 104729 % 977 - 400;
+            if ((uint)hashFn.Invoke(null, new object[] { 20261001, a, b, 97, k % 3 }) != Hash(20261001, a, b, 97, k % 3)) throw new Exception("hash copy differs");
+        }
+        var profile = AssetDatabase.LoadAssetAtPath<FrontRoomsLevelProfile>(FrontRoomsLevelProfile.DefaultPath);
+        var outPath = Environment.GetEnvironmentVariable("OUTLET_CENSUS_OUT") ?? "Temp/outlet_face_census.json";
+        var sb = new StringBuilder();
+        sb.Append("{\n \"profile\": \"").Append(FrontRoomsLevelProfile.DefaultPath).Append("\",\n \"chunksPerSeed\": 49,\n \"seeds\": [\n");
+        var seeds = new[] { profile.generation.seed, 2554, 20388 };
+        for (var s = 0; s < seeds.Length; s++)
+        {
+            var cache = new FrontRoomsMapCache(profile.Generation(seeds[s]), profile.ModuleData());
+            Census(cache, seeds[s]);
+            var t = Census(cache, seeds[s]);
+            sb.Append("  {\"seed\": ").Append(seeds[s])
+              .Append(", \"chunks\": ").Append(t.chunks)
+              .Append(", \"faces\": ").Append(t.faces)
+              .Append(", \"wall\": ").Append(t.wall).Append(", \"arch\": ").Append(t.arch).Append(", \"door\": ").Append(t.door).Append(", \"window\": ").Append(t.window)
+              .Append(", \"corridorFaces\": ").Append(t.corridorFaces).Append(", \"roomDressableFaces\": ").Append(t.roomDressableFaces).Append(", \"roomCutFaces\": ").Append(t.roomCutFaces)
+              .Append(", \"officeFaces\": ").Append(t.officeFaces).Append(", \"level0Faces\": ").Append(t.level0Faces)
+              .Append(", \"lowFaces\": ").Append(t.lowFaces).Append(", \"standardFaces\": ").Append(t.standardFaces).Append(", \"tallFaces\": ").Append(t.tallFaces)
+              .Append(", \"officeDressedRoomFaces\": ").Append(t.officeDressedRoomFaces)
+              .Append(", \"borderFacesBuiltByNeighbour\": ").Append(t.borderFacesBuiltByNeighbour)
+              .Append(", \"solidMetres\": ").Append(t.solidMetres.ToString("0.0"))
+              .Append(", \"solidMetresOffice\": ").Append(t.solidMetresOffice.ToString("0.0"))
+              .Append(", \"solidMetresCorridor\": ").Append(t.solidMetresCorridor.ToString("0.0"))
+              .Append(", \"stretchesAtLeast0_6m\": ").Append(t.stretches06)
+              .Append(", \"innerCornerEnds\": ").Append(t.innerCorners)
+              .Append(", \"rooms\": ").Append(t.rooms).Append(", \"roomsDressable\": ").Append(t.roomsDressable).Append(", \"officeRoomsDressable\": ").Append(t.officeRoomsDressable)
+              .Append(", \"enumerateMsTotalWarm\": ").Append(t.enumerateMs.ToString("0.00"))
+              .Append(", \"enumerateMsPerChunkWarm\": ").Append((t.enumerateMs / Math.Max(1, t.chunks)).ToString("0.000"))
+              .Append(", \"runs\": ").Append(t.runs).Append(", \"meanRunFaces\": ").Append(((float)t.runFaces / Math.Max(1, t.runs)).ToString("0.00"))
+              .Append(", \"runsOf3PlusFaces\": ").Append(t.runLen.FindAll(v => v >= 3).Count)
+              .Append(", \"longestRunFaces\": ").Append(t.longestRunFaces)
+              .Append(", \"runsCrossingChunkBorder\": ").Append(t.runsCrossingChunk)
+              .Append(", \"facesPerChunkMin\": ").Append(Min(t.facesPerChunk)).Append(", \"facesPerChunkMax\": ").Append(Max(t.facesPerChunk))
+              .Append(", \"metresPerChunkMin\": ").Append(MinF(t.metresPerChunk).ToString("0.0")).Append(", \"metresPerChunkMax\": ").Append(MaxF(t.metresPerChunk).ToString("0.0"))
+              .Append("}").Append(s < seeds.Length - 1 ? ",\n" : "\n");
+        }
+        sb.Append(" ]\n}\n");
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath)));
+        File.WriteAllText(outPath, sb.ToString());
+        UnityEngine.Debug.Log("[OutletCensus] wrote " + outPath + "\n" + sb);
+        EditorApplication.Exit(0);
+    }
+
+    static int Min(List<int> l) { var m = int.MaxValue; foreach (var v in l) m = Math.Min(m, v); return m; }
+    static int Max(List<int> l) { var m = int.MinValue; foreach (var v in l) m = Math.Max(m, v); return m; }
+    static float MinF(List<float> l) { var m = float.MaxValue; foreach (var v in l) m = Math.Min(m, v); return m; }
+    static float MaxF(List<float> l) { var m = float.MinValue; foreach (var v in l) m = Math.Max(m, v); return m; }
+
+    static Tally Census(FrontRoomsMapCache cache, int seed)
+    {
+        var t = new Tally();
+        const int n = MapGrid.ChunkCells;
+        var cs = MapGrid.CellSize;
+        var dirs = new[] { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
+        var watch = new Stopwatch();
+        for (var cy = -3; cy <= 3; cy++)
+        for (var cx = -3; cx <= 3; cx++)
+        {
+            var coord = new GridCoord(cx, cy);
+            var data = cache.Get(coord);
+            // Neighbours generated too (Edge reads them), so timing below is enumeration only.
+            foreach (var d in dirs) cache.Get(new GridCoord(cx + d.x, cy + d.y));
+            t.chunks++;
+            t.rooms += data.rooms.Length;
+            for (var r = 0; r < data.rooms.Length; r++)
+                if (data.RoomIntact(r) && cache.Generator.Uniform(data, data.rooms[r]))
+                {
+                    t.roomsDressable++;
+                    if (cache.ZoneOf(data.Cell(data.rooms[r].x, data.rooms[r].y)).theme == ZoneTheme.Office) t.officeRoomsDressable++;
+                }
+            var chunkFaces = 0;
+            var chunkMetres = 0f;
+            watch.Restart();
+            for (var j = 0; j < n; j++)
+            for (var i = 0; i < n; i++)
+            {
+                var cell = data.Cell(i, j);
+                var zone = cache.ZoneOf(cell);
+                var room = -1;
+                for (var r = data.rooms.Length - 1; r >= 0; r--) if (data.rooms[r].Contains(i, j)) { room = r; break; }
+                var dressable = room >= 0 && data.RoomIntact(room) && cache.Generator.Uniform(data, data.rooms[room]);
+                foreach (var d in dirs)
+                {
+                    var nb = new GridCoord(cell.x + d.x, cell.y + d.y);
+                    var kind = cache.Edge(cell, nb);
+                    if (kind == EdgeKind.Open) continue;
+                    chunkFaces++;
+                    t.faces++;
+                    switch (kind) { case EdgeKind.Wall: t.wall++; break; case EdgeKind.Arch: t.arch++; break; case EdgeKind.Door: t.door++; break; default: t.window++; break; }
+                    if (room < 0) t.corridorFaces++; else if (dressable) t.roomDressableFaces++; else t.roomCutFaces++;
+                    if (zone.theme == ZoneTheme.Office) t.officeFaces++; else t.level0Faces++;
+                    if (zone.height == ZoneHeight.Low) t.lowFaces++; else if (zone.height == ZoneHeight.Tall) t.tallFaces++; else t.standardFaces++;
+                    if (dressable && zone.theme == ZoneTheme.Office) t.officeDressedRoomFaces++;
+                    if ((i == 0 && d.x < 0) || (j == 0 && d.y < 0)) t.borderFacesBuiltByNeighbour++;
+
+                    // Opening span along the edge (0..3 from its low corner), at outlet height (~0.3 m).
+                    float o0 = 0f, o1 = 0f;
+                    var alongX = d.y != 0; // a north or south edge runs along X
+                    if (kind == EdgeKind.Door) { o0 = 1.5f - ModuleUnits.DoorWidth * .5f; o1 = 1.5f + ModuleUnits.DoorWidth * .5f; }
+                    else if (kind == EdgeKind.Window) { o0 = 1.5f - ModuleUnits.WindowWidth * .5f; o1 = 1.5f + ModuleUnits.WindowWidth * .5f; }
+                    else if (kind == EdgeKind.Arch)
+                    {
+                        var lo = d.x + d.y > 0 ? cell : nb;
+                        Arch(seed, lo, alongX, out var w, out var c);
+                        o0 = c - w * .5f; o1 = c + w * .5f;
+                    }
+                    // Inner corners: the cell's own side edges at each end of this face.
+                    var tAxis = alongX ? new GridCoord(1, 0) : new GridCoord(0, 1);
+                    var lowSide = cache.Edge(cell, new GridCoord(cell.x - tAxis.x, cell.y - tAxis.y)) != EdgeKind.Open;
+                    var highSide = cache.Edge(cell, new GridCoord(cell.x + tAxis.x, cell.y + tAxis.y)) != EdgeKind.Open;
+                    if (lowSide) t.innerCorners++;
+                    if (highSide) t.innerCorners++;
+                    var a = lowSide ? ModuleUnits.WallHalf : 0f;
+                    var b = cs - (highSide ? ModuleUnits.WallHalf : 0f);
+                    var segs = kind == EdgeKind.Wall ? new[] { (a, b) } : new[] { (a, Mathf.Max(a, o0)), (Mathf.Min(b, o1), b) };
+                    foreach (var (s0, s1) in segs)
+                    {
+                        var len = Mathf.Max(0f, s1 - s0);
+                        t.solidMetres += len;
+                        chunkMetres += len;
+                        if (zone.theme == ZoneTheme.Office) t.solidMetresOffice += len;
+                        if (room < 0) t.solidMetresCorridor += len;
+                        if (len >= .6f) t.stretches06++;
+                    }
+                    // A coplanar run starts here when the face before it (one cell back along the wall) is missing
+                    // or a side wall of this cell cuts in between. Walk forward to its end.
+                    watch.Stop();
+                    var back = new GridCoord(cell.x - tAxis.x, cell.y - tAxis.y);
+                    var continues = !lowSide && cache.Edge(back, new GridCoord(back.x + d.x, back.y + d.y)) != EdgeKind.Open;
+                    if (!continues)
+                    {
+                        var len2 = 1;
+                        var crosses = false;
+                        var cur = cell;
+                        while (len2 < 64)
+                        {
+                            if (cache.Edge(cur, new GridCoord(cur.x + tAxis.x, cur.y + tAxis.y)) != EdgeKind.Open) break;
+                            var next = new GridCoord(cur.x + tAxis.x, cur.y + tAxis.y);
+                            if (cache.Edge(next, new GridCoord(next.x + d.x, next.y + d.y)) == EdgeKind.Open) break;
+                            if (MapGrid.ChunkOf(next) != MapGrid.ChunkOf(cur)) crosses = true;
+                            cur = next;
+                            len2++;
+                        }
+                        t.runs++; t.runFaces += len2; t.runLen.Add(len2);
+                        if (crosses) t.runsCrossingChunk++;
+                        if (len2 > t.longestRunFaces) t.longestRunFaces = len2;
+                    }
+                    watch.Start();
+                }
+            }
+            watch.Stop();
+            t.enumerateMs += watch.Elapsed.TotalMilliseconds;
+            t.facesPerChunk.Add(chunkFaces);
+            t.metresPerChunk.Add(chunkMetres);
+        }
+        return t;
+    }
+}

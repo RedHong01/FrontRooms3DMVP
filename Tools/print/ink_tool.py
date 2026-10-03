@@ -204,18 +204,15 @@ def type_lines(L, common, rng):
             w0 = sum(f.getlength(ch) for ch in cyc) / s
             n, t = fit_cycle(w0, len(cyc))
             word = 0.0
-            if not (-1.0 <= t <= 4.0):
-                # keep tracking at its limit and take the rest up in the word spaces
-                tc = min(4.0, max(-1.0, t))
+            if t > 4.0:
+                # too loose: keep tracking at +4 and open the word spaces (never close them)
                 spaces = cyc.count(" ")
-                word = (TILE_MM / n - w0 - tc * len(cyc)) / max(1, spaces)
-                space_mm = f.getlength(" ") / s
-                if abs(word) <= 0.45 * space_mm or cap <= L["cap_mm"] - 4:
-                    info_fit = {"tracking_limited_to_mm": tc, "word_space_mm": round(word, 2),
-                                "cap_mm_used": cap}
-                    t = tc
-                    break
-                cap -= 0.5                        # last resort: a slightly smaller cap height
+                word = (TILE_MM / n - w0 - 4.0 * len(cyc)) / max(1, spaces)
+                info_fit = {"tracking_limited_to_mm": 4.0, "word_space_mm": round(word, 2), "cap_mm_used": cap}
+                t = 4.0
+                break
+            if t < -1.0 and cap > L["cap_mm"] - 4:
+                cap -= 0.5                        # too tight: a slightly smaller cap height, words keep their spaces
                 continue
             info_fit = {"cap_mm_used": cap}
             break

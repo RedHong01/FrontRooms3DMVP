@@ -1,0 +1,4 @@
+device Apple M3 Max supportsRaytracing=1
+plugin loaded · DeviceSupportsRaytracing=1 · lastError=''
+[nilpipe] registration ok=1 lastError=''
+[nilpipe] issuing render event with the pipeline the plugin built...

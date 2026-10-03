@@ -1,0 +1,48 @@
+threadgroup 8x8
+BLAS batch build (17 meshes, 160140 tris) default: median 2.772 ms
+TLAS rebuild 4096 instances: median 0.515 ms (0.94 MB)
+TRACE 256 inst, 1080p, glass 25%, 0 lights                 0.368 ms  (~1409 Mrays/s primary-reflection only: 1409)
+TRACE full,     1080p, glass 25%, 0 lights                 0.407 ms  (~1275 Mrays/s primary-reflection only: 1275)
+TRACE full,     1080p, glass 25%, 32 lights unshadowed     0.485 ms  (~1068 Mrays/s primary-reflection only: 1068)
+TRACE full,     1080p, glass 25%, 32 lights, 4 shadowed    0.468 ms  (~3326 Mrays/s primary-reflection only: 1109)
+TRACE full,     1080p, glass 25%, 32 lights, 8 shadowed    0.527 ms  (~4921 Mrays/s primary-reflection only: 984)
+TRACE full,     1080p, glass 100%, 32 lights, 4 shadowed   1.908 ms  (~3261 Mrays/s primary-reflection only: 1087)
+TRACE full,     1440p, glass 25%, 32 lights, 4 shadowed    1.005 ms  (~2752 Mrays/s primary-reflection only: 917)
+TRACE full,     2160p, glass 25%, 32 lights, 4 shadowed    1.933 ms  (~3218 Mrays/s primary-reflection only: 1073)
+TRACE full,     1080p, glass 25%, 0 lights, maxDist 10000  0.466 ms  (~1114 Mrays/s primary-reflection only: 1114)
+threadgroup 16x16
+BLAS batch build (17 meshes, 160140 tris) default: median 2.069 ms
+TLAS rebuild 4096 instances: median 0.989 ms (0.94 MB)
+TRACE 256 inst, 1080p, glass 25%, 0 lights                 0.378 ms  (~1371 Mrays/s primary-reflection only: 1371)
+TRACE full,     1080p, glass 25%, 0 lights                 0.479 ms  (~1082 Mrays/s primary-reflection only: 1082)
+TRACE full,     1080p, glass 25%, 32 lights unshadowed     0.486 ms  (~1067 Mrays/s primary-reflection only: 1067)
+TRACE full,     1080p, glass 25%, 32 lights, 4 shadowed    0.632 ms  (~2461 Mrays/s primary-reflection only: 820)
+TRACE full,     1080p, glass 25%, 32 lights, 8 shadowed    0.665 ms  (~3897 Mrays/s primary-reflection only: 779)
+TRACE full,     1080p, glass 100%, 32 lights, 4 shadowed   1.793 ms  (~3469 Mrays/s primary-reflection only: 1156)
+TRACE full,     1440p, glass 25%, 32 lights, 4 shadowed    0.872 ms  (~3169 Mrays/s primary-reflection only: 1056)
+TRACE full,     2160p, glass 25%, 32 lights, 4 shadowed    1.796 ms  (~3464 Mrays/s primary-reflection only: 1155)
+TRACE full,     1080p, glass 25%, 0 lights, maxDist 10000  0.518 ms  (~1000 Mrays/s primary-reflection only: 1000)
+threadgroup 32x32
+BLAS batch build (17 meshes, 160140 tris) default: median 1.781 ms
+TLAS rebuild 4096 instances: median 0.538 ms (0.94 MB)
+TRACE 256 inst, 1080p, glass 25%, 0 lights                 0.390 ms  (~1328 Mrays/s primary-reflection only: 1328)
+TRACE full,     1080p, glass 25%, 0 lights                 0.417 ms  (~1242 Mrays/s primary-reflection only: 1242)
+TRACE full,     1080p, glass 25%, 32 lights unshadowed     0.514 ms  (~1009 Mrays/s primary-reflection only: 1009)
+TRACE full,     1080p, glass 25%, 32 lights, 4 shadowed    0.652 ms  (~2386 Mrays/s primary-reflection only: 795)
+TRACE full,     1080p, glass 25%, 32 lights, 8 shadowed    0.530 ms  (~4888 Mrays/s primary-reflection only: 978)
+TRACE full,     1080p, glass 100%, 32 lights, 4 shadowed   1.725 ms  (~3606 Mrays/s primary-reflection only: 1202)
+TRACE full,     1440p, glass 25%, 32 lights, 4 shadowed    0.983 ms  (~2812 Mrays/s primary-reflection only: 937)
+TRACE full,     2160p, glass 25%, 32 lights, 4 shadowed    2.348 ms  (~2649 Mrays/s primary-reflection only: 883)
+TRACE full,     1080p, glass 25%, 0 lights, maxDist 10000  0.420 ms  (~1234 Mrays/s primary-reflection only: 1234)
+threadgroup 8x8
+BLAS batch build (17 meshes, 160140 tris) default: median 2.886 ms
+TLAS rebuild 4096 instances: median 0.764 ms (0.94 MB)
+TRACE 256 inst, 1080p, glass 25%, 0 lights                 0.347 ms  (~1495 Mrays/s primary-reflection only: 1495)
+TRACE full,     1080p, glass 25%, 0 lights                 0.367 ms  (~1414 Mrays/s primary-reflection only: 1414)
+TRACE full,     1080p, glass 25%, 32 lights unshadowed     0.474 ms  (~1094 Mrays/s primary-reflection only: 1094)
+TRACE full,     1080p, glass 25%, 32 lights, 4 shadowed    0.483 ms  (~3220 Mrays/s primary-reflection only: 1073)
+TRACE full,     1080p, glass 25%, 32 lights, 8 shadowed    0.458 ms  (~5655 Mrays/s primary-reflection only: 1131)
+TRACE full,     1080p, glass 100%, 32 lights, 4 shadowed   1.478 ms  (~4210 Mrays/s primary-reflection only: 1403)
+TRACE full,     1440p, glass 25%, 32 lights, 4 shadowed    0.812 ms  (~3403 Mrays/s primary-reflection only: 1134)
+TRACE full,     2160p, glass 25%, 32 lights, 4 shadowed    2.673 ms  (~2327 Mrays/s primary-reflection only: 776)
+TRACE full,     1080p, glass 25%, 0 lights, maxDist 10000  0.360 ms  (~1441 Mrays/s primary-reflection only: 1441)

@@ -1,0 +1,6 @@
+2026-10-03 10:31:50.482 harness[31452:41843070] Metal API Validation Enabled
+device Apple M3 Max supportsRaytracing=1
+plugin loaded · DeviceSupportsRaytracing=1 · lastError=''
+[nilpipe] registration ok=1 lastError=''
+[nilpipe] issuing render event with the pipeline the plugin built...
+-[MTLDebugComputeCommandEncoder setComputePipelineState:]:342: failed assertion `computePipelineState must not be nil.'

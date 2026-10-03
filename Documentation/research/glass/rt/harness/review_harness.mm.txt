@@ -1,0 +1,418 @@
+// Review harness: loads a FrontRoomsMetalGlassRT dylib outside Unity through a
+// fake IUnityInterfaces, feeds it exactly what FrontRoomsMetalGlassRT.cs would,
+// and reads back the output texture. Scratch only; never shipped.
+#import <Metal/Metal.h>
+#import <Foundation/Foundation.h>
+#import <ImageIO/ImageIO.h>
+#import <CoreGraphics/CoreGraphics.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#include <dlfcn.h>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <cstddef>
+#include <vector>
+#include <string>
+#include <chrono>
+#include <algorithm>
+
+#include "IUnityInterface.h"
+#include "IUnityGraphics.h"
+#include "IUnityGraphicsMetal.h"
+
+static id<MTLDevice> gDev;
+static id<MTLCommandQueue> gQ;
+static IUnityGraphicsDeviceEventCallback gCb;
+
+static id<MTLCommandBuffer> UNITY_INTERFACE_API F_Commit() { return nil; }
+static id<MTLCommandQueue> UNITY_INTERFACE_API F_Queue() { return gQ; }
+static NSBundle* UNITY_INTERFACE_API F_Bundle() { return nil; }
+static id<MTLDevice> UNITY_INTERFACE_API F_Device() { return gDev; }
+static id<MTLCommandBuffer> UNITY_INTERFACE_API F_CB() { return nil; }
+static id<MTLCommandEncoder> UNITY_INTERFACE_API F_Enc() { return nil; }
+static void UNITY_INTERFACE_API F_End() {}
+static MTLRenderPassDescriptor* UNITY_INTERFACE_API F_RPD() { return nil; }
+static UnityRenderBuffer UNITY_INTERFACE_API F_RBH(void*) { return nullptr; }
+static id<MTLTexture> UNITY_INTERFACE_API F_Tex(UnityRenderBuffer) { return nil; }
+
+static UnityGfxRenderer UNITY_INTERFACE_API G_GetRenderer() { return kUnityGfxRendererMetal; }
+static void UNITY_INTERFACE_API G_Reg(IUnityGraphicsDeviceEventCallback cb) { gCb = cb; }
+static void UNITY_INTERFACE_API G_Unreg(IUnityGraphicsDeviceEventCallback) { gCb = nullptr; }
+static int UNITY_INTERFACE_API G_Reserve(int) { return 100; }
+
+static IUnityGraphicsMetalV2 gMetal;
+static IUnityGraphics gGraphics;
+
+static IUnityInterface* UNITY_INTERFACE_API I_Get(UnityInterfaceGUID guid)
+{
+    if (guid == GetUnityInterfaceGUID<IUnityGraphicsMetalV2>()) return &gMetal;
+    if (guid == GetUnityInterfaceGUID<IUnityGraphics>()) return &gGraphics;
+    return nullptr;
+}
+static void UNITY_INTERFACE_API I_Reg(UnityInterfaceGUID, IUnityInterface*) {}
+static IUnityInterface* UNITY_INTERFACE_API I_GetSplit(unsigned long long h, unsigned long long l) { return I_Get(UnityInterfaceGUID(h, l)); }
+static void UNITY_INTERFACE_API I_RegSplit(unsigned long long, unsigned long long, IUnityInterface*) {}
+
+// ---- the plugin's exported API ----
+typedef void (*PFN_Load)(IUnityInterfaces*);
+typedef int (*PFN_Supports)();
+typedef const char* (*PFN_LastError)();
+typedef void (*PFN_Reset)();
+typedef int (*PFN_AddMesh)(void*, uint32_t, uint32_t, void*, uint32_t, uint32_t, uint32_t);
+typedef int (*PFN_SetMaterials)(const void*, int);
+typedef int (*PFN_BuildInstances)(const void*, int);
+typedef void (*PFN_SetOutput)(void*);
+typedef UnityRenderingEventAndData (*PFN_GetFunc)();
+static PFN_Supports pSupports; static PFN_LastError pLastError; static PFN_Reset pReset; static PFN_AddMesh pAddMesh;
+static PFN_SetMaterials pSetMaterials; static PFN_BuildInstances pBuildInstances; static PFN_SetOutput pSetOutput; static PFN_GetFunc pGetFunc;
+
+// C# side structs (StructLayout.Sequential), identical to FrontRoomsMetalGlassRT.cs
+struct CsMaterialDesc { float baseColor[4]; float metallic, smoothness; uint32_t flags, pad; };
+struct CsInstanceDesc { int32_t meshIndex, materialIndex; float r0[4], r1[4], r2[4]; };
+static_assert(sizeof(CsMaterialDesc) == 32, "");
+static_assert(sizeof(CsInstanceDesc) == 56, "");
+
+// Replica of the plugin's C++ GpuInstanceInfo (FrontRoomsMetalGlassRT.mm:88-99)
+struct GpuInstanceInfo { uint64_t vertices, indices; uint32_t vertexStride, positionOffset, indexSize, indexByteOffset, triangleCount, materialIndex; float objectToWorld[3][4]; };
+
+// ---- Unity-like mesh: stream 0 interleaved pos(12) normal(12) tangent(16) uv(8) = 48 bytes ----
+struct Mesh { id<MTLBuffer> vb, ib; uint32_t stride = 48, posOffset = 0, indexSize = 2, indexStart = 0, triangles = 0; std::string name; };
+
+static Mesh MakeMesh(const std::vector<float>& pos, const std::vector<uint16_t>& idx, const char* name)
+{
+    Mesh m; m.name = name;
+    size_t n = pos.size() / 3;
+    std::vector<float> v(n * 12, 0.f);
+    for (size_t i = 0; i < n; i++) { v[i*12+0] = pos[i*3]; v[i*12+1] = pos[i*3+1]; v[i*12+2] = pos[i*3+2]; v[i*12+4] = 1.f; }
+    m.vb = [gDev newBufferWithBytes:v.data() length:v.size()*4 options:MTLResourceStorageModeShared];
+    m.ib = [gDev newBufferWithBytes:idx.data() length:idx.size()*2 options:MTLResourceStorageModeShared];
+    m.triangles = (uint32_t)idx.size() / 3;
+    return m;
+}
+
+// Unity primitive cube: 1 m, centred, 24 vertices, 36 indices.
+static Mesh Cube()
+{
+    std::vector<float> p; std::vector<uint16_t> ix;
+    const float s = .5f;
+    float faces[6][4][3] = {
+        {{-s,-s, s},{ s,-s, s},{ s, s, s},{-s, s, s}}, {{ s,-s,-s},{-s,-s,-s},{-s, s,-s},{ s, s,-s}},
+        {{ s,-s, s},{ s,-s,-s},{ s, s,-s},{ s, s, s}}, {{-s,-s,-s},{-s,-s, s},{-s, s, s},{-s, s,-s}},
+        {{-s, s, s},{ s, s, s},{ s, s,-s},{-s, s,-s}}, {{-s,-s,-s},{ s,-s,-s},{ s,-s, s},{-s,-s, s}}};
+    for (int f = 0; f < 6; f++) {
+        uint16_t b = (uint16_t)(p.size()/3);
+        for (int k = 0; k < 4; k++) for (int c = 0; c < 3; c++) p.push_back(faces[f][k][c]);
+        uint16_t t[6] = {b, (uint16_t)(b+1), (uint16_t)(b+2), b, (uint16_t)(b+2), (uint16_t)(b+3)};
+        ix.insert(ix.end(), t, t+6);
+    }
+    return MakeMesh(p, ix, "cube");
+}
+
+// Grid quad: nx*ny cells on a plane (axis 0 = XY plane at z=0, 1 = XZ plane at y=0).
+static Mesh Grid(float w, float h, int nx, int ny, int axis, const char* name)
+{
+    std::vector<float> p; std::vector<uint16_t> ix;
+    for (int j = 0; j <= ny; j++) for (int i = 0; i <= nx; i++) {
+        float x = -w*.5f + w*i/nx, y = -h*.5f + h*j/ny;
+        if (axis == 0) { p.push_back(x); p.push_back(y); p.push_back(0); } else { p.push_back(x); p.push_back(0); p.push_back(y); }
+    }
+    for (int j = 0; j < ny; j++) for (int i = 0; i < nx; i++) {
+        uint16_t a = (uint16_t)(j*(nx+1)+i), b = (uint16_t)(a+1), c = (uint16_t)(a+nx+1), d = (uint16_t)(c+1);
+        uint16_t t[6] = {a, c, b, b, c, d};
+        ix.insert(ix.end(), t, t+6);
+    }
+    return MakeMesh(p, ix, name);
+}
+
+struct Inst { int mesh; int material; float m[3][4]; const char* name; };
+static Inst TRS(int mesh, int mat, float tx, float ty, float tz, float sx, float sy, float sz, float yawDeg, const char* name)
+{
+    float c = cosf(yawDeg * (float)M_PI / 180.f), s = sinf(yawDeg * (float)M_PI / 180.f);
+    Inst r{mesh, mat, {{c*sx, 0, s*sz, tx}, {0, sy, 0, ty}, {-s*sx, 0, c*sz, tz}}, name};
+    return r;
+}
+
+// Write EventData exactly like FrontRoomsMetalGlassRTNative.WriteEventData (C# offsets).
+static void WriteEvent(uint8_t* p, float fovSlot, float aspect, uint32_t w, uint32_t h, float strength, uint32_t frame, bool reset)
+{
+    memset(p, 0xCD, 160);
+    float origin[3] = {0, 0, 0}, right[3] = {1, 0, 0}, up[3] = {0, 1, 0}, fwd[3] = {0, 0, 1};
+    auto f = [&](int off, float v) { memcpy(p + off, &v, 4); };
+    auto u = [&](int off, uint32_t v) { memcpy(p + off, &v, 4); };
+    f(0, origin[0]); f(4, origin[1]); f(8, origin[2]); f(12, fovSlot);
+    f(16, right[0]); f(20, right[1]); f(24, right[2]); f(28, aspect);
+    f(32, up[0]); f(36, up[1]); f(40, up[2]); f(44, 0);
+    f(48, fwd[0]); f(52, fwd[1]); f(56, fwd[2]); f(60, 0);
+    f(64, fovSlot); f(68, aspect); u(72, w); u(76, h); f(80, strength); u(84, frame); u(88, reset ? 1 : 0);
+}
+
+static void SavePNG(const std::vector<float>& rgba, int w, int h, const std::string& path, float gain)
+{
+    std::vector<uint8_t> px(w*h*4);
+    for (int i = 0; i < w*h; i++) for (int c = 0; c < 4; c++) {
+        float v = c == 3 ? 1.f : std::min(1.f, std::max(0.f, rgba[i*4+c] * gain));
+        px[i*4+c] = (uint8_t)lrintf(powf(v, 1/2.2f) * 255.f);
+    }
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(px.data(), w, h, 8, w*4, cs, kCGImageAlphaPremultipliedLast);
+    CGImageRef img = CGBitmapContextCreateImage(ctx);
+    NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path.c_str()]];
+    CGImageDestinationRef dst = CGImageDestinationCreateWithURL((__bridge CFURLRef)url, (__bridge CFStringRef)UTTypePNG.identifier, 1, nullptr);
+    CGImageDestinationAddImage(dst, img, nullptr); CGImageDestinationFinalize(dst);
+    CFRelease(dst); CGImageRelease(img); CGContextRelease(ctx); CGColorSpaceRelease(cs);
+}
+
+struct Result { int covered = 0; int minX = 1e9, maxX = -1, minY = 1e9, maxY = -1; double ms = 0; std::vector<float> rgba; };
+
+static Result Trace(id<MTLTexture> out, int w, int h, float fovSlot, bool reset, uint32_t frame, int repeats = 1)
+{
+    std::vector<uint8_t> data(160);
+    WriteEvent(data.data(), fovSlot, (float)w / h, w, h, 1.f, frame, reset);
+    pSetOutput((__bridge void*)out);
+    UnityRenderingEventAndData fn = pGetFunc();
+    Result r;
+    id<MTLBuffer> rb = [gDev newBufferWithLength:(NSUInteger)w*h*16 options:MTLResourceStorageModeShared];
+    // warm-up
+    fn(1, data.data());
+    { id<MTLCommandBuffer> cb = [gQ commandBuffer]; [cb commit]; [cb waitUntilCompleted]; }
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < repeats; i++) fn(1, data.data());
+    id<MTLCommandBuffer> cb = [gQ commandBuffer];
+    id<MTLBlitCommandEncoder> bl = [cb blitCommandEncoder];
+    [bl copyFromTexture:out sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(w,h,1)
+               toBuffer:rb destinationOffset:0 destinationBytesPerRow:(NSUInteger)w*16 destinationBytesPerImage:(NSUInteger)w*h*16];
+    [bl endEncoding]; [cb commit]; [cb waitUntilCompleted];
+    auto t1 = std::chrono::high_resolution_clock::now();
+    r.ms = std::chrono::duration<double, std::milli>(t1 - t0).count() / repeats;
+    const float* f = (const float*)rb.contents;
+    r.rgba.assign(f, f + (size_t)w*h*4);
+    for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+        if (f[(y*w+x)*4+3] > 0.f) { r.covered++; r.minX = std::min(r.minX, x); r.maxX = std::max(r.maxX, x); r.minY = std::min(r.minY, y); r.maxY = std::max(r.maxY, y); }
+    }
+    return r;
+}
+
+static std::vector<Mesh> gMeshes;
+
+// Register like FrontRoomsMetalGlassRTController.RebuildScene: dedup by mesh, materials by material.
+static bool Register(const std::vector<Inst>& insts, const std::vector<CsMaterialDesc>& mats, std::vector<int>& meshIndexOf, double* addMeshMs = nullptr)
+{
+    pReset();
+    std::vector<int> nativeIndex(gMeshes.size(), -1);
+    std::vector<CsInstanceDesc> out;
+    auto t0 = std::chrono::high_resolution_clock::now();
+    for (auto& in : insts) {
+        if (nativeIndex[in.mesh] < 0) {
+            Mesh& m = gMeshes[in.mesh];
+            nativeIndex[in.mesh] = pAddMesh((__bridge void*)m.vb, m.stride, m.posOffset, (__bridge void*)m.ib, m.indexSize, m.indexStart * m.indexSize, m.triangles);
+            if (nativeIndex[in.mesh] < 0) { printf("AddMesh failed: %s\n", pLastError()); return false; }
+        }
+        CsInstanceDesc d{}; d.meshIndex = nativeIndex[in.mesh]; d.materialIndex = in.material;
+        memcpy(d.r0, in.m[0], 16); memcpy(d.r1, in.m[1], 16); memcpy(d.r2, in.m[2], 16);
+        out.push_back(d);
+    }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    if (addMeshMs) *addMeshMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    meshIndexOf.clear(); for (auto& d : out) meshIndexOf.push_back(d.meshIndex);
+    if (pSetMaterials(mats.data(), (int)mats.size()) != 0) { printf("SetMaterials failed: %s\n", pLastError()); return false; }
+    if (pBuildInstances(out.data(), (int)out.size()) != 0) { printf("BuildInstances failed: %s\n", pLastError()); return false; }
+    return true;
+}
+
+// Analytic footprint of the pane with Unity's real projection (vertical fov, tan(fov/2)).
+static void PaneFootprint(const Inst& pane, float fovDeg, int w, int h, int& x0, int& x1, int& y0, int& y1)
+{
+    float t = tanf(fovDeg * .5f * (float)M_PI / 180.f), a = (float)w / h;
+    x0 = 1e9; x1 = -1; y0 = 1e9; y1 = -1;
+    for (int cx = -1; cx <= 1; cx += 2) for (int cy = -1; cy <= 1; cy += 2) for (int cz = -1; cz <= 1; cz += 2) {
+        float l[4] = {cx*.5f, cy*.5f, cz*.5f, 1};
+        float p[3]; for (int r = 0; r < 3; r++) p[r] = pane.m[r][0]*l[0] + pane.m[r][1]*l[1] + pane.m[r][2]*l[2] + pane.m[r][3];
+        float nx = p[0] / (p[2] * t * a), ny = p[1] / (p[2] * t);
+        // kernel convention: row y = (ndc.y+1)/2*h (row 0 = bottom of the view)
+        int px = (int)floorf((nx * .5f + .5f) * w), py = (int)floorf((ny * .5f + .5f) * h);
+        x0 = std::min(x0, px); x1 = std::max(x1, px); y0 = std::min(y0, py); y1 = std::max(y1, py);
+    }
+}
+
+int main(int argc, char** argv)
+{
+    @autoreleasepool {
+        if (argc < 3) { printf("usage: harness <dylib> <outdir> [label]\n"); return 2; }
+        std::string outDir = argv[2];
+        std::string label = argc > 3 ? argv[3] : "shipped";
+        std::string mode = argc > 4 ? argv[4] : "all";
+        gDev = MTLCreateSystemDefaultDevice();
+        gQ = [gDev newCommandQueue];
+        printf("device %s supportsRaytracing=%d\n", gDev.name.UTF8String, (int)gDev.supportsRaytracing);
+        gMetal.CommitCurrentCommandBuffer = F_Commit; gMetal.CommandQueue = F_Queue; gMetal.MetalBundle = F_Bundle; gMetal.MetalDevice = F_Device;
+        gMetal.CurrentCommandBuffer = F_CB; gMetal.CurrentCommandEncoder = F_Enc; gMetal.EndCurrentCommandEncoder = F_End;
+        gMetal.CurrentRenderPassDescriptor = F_RPD; gMetal.RenderBufferFromHandle = F_RBH; gMetal.TextureFromRenderBuffer = F_Tex;
+        gMetal.AAResolvedTextureFromRenderBuffer = F_Tex; gMetal.StencilTextureFromRenderBuffer = F_Tex;
+        gGraphics.GetRenderer = G_GetRenderer; gGraphics.RegisterDeviceEventCallback = G_Reg; gGraphics.UnregisterDeviceEventCallback = G_Unreg; gGraphics.ReserveEventIDRange = G_Reserve;
+        IUnityInterfaces ifc{I_Get, I_Reg, I_GetSplit, I_RegSplit};
+
+        void* lib = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
+        if (!lib) { printf("dlopen failed: %s\n", dlerror()); return 1; }
+        auto load = (PFN_Load)dlsym(lib, "UnityPluginLoad");
+        pSupports = (PFN_Supports)dlsym(lib, "FRGlassRT_DeviceSupportsRaytracing");
+        pLastError = (PFN_LastError)dlsym(lib, "FRGlassRT_LastError");
+        pReset = (PFN_Reset)dlsym(lib, "FRGlassRT_Reset");
+        pAddMesh = (PFN_AddMesh)dlsym(lib, "FRGlassRT_AddMesh");
+        pSetMaterials = (PFN_SetMaterials)dlsym(lib, "FRGlassRT_SetMaterials");
+        pBuildInstances = (PFN_BuildInstances)dlsym(lib, "FRGlassRT_BuildInstances");
+        pSetOutput = (PFN_SetOutput)dlsym(lib, "FRGlassRT_SetOutput");
+        pGetFunc = (PFN_GetFunc)dlsym(lib, "FRGlassRT_GetRenderEventFunc");
+        load(&ifc);
+        printf("plugin loaded · DeviceSupportsRaytracing=%d · lastError='%s'\n", pSupports(), pLastError());
+
+        if (mode == "nilpipe") {
+            gMeshes.push_back(Cube());
+            std::vector<CsMaterialDesc> m1 = {{{0.75f,0.85f,0.88f,.28f},0,.9f,1,0}};
+            std::vector<Inst> one = {TRS(0, 0, 0, 0, 3.f, 2, 1.5f, .03f, 0, "pane")};
+            std::vector<int> mi; bool ok = Register(one, m1, mi);
+            printf("[nilpipe] registration ok=%d lastError='%s'\n", (int)ok, pLastError());
+            MTLTextureDescriptor* t = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float width:64 height:64 mipmapped:NO];
+            t.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite; t.storageMode = MTLStorageModeShared;
+            id<MTLTexture> o = [gDev newTextureWithDescriptor:t];
+            printf("[nilpipe] issuing render event with the pipeline the plugin built...\n"); fflush(stdout);
+            Result r = Trace(o, 64, 64, 1.2566f, false, 1);
+            printf("[nilpipe] returned: covered=%d lastError='%s'\n", r.covered, pLastError());
+            return 0;
+        }
+        if (mode == "scene" || mode == "all") {
+        // ---------- 1. struct layout probe: what the kernel reads vs what C++ writes ----------
+        {
+            NSString* src = [NSString stringWithContentsOfFile:[NSString stringWithUTF8String:(outDir + "/../msl_from_dylib.metal").c_str()] encoding:NSUTF8StringEncoding error:nil];
+            src = [src stringByReplacingOccurrencesOfString:@"using namespace metal;" withString:@"using namespace metal;\nusing namespace metal::raytracing;"];
+            src = [src stringByReplacingOccurrencesOfString:@"auto intersector = intersector<triangle_data, instancing>();" withString:@"intersector<triangle_data, instancing> isect;"];
+            src = [src stringByReplacingOccurrencesOfString:@"intersector.intersect(" withString:@"isect.intersect("];
+            NSString* probe = @"\nkernel void LayoutProbe(constant InstanceInfo* inst [[buffer(0)]], device uint* out [[buffer(1)]], uint id [[thread_position_in_grid]])\n{\n if (id != 0) return;\n constant uchar* b = (constant uchar*)&inst[0];\n out[0] = sizeof(InstanceInfo);\n out[1] = (uint)((constant uchar*)&inst[0].objectToWorld0 - b);\n out[2] = (uint)((constant uchar*)&inst[0].materialIndex - b);\n out[3] = sizeof(MaterialInfo);\n out[4] = sizeof(EventData);\n for (uint i = 0; i < 3; i++) { out[5+i*6] = inst[i].materialIndex; out[6+i*6] = inst[i].triangleCount; out[7+i*6] = as_type<uint>(inst[i].objectToWorld0.w); out[8+i*6] = as_type<uint>(inst[i].objectToWorld2.w); out[9+i*6] = (uint)((ulong)inst[i].indices); out[10+i*6] = (uint)((ulong)inst[i].indices >> 32); }\n}\n";
+            NSError* err = nil;
+            id<MTLLibrary> l = [gDev newLibraryWithSource:[src stringByAppendingString:probe] options:nil error:&err];
+            if (!l) { printf("probe compile failed: %s\n", err.localizedDescription.UTF8String); return 1; }
+            id<MTLComputePipelineState> ps = [gDev newComputePipelineStateWithFunction:[l newFunctionWithName:@"LayoutProbe"] error:&err];
+            GpuInstanceInfo info[3] = {};
+            for (int i = 0; i < 3; i++) {
+                info[i].vertices = 0x1000000000ull + i; info[i].indices = 0x2000000000ull + i;
+                info[i].vertexStride = 48; info[i].positionOffset = 0; info[i].indexSize = 2; info[i].indexByteOffset = 0;
+                info[i].triangleCount = 12 + i; info[i].materialIndex = (uint32_t)i;
+                float m[3][4] = {{1, 0, 0, 3.5f + i}, {0, 1, 0, 1.2f}, {0, 0, 1, -7.25f}};
+                memcpy(info[i].objectToWorld, m, sizeof(m));
+            }
+            id<MTLBuffer> ib = [gDev newBufferWithBytes:info length:sizeof(info) + 64 options:MTLResourceStorageModeShared];
+            id<MTLBuffer> ob = [gDev newBufferWithLength:256 options:MTLResourceStorageModeShared];
+            id<MTLCommandBuffer> cb = [gQ commandBuffer];
+            id<MTLComputeCommandEncoder> e = [cb computeCommandEncoder];
+            [e setComputePipelineState:ps]; [e setBuffer:ib offset:0 atIndex:0]; [e setBuffer:ob offset:0 atIndex:1];
+            [e dispatchThreads:MTLSizeMake(1,1,1) threadsPerThreadgroup:MTLSizeMake(1,1,1)]; [e endEncoding]; [cb commit]; [cb waitUntilCompleted];
+            const uint32_t* o = (const uint32_t*)ob.contents;
+            printf("\n[layout] C++ sizeof(GpuInstanceInfo)=%zu offsetof(objectToWorld)=%zu offsetof(materialIndex)=%zu\n",
+                   sizeof(GpuInstanceInfo), offsetof(GpuInstanceInfo, objectToWorld), offsetof(GpuInstanceInfo, materialIndex));
+            printf("[layout] MSL sizeof(InstanceInfo)=%u offset(objectToWorld0)=%u offset(materialIndex)=%u sizeof(MaterialInfo)=%u sizeof(EventData)=%u\n", o[0], o[1], o[2], o[3], o[4]);
+            for (int i = 0; i < 3; i++) {
+                float w0, w2; memcpy(&w0, &o[7+i*6], 4); memcpy(&w2, &o[8+i*6], 4);
+                printf("[layout] kernel reads instance %d: materialIndex=%u (C++ wrote %d) triangleCount=%u (wrote %d) translation.x=%g (wrote %g) translation.z=%g (wrote -7.25) indices=0x%08x%08x (wrote 0x%llx)\n",
+                       i, o[5+i*6], i, o[6+i*6], 12+i, w0, 3.5+i, w2, o[10+i*6], o[9+i*6], 0x2000000000ull + i);
+            }
+        }
+
+        // ---------- 2. scene through the plugin ----------
+        gMeshes.push_back(Grid(20, 10, 8, 4, 0, "back wall"));   // 0
+        gMeshes.push_back(Cube());                              // 1 (shared, like CreatePrimitive)
+        gMeshes.push_back(Grid(20, 20, 8, 8, 1, "floor"));       // 2
+        gMeshes.push_back(Grid(6, 4, 4, 4, 0, "side wall"));     // 3
+        std::vector<CsMaterialDesc> mats = {
+            {{0.8f, 0.05f, 0.05f, 1}, 0, .5f, 0, 0},   // 0 red  (back wall behind camera)
+            {{0.75f, 0.85f, 0.88f, .28f}, 0, .9f, 1, 0}, // 1 glass
+            {{0.05f, 0.8f, 0.05f, 1}, 0, .5f, 0, 0},   // 2 green (cube prop behind camera)
+            {{0.05f, 0.05f, 0.8f, 1}, 0, .5f, 0, 0},   // 3 blue floor
+            {{0.8f, 0.8f, 0.05f, 1}, 0, .5f, 0, 0}};   // 4 yellow side wall
+        const int W = 1280, H = 720;
+        const float fov = 72.f;  // FrontRoomsMapWalker camera
+        MTLTextureDescriptor* td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float width:W height:H mipmapped:NO];
+        td.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite; td.storageMode = MTLStorageModeShared;
+        id<MTLTexture> out = [gDev newTextureWithDescriptor:td];
+
+        Inst pane = TRS(1, 1, 0.6f, 0.3f, 3.f, 2.0f, 1.5f, .03f, 0, "pane");
+        Inst wall = TRS(0, 0, 0, 0, -5.f, 1, 1, 1, 180, "back wall");
+        Inst prop = TRS(1, 2, 1.0f, 0.2f, -3.f, 1.f, 1.f, 1.f, 0, "green cube prop");
+        Inst floor_ = TRS(2, 3, 0, -1.6f, 0, 1, 1, 1, 0, "floor");
+        Inst side = TRS(3, 4, -3.f, 0, 0, 1, 1, 1, 90, "side wall");
+        int fx0, fx1, fy0, fy1; PaneFootprint(pane, fov, W, H, fx0, fx1, fy0, fy1);
+        printf("\n[scene] pane footprint with Unity's projection (tan(fov/2)): x %d..%d, y %d..%d (%d px)\n", fx0, fx1, fy0, fy1, (fx1-fx0+1)*(fy1-fy0+1));
+
+        struct Case { const char* name; std::vector<Inst> order; float fovSlot; };
+        float rad = fov * (float)M_PI / 180.f, tanHalf = tanf(rad * .5f);
+        std::vector<Case> cases = {
+            {"A_game_order_wall_pane_prop_floor_side", {wall, pane, prop, floor_, side}, rad},
+            {"B_pane_first", {pane, wall, prop, floor_, side}, rad},
+            {"C_pane_first_tan_fov", {pane, wall, prop, floor_, side}, tanHalf},
+            {"D_game_order_tan_fov", {wall, pane, prop, floor_, side}, tanHalf},
+        };
+        for (auto& c : cases) {
+            std::vector<int> mi;
+            if (!Register(c.order, mats, mi)) continue;
+            std::string map;
+            for (size_t i = 0; i < c.order.size(); i++) {
+                int mesh = mi[i];
+                int blasFromIndex = mi[(size_t)mesh];  // blasArray[i] = s_Meshes[instances[i].meshIndex]; instance uses blasArray[meshIndex]
+                char b[200]; snprintf(b, sizeof b, " [%zu %s meshIndex=%d -> traced BLAS of mesh %d%s]", i, c.order[i].name, mesh, blasFromIndex, blasFromIndex == mesh ? "" : " WRONG");
+                map += b;
+            }
+            Result r = Trace(out, W, H, c.fovSlot, false, 1);
+            Result rr = Trace(out, W, H, c.fovSlot, true, 2);
+            printf("\n[%s] fovSlot=%.4f%s\n", c.name, c.fovSlot, map.c_str());
+            if (r.covered) printf("  covered=%d px, bbox x %d..%d y %d..%d (expected x %d..%d y %d..%d) · reset-frame covered=%d\n", r.covered, r.minX, r.maxX, r.minY, r.maxY, fx0, fx1, fy0, fy1, rr.covered);
+            else printf("  covered=0 px (no glass detected) · reset-frame covered=%d\n", rr.covered);
+            // dominant hue of covered pixels
+            double sr = 0, sg = 0, sb = 0; for (int i = 0; i < W*H; i++) if (r.rgba[i*4+3] > 0) { sr += r.rgba[i*4]; sg += r.rgba[i*4+1]; sb += r.rgba[i*4+2]; }
+            if (r.covered) printf("  mean reflected rgb = %.3f %.3f %.3f\n", sr/r.covered, sg/r.covered, sb/r.covered);
+            SavePNG(r.rgba, W, H, outDir + "/" + label + "_" + c.name + ".png", 3.f);
+        }
+
+        }
+        if (mode == "cost" || mode == "all") {
+        if (gMeshes.empty()) { gMeshes.push_back(Grid(20, 10, 8, 4, 0, "back wall")); gMeshes.push_back(Cube()); gMeshes.push_back(Grid(20, 20, 8, 8, 1, "floor")); gMeshes.push_back(Grid(6, 4, 4, 4, 0, "side wall")); }
+        std::vector<CsMaterialDesc> mats = {{{0.8f,0.05f,0.05f,1},0,.5f,0,0},{{0.75f,0.85f,0.88f,.28f},0,.9f,1,0},{{0.05f,0.8f,0.05f,1},0,.5f,0,0},{{0.05f,0.05f,0.8f,1},0,.5f,0,0},{{0.8f,0.8f,0.05f,1},0,.5f,0,0}};
+        const float fov = 72.f; float rad = fov * (float)M_PI / 180.f, tanHalf = tanf(rad * .5f);
+        // ---------- 3. cost: BLAS rebuild (synchronous) and trace at 1920x1080 ----------
+        {
+            const int W2 = 1920, H2 = 1080;
+            MTLTextureDescriptor* td2 = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float width:W2 height:H2 mipmapped:NO];
+            td2.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite; td2.storageMode = MTLStorageModePrivate;
+            id<MTLTexture> out2 = [gDev newTextureWithDescriptor:td2];
+            // 200 unique ~2k-triangle meshes (shell blocks) + 56 cube instances (panes, lenses, leaves)
+            size_t base = gMeshes.size();
+            for (int i = 0; i < 200; i++) gMeshes.push_back(Grid(6, 3, 32, 32, i % 2, "block"));
+            std::vector<Inst> big;
+            big.push_back(TRS(1, 1, 0, 0, 2.f, 6.f, 4.f, .03f, 0, "pane (fills view)"));
+            for (int i = 0; i < 200; i++) big.push_back(TRS((int)base + i, i % 5 == 1 ? 0 : i % 5, (i % 10 - 5) * 3.f, (i / 10 % 3 - 1) * 2.f, -2.f - i / 30 * 3.f, 1, 1, 1, (float)(i * 37 % 360), "block"));
+            for (int i = 0; i < 55; i++) big.push_back(TRS(1, 2, (i % 11 - 5) * 2.f, 1.5f, -1.f - i / 11 * 2.f, .6f, .02f, 1.2f, 0, "lens"));
+            std::vector<int> mi; double addMs = 0;
+            auto t0 = std::chrono::high_resolution_clock::now();
+            bool ok = Register(big, mats, mi, &addMs);
+            auto t1 = std::chrono::high_resolution_clock::now();
+            printf("\n[cost] registration of %zu instances / %d unique meshes (%d tris each): AddMesh total %.1f ms, whole rebuild %.1f ms, ok=%d\n",
+                   big.size(), 201, gMeshes[base].triangles, addMs, std::chrono::duration<double, std::milli>(t1 - t0).count(), (int)ok);
+            Result r = Trace(out2, W2, H2, rad, false, 1, 20);
+            printf("[cost] trace 1920x1080 (shipped fov bug, pane covers view): %.2f ms per frame (wall clock incl. submit), covered=%d\n", r.ms, r.covered);
+            Result r2 = Trace(out2, W2, H2, tanHalf, false, 1, 20);
+            printf("[cost] trace 1920x1080 (tan fov): %.2f ms per frame, covered=%d\n", r2.ms, r2.covered);
+            {
+                std::vector<CsMaterialDesc> noGlass = mats; for (auto& m : noGlass) m.flags = 0;
+                std::vector<int> mi2; Register(big, noGlass, mi2);
+                Result r3 = Trace(out2, W2, H2, tanHalf, false, 1, 20);
+                printf("[cost] trace 1920x1080, no glass flagged (primary rays only): %.2f ms per frame, covered=%d\n", r3.ms, r3.covered);
+                // per-BLAS synchronous build time
+                auto t2 = std::chrono::high_resolution_clock::now();
+                pReset();
+                for (int k = 0; k < 20; k++) { Mesh& m = gMeshes[base + k]; pAddMesh((__bridge void*)m.vb, m.stride, m.posOffset, (__bridge void*)m.ib, m.indexSize, 0, m.triangles); }
+                auto t3 = std::chrono::high_resolution_clock::now();
+                printf("[cost] synchronous BLAS build (2048 tris, commit+waitUntilCompleted): %.2f ms each (mean of 20)\n", std::chrono::duration<double, std::milli>(t3 - t2).count() / 20);
+            }
+        }
+        }
+        printf("\nlastError='%s'\n", pLastError());
+    }
+    return 0;
+}

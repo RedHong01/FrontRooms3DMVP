@@ -98,28 +98,39 @@ Do this only after the visual chat promotes P0 and Red agrees, while no other ch
 2. Create `Assets/Resources/Print/`. Copy `out/FR_Print_HardEdge.print.json` first, then the `.png`, so the importer finds the sidecar on the first import.
 3. In Play mode, check that the `FrontRooms Print` object appears and the walls show frame 0, then a blend about every minute.
 
-## Planned: glow-ink textures (spec v1.1, 2026-10-03)
+## Glow-ink textures (spec v1.2, 2026-10-03; queued as Q2 in Documentation/VISUAL_CHAT_TASKS.md)
 
-v1 was agreed with the visual chat. v1.1 makes two changes, sent to it for confirmation:
-- glyph frames are anchored to each shape, not to the world;
-- the substance layers become RG, so the rare overlay can be gated per cell.
+The content comes from the narrative chat's frozen EGRESS spec (`Documentation/research/wallpaper_motion/30_narrative_phosphor.md` §A.11, saved as `ink/egress_v1.json`). It is rendered by:
 
-The phosphor ink's close-up content does not live in the print's B channel. B is one substance per slice for the whole world, so B stays reserved and 0. The content goes in two global arrays instead. Both are fetched only inside the shader's glow-mask branch.
+```bash
+/usr/bin/python3 Tools/print/ink_tool.py build Tools/print/ink/egress_v1.json Tools/print/ink/out
+```
 
-Generator: `ink_tool.py build <spec.json> <out_dir>`. The draft EGRESS spec is `ink/egress_spec_DRAFT.json`, and its output is in `ink/out_draft/`. The strings belong to the narrative chat, so replace them with its frozen table before shipping.
+The tool also writes `ink/out/ink_report.json` (fit, seams, stroke-fill and stamp checks) and `ink/out/ink_preview.png`. v1.1 (per-shape glyph frames, RG substance) is withdrawn.
 
-| Global | Size, format | UV | Layers | Memory |
+The print's B channel stays reserved at 0, because B is one substance per slice for the whole world. The ink content lives in two global arrays instead, both sampled only inside the shader's glow-mask branch.
+
+| Global | Size, format | Frame / UV | Layers | Memory |
 |---|---|---|---|---|
-| `_FR_InkType` | 1024×1024, BC4, linear, mips, Repeat, aniso 16 | Glyph frame / 0.75 (below) | 0 FLOW, 1 FLOW T2+, 2 HERE door, 3 HERE window, 4 STOP, 5 BREACH, 6 pressure chevron, 7 pressure door, 8 forged FLOW, 9–15 reserved | ≈ 10.7 MB |
-| `_FR_InkSubstance` | 768×1152, BC5 (RG), linear, mips, Repeat, aniso 16 | The print UV (warped), one 0.75 × 1.125 m roll tile | 0–4 = run tiers 1–5. R = ground (an even 0.8 field with the register marks and roll stamp knocked out). G = rare overlay, shown only where `hash(cell) < _FR_InkOverlayRate` | ≈ 5.9 MB |
+| `_FR_InkType` | 1024×1024, BC4, linear, mips, Repeat, aniso 16 | One frame for all layers: `u = dot(posWS, normalize(cross(N, up))) / 0.75`, unmirrored so text reads left to right on both sides of a wall; `v = (height − 0.8 m) / 0.75` | 0 FLOW `THIS WAY OUT`, 1 FLOW T2+ `THIS WAY ON`, 2 HERE door `EXIT`, 3 HERE window `EXIT · BREAK GLASS`, 4 STOP `NO`/`EXIT` pairs, 5 BREACH `OUT OF SERVICE · DOES NOT CLOSE`, 6 pressure chevron `ALARM · THIS WAY OUT`, 7 pressure door `FIRE DOOR · KEEP CLOSED`, 8 forged `THIƧ WAY OUT` (hand-lettered), 9 GROUND scratch cluster, 10–15 unused | ≈ 10.7 MB |
+| `_FR_InkSubstance` | 768×1152, BC4, linear, mips, Repeat, aniso 16 | The print UV (warped), one 0.75 × 1.125 m roll tile | 0–4 = run tiers 1–5 (roll stamp `SHEET A-3 / A-4 / A-1114 OF 4`; `OCCUPANTS 2` from tier 5) | ≈ 2.9 MB |
 
-**Glyph frames** come from InkShape, in metres. In the textures, v = 0 is the image's bottom row.
-- Chevron arms: u runs along the arm from the apex, never upside down; v is the signed offset from the centreline. Rows of text sit at v = 0 and every 34 mm, so 3 rows fall inside a 100 mm stroke.
-- Vertical bars: u is measured from the bar's left edge (0–0.10 m), with words centred at 50 mm; v is height above the floor.
-- Horizontal bars (STOP): u is measured from the bar's left edge; v from its bottom edge (0–0.12 m). The lockup is centred at v = 60 mm.
+**Values:**
+- Layers 0–8: field 1.0, type 0.55. A stroke keeps a mean of at least 0.6 in any 100 mm square.
+- Layer 9: background 0, marks 1.0, composited in the shader as `max(substance, scratch)`.
+- Substance: field 0.7, marks 0.4.
 
-**Values:** 1.0 is the solid ink field and about 0.55 is knocked-out type. Strokes must keep a mean of at least 0.6 in any 100 mm square (the draft's worst is 0.89). The shader computes glow × (R + 0.6·G) for the substance.
+**Layer 9 shader rule:** show it only when all of these hold:
+- the run tier is ≥ T3 (TierChanged ≥ 4);
+- it is a GROUND cell with `Hash(seed, cell & 63, 977) < 0.125`;
+- it is on one hashed 0.75 m tile per face;
+- v ∈ [0, 1).
+
+**Layout:**
+- Horizontal layers: rows at a 37.5 mm pitch, brick-offset.
+- Vertical-bar layers (2, 3, 5, 7): baked rotated 90° clockwise, reading top to bottom.
+- STOP: pairs on a 62.5 mm vertical period, so any 120 mm bar holds a whole pair.
 
 **Layer selection:** a global `float4 _FR_InkTypeLayer[4]` lookup table, filled by the CPU.
 
-**WebGL:** substance only, at 384×576 RG (≈ 1.5 MB), or the B/A two-family fallback.
+**WebGL:** substance only, at 384×576, or the B/A two-family fallback. The visual chat chooses.

@@ -1,0 +1,49 @@
+--- P0
++++ FIXED: + struct layout, BLAS index, residency
+@@ -95,8 +95,10 @@
+     uint32_t indexByteOffset;
+     uint32_t triangleCount;
+     uint32_t materialIndex;
++    uint32_t pad[2];               // MSL float4 rows start at offset 48
+     float objectToWorld[3][4];
+ };
++static_assert(sizeof(GpuInstanceInfo) == 96, "must match MSL InstanceInfo");
+ 
+ struct GpuMaterial
+ {
+@@ -429,17 +431,16 @@
+         return false;
+     }
+ 
++    // One entry per MESH; accelerationStructureIndex below indexes this array.
+     NSMutableArray<id<MTLAccelerationStructure>>* blasArray =
+-      [NSMutableArray arrayWithCapacity:instances.size()];
++      [NSMutableArray arrayWithCapacity:s_Meshes.size()];
+     for (const InstanceDesc& source : instances)
+-    {
+         if (source.meshIndex < 0 || source.meshIndex >= (int32_t)s_Meshes.size())
+         {
+             SetError("An instance references an invalid mesh index.");
+             return false;
+         }
+-        [blasArray addObject:s_Meshes[source.meshIndex].blas];
+-    }
++    for (const MeshRecord& mesh : s_Meshes) [blasArray addObject:mesh.blas];
+ 
+     MTLInstanceAccelerationStructureDescriptor* descriptor =
+       [MTLInstanceAccelerationStructureDescriptor descriptor];
+@@ -603,6 +604,14 @@
+     [encoder setBytes:&frame length:sizeof(EventData) atIndex:1];
+     [encoder setBuffer:s_InstanceInfoBuffer offset:0 atIndex:2];
+     [encoder setBuffer:s_MaterialBuffer offset:0 atIndex:3];
++    // Indirectly used resources must be made resident (BLAS via the TLAS,
++    // vertex/index buffers via gpuAddress in InstanceInfo).
++    for (const MeshRecord& mesh : s_Meshes)
++    {
++        [encoder useResource:mesh.blas usage:MTLResourceUsageRead];
++        [encoder useResource:mesh.vertexBuffer usage:MTLResourceUsageRead];
++        [encoder useResource:mesh.indexBuffer usage:MTLResourceUsageRead];
++    }
+ 
+     NSUInteger width = std::min<NSUInteger>(frame.width, output.width);
+     NSUInteger height = std::min<NSUInteger>(frame.height, output.height);

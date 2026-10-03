@@ -1,0 +1,56 @@
+--- NativePlugin/FrontRoomsMetalGlassRT.mm (edfbc92)
++++ P0: kernel compiles + pipeline built
+@@ -132,6 +132,7 @@
+ static const char* kTraceSource = R"MSL(
+ #include <metal_stdlib>
+ using namespace metal;
++using namespace metal::raytracing;
+ 
+ struct EventData
+ {
+@@ -270,8 +271,8 @@
+     primary.min_distance = 0.001f;
+     primary.max_distance = 10000.0f;
+ 
+-    auto intersector = intersector<triangle_data, instancing>();
+-    auto first = intersector.intersect(primary, scene);
++    intersector<triangle_data, instancing> isect;
++    auto first = isect.intersect(primary, scene);
+     if (first.type != intersection_type::triangle) return;
+ 
+     constant InstanceInfo& firstInfo = instances[first.instance_id];
+@@ -288,7 +289,7 @@
+     reflected.min_distance = 0.001f;
+     reflected.max_distance = 10000.0f;
+ 
+-    auto second = intersector.intersect(reflected, scene);
++    auto second = isect.intersect(reflected, scene);
+     float3 color;
+     if (second.type == intersection_type::triangle)
+         color = ShadeHit(second, reflected, instances, materials);
+@@ -315,14 +316,14 @@
+ 
+ bool EnsureDevice()
+ {
+-    if (s_Device && s_Queue) return true;
++    if (s_Device && s_Queue && s_TracePipeline) return true;
+     if (!s_Metal)
+     {
+         SetError("Unity Metal interface is unavailable.");
+         return false;
+     }
+ 
+-    s_Device = s_Metal->MetalDevice();
++    if (!s_Device) s_Device = s_Metal->MetalDevice();
+     if (!s_Device)
+     {
+         SetError("Unity did not expose an MTLDevice.");
+@@ -334,7 +335,7 @@
+         return false;
+     }
+ 
+-    s_Queue = s_Metal->CommandQueue();
++    if (!s_Queue) s_Queue = s_Metal->CommandQueue();
+     if (!s_Queue)
+     {
+         SetError("Unity did not expose a Metal command queue.");

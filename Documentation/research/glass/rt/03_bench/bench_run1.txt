@@ -1,0 +1,26 @@
+device=Apple M3 Max supportsRaytracing=1
+pipeline threadExecutionWidth=32 maxTotalThreadsPerThreadgroup=1024
+unique meshes=17 prop triangles total=160128 (avg 10008)
+BLAS batch build (17 meshes, 160140 tris) default: median 3.068 ms
+BLAS batch build preferFastBuild: median 1.689 ms
+BLAS batch build with refit usage: median 1.755 ms
+single BLAS 20480 tris: build 0.634 ms, refit 0.173 ms
+single BLAS 12 tris (box): build 0.162 ms
+BLAS memory: 13.57 MB built, 6.22 MB compacted (46%)
+vertex+index buffers: 2.77 MB
+scene: 2912 instances in a 96 m square
+TLAS rebuild 256 instances: median 0.177 ms (0.06 MB)
+TLAS rebuild 1024 instances: median 0.254 ms (0.24 MB)
+TLAS rebuild 1792 instances: median 0.292 ms (0.41 MB)
+TLAS rebuild 4096 instances: median 0.521 ms (0.94 MB)
+TLAS rebuild 16384 instances: median 2.059 ms (3.77 MB)
+full scene 2912 instances / 15.05 M instanced tris; nearest-256 1.38 M tris
+TRACE 256 inst, 1080p, glass 25%, 0 lights                 0.316 ms  (~1643 Mrays/s primary-reflection only: 1643)
+TRACE full,     1080p, glass 25%, 0 lights                 0.339 ms  (~1530 Mrays/s primary-reflection only: 1530)
+TRACE full,     1080p, glass 25%, 32 lights unshadowed     0.480 ms  (~1080 Mrays/s primary-reflection only: 1080)
+TRACE full,     1080p, glass 25%, 32 lights, 4 shadowed    0.459 ms  (~3388 Mrays/s primary-reflection only: 1129)
+TRACE full,     1080p, glass 25%, 32 lights, 8 shadowed    0.778 ms  (~3332 Mrays/s primary-reflection only: 666)
+TRACE full,     1080p, glass 100%, 32 lights, 4 shadowed   1.469 ms  (~4235 Mrays/s primary-reflection only: 1412)
+TRACE full,     1440p, glass 25%, 32 lights, 4 shadowed    0.843 ms  (~3280 Mrays/s primary-reflection only: 1093)
+TRACE full,     2160p, glass 25%, 32 lights, 4 shadowed    1.695 ms  (~3670 Mrays/s primary-reflection only: 1223)
+TRACE full,     1080p, glass 25%, 0 lights, maxDist 10000  0.370 ms  (~1402 Mrays/s primary-reflection only: 1402)

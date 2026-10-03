@@ -1,0 +1,308 @@
+// rt_bench.mm - standalone Metal ray-tracing micro-benchmark for the FrontRooms
+// glass RT research (03_research.md). Not part of the game. Builds a synthetic
+// office-like scene (slabs, troffer lenses, props of 2k-20k triangles), then
+// times on the GPU:
+//   - BLAS builds (batched), refit, compaction ratio
+//   - TLAS rebuild for 256..16384 instances
+//   - reflection rays from a virtual window pane (only "glass" pixels trace),
+//     simple shading (normal fetch + N.L loop over lights) and optional shadow rays.
+// Build: xcrun clang++ -std=c++17 -fobjc-arc -O2 -framework Metal -framework Foundation rt_bench.mm -o rt_bench
+#import <Metal/Metal.h>
+#import <Foundation/Foundation.h>
+#include <vector>
+#include <random>
+#include <algorithm>
+#include <cstdio>
+#include <cmath>
+
+struct Mesh { id<MTLBuffer> vb, ib; uint32_t vcount, tcount; id<MTLAccelerationStructure> blas; size_t blasSize = 0; };
+struct Inst { int mesh; float m[3][4]; uint32_t flags; };
+struct GpuInst { uint64_t vb, ib; uint32_t tcount, flags; float m0[4], m1[4], m2[4]; };
+
+static id<MTLDevice> dev; static id<MTLCommandQueue> q; static NSUInteger g_tg = 8;
+
+static double gpuMs(id<MTLCommandBuffer> cb) { return (cb.GPUEndTime - cb.GPUStartTime) * 1000.0; }
+static double median(std::vector<double> v) { std::sort(v.begin(), v.end()); return v[v.size() / 2]; }
+
+static Mesh makeMesh(const std::vector<float>& pos, const std::vector<uint32_t>& idx) {
+  Mesh m; m.vcount = (uint32_t)pos.size() / 3; m.tcount = (uint32_t)idx.size() / 3;
+  m.vb = [dev newBufferWithBytes:pos.data() length:pos.size() * 4 options:MTLResourceStorageModeShared];
+  m.ib = [dev newBufferWithBytes:idx.data() length:idx.size() * 4 options:MTLResourceStorageModeShared];
+  return m;
+}
+static Mesh boxMesh() {
+  std::vector<float> p = {-.5f,-.5f,-.5f, .5f,-.5f,-.5f, .5f,.5f,-.5f, -.5f,.5f,-.5f, -.5f,-.5f,.5f, .5f,-.5f,.5f, .5f,.5f,.5f, -.5f,.5f,.5f};
+  std::vector<uint32_t> i = {0,2,1,0,3,2, 4,5,6,4,6,7, 0,1,5,0,5,4, 3,7,6,3,6,2, 0,4,7,0,7,3, 1,2,6,1,6,5};
+  return makeMesh(p, i);
+}
+static Mesh blobMesh(int lat, int lon, uint32_t seed) {
+  std::mt19937 rng(seed); std::uniform_real_distribution<float> u(.85f, 1.15f);
+  std::vector<float> p; std::vector<uint32_t> i;
+  for (int a = 0; a <= lat; a++) for (int b = 0; b <= lon; b++) {
+    float th = M_PI * a / lat, ph = 2 * M_PI * b / lon, r = .5f * u(rng);
+    p.push_back(r * sinf(th) * cosf(ph)); p.push_back(r * cosf(th)); p.push_back(r * sinf(th) * sinf(ph));
+  }
+  for (int a = 0; a < lat; a++) for (int b = 0; b < lon; b++) {
+    uint32_t v0 = a * (lon + 1) + b, v1 = v0 + 1, v2 = v0 + lon + 1, v3 = v2 + 1;
+    i.insert(i.end(), {v0, v2, v1, v1, v2, v3});
+  }
+  return makeMesh(p, i);
+}
+
+static MTLPrimitiveAccelerationStructureDescriptor* blasDesc(const Mesh& m, MTLAccelerationStructureUsage usage) {
+  auto g = [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
+  g.vertexBuffer = m.vb; g.vertexStride = 12; g.indexBuffer = m.ib; g.indexType = MTLIndexTypeUInt32;
+  g.triangleCount = m.tcount; g.opaque = YES;
+  auto d = [MTLPrimitiveAccelerationStructureDescriptor descriptor];
+  d.geometryDescriptors = @[g]; d.usage = usage; return d;
+}
+
+// Build all BLAS in one encoder (batched, own scratch each). Returns GPU ms.
+static double buildBlasBatch(std::vector<Mesh>& meshes, MTLAccelerationStructureUsage usage) {
+  auto cb = [q commandBuffer]; auto enc = [cb accelerationStructureCommandEncoder];
+  std::vector<id<MTLBuffer>> scratch;
+  for (auto& m : meshes) {
+    auto d = blasDesc(m, usage);
+    auto s = [dev accelerationStructureSizesWithDescriptor:d];
+    m.blas = [dev newAccelerationStructureWithSize:s.accelerationStructureSize]; m.blasSize = s.accelerationStructureSize;
+    id<MTLBuffer> sc = [dev newBufferWithLength:std::max<NSUInteger>(s.buildScratchBufferSize, 16) options:MTLResourceStorageModePrivate];
+    scratch.push_back(sc);
+    [enc buildAccelerationStructure:m.blas descriptor:d scratchBuffer:sc scratchBufferOffset:0];
+  }
+  [enc endEncoding]; [cb commit]; [cb waitUntilCompleted];
+  return gpuMs(cb);
+}
+
+static MTLInstanceAccelerationStructureDescriptor* tlasDesc(std::vector<Mesh>& meshes, const std::vector<Inst>& inst, __strong id<MTLBuffer>& descBuf) {
+  NSMutableArray* arr = [NSMutableArray array]; for (auto& m : meshes) [arr addObject:m.blas];
+  descBuf = [dev newBufferWithLength:sizeof(MTLAccelerationStructureInstanceDescriptor) * inst.size() options:MTLResourceStorageModeShared];
+  auto* d = (MTLAccelerationStructureInstanceDescriptor*)descBuf.contents;
+  for (size_t k = 0; k < inst.size(); k++) {
+    memset(&d[k], 0, sizeof(d[k]));
+    for (int c = 0; c < 4; c++) d[k].transformationMatrix.columns[c] = MTLPackedFloat3Make(inst[k].m[0][c], inst[k].m[1][c], inst[k].m[2][c]);
+    d[k].options = MTLAccelerationStructureInstanceOptionOpaque; d[k].mask = 0xff;
+    d[k].accelerationStructureIndex = (uint32_t)inst[k].mesh;
+  }
+  auto td = [MTLInstanceAccelerationStructureDescriptor descriptor];
+  td.instancedAccelerationStructures = arr; td.instanceCount = inst.size();
+  td.instanceDescriptorBuffer = descBuf; td.instanceDescriptorStride = sizeof(MTLAccelerationStructureInstanceDescriptor);
+  return td;
+}
+
+static const char* kSrc = R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+using namespace raytracing;
+struct GpuInst { device const float* vb; device const uint* ib; uint tcount; uint flags; float4 m0, m1, m2; };
+struct Frame { float4 camPos; float4 camRight; float4 camUp; float4 camFwd; float tanHalf; float aspect; uint w; uint h;
+               float coverage; uint lightCount; uint shadowLights; float maxDist; float4 lights[64]; };
+static float3 xf(constant GpuInst& g, float3 p) { float4 h = float4(p, 1); return float3(dot(g.m0, h), dot(g.m1, h), dot(g.m2, h)); }
+kernel void reflectTrace(texture2d<half, access::write> out [[texture(0)]],
+                         instance_acceleration_structure scene [[buffer(0)]],
+                         constant Frame& f [[buffer(1)]],
+                         constant GpuInst* insts [[buffer(2)]],
+                         uint2 id [[thread_position_in_grid]])
+{
+  if (id.x >= f.w || id.y >= f.h) return;
+  float2 uv = (float2(id) + .5f) / float2(f.w, f.h);
+  // Glass mask: a centred rectangle covering `coverage` of the screen (the pane).
+  float side = sqrt(f.coverage);
+  if (abs(uv.x - .5f) > side * .5f || abs(uv.y - .5f) > side * .5f) { out.write(half4(0), id); return; }
+  float2 ndc = uv * 2 - 1;
+  float3 d = normalize(f.camFwd.xyz + f.camRight.xyz * ndc.x * f.tanHalf * f.aspect - f.camUp.xyz * ndc.y * f.tanHalf);
+  // Pane plane z = camPos.z + 1.5, normal -z: reflect back into the room.
+  float t = 1.5f / max(d.z, 1e-3f);
+  float3 o = f.camPos.xyz + d * t;
+  ray r; r.origin = o + float3(0, 0, -0.002f); r.direction = reflect(d, float3(0, 0, -1)); r.min_distance = 0.001f; r.max_distance = f.maxDist;
+  intersector<triangle_data, instancing> isect;
+  isect.assume_geometry_type(geometry_type::triangle);
+  auto hit = isect.intersect(r, scene);
+  half3 c = half3(0.02h, 0.02h, 0.025h);
+  if (hit.type == intersection_type::triangle) {
+    constant GpuInst& g = insts[hit.instance_id];
+    uint p = hit.primitive_id;
+    float3 a = xf(g, float3(g.vb[g.ib[p*3]*3], g.vb[g.ib[p*3]*3+1], g.vb[g.ib[p*3]*3+2]));
+    float3 b = xf(g, float3(g.vb[g.ib[p*3+1]*3], g.vb[g.ib[p*3+1]*3+1], g.vb[g.ib[p*3+1]*3+2]));
+    float3 e = xf(g, float3(g.vb[g.ib[p*3+2]*3], g.vb[g.ib[p*3+2]*3+1], g.vb[g.ib[p*3+2]*3+2]));
+    float3 n = normalize(cross(b - a, e - a)); if (dot(n, r.direction) > 0) n = -n;
+    float3 P = r.origin + r.direction * hit.distance;
+    float3 L = 0;
+    intersector<instancing> sh; sh.accept_any_intersection(true); sh.assume_geometry_type(geometry_type::triangle);
+    for (uint k = 0; k < f.lightCount; k++) {
+      float3 lp = f.lights[k].xyz; float3 tl = lp - P; float dist2 = dot(tl, tl); float3 ldir = tl * rsqrt(dist2);
+      float ndl = saturate(dot(n, ldir));
+      if (ndl <= 0 || dist2 > f.lights[k].w * f.lights[k].w) continue;
+      float vis = 1;
+      if (k < f.shadowLights) {
+        ray s; s.origin = P + n * 0.002f; s.direction = ldir; s.min_distance = 0.001f; s.max_distance = sqrt(dist2) - 0.01f;
+        auto sh_hit = sh.intersect(s, scene);
+        vis = sh_hit.type == intersection_type::none ? 1 : 0;
+      }
+      L += ndl * vis / (1 + dist2);
+    }
+    c = half3(L * 0.5f + (g.flags & 1u ? 4.0f : 0.0f));
+  }
+  out.write(half4(c, 1), id);
+}
+)MSL";
+
+int main(int argc, char** argv) {
+  @autoreleasepool {
+    if (argc > 1) g_tg = (NSUInteger)atoi(argv[1]); dev = MTLCreateSystemDefaultDevice(); q = [dev newCommandQueue]; printf("threadgroup %lux%lu\n", (unsigned long)g_tg, (unsigned long)g_tg);
+    printf("device=%s supportsRaytracing=%d\n", dev.name.UTF8String, (int)dev.supportsRaytracing);
+    NSError* err = nil;
+    auto lib = [dev newLibraryWithSource:[NSString stringWithUTF8String:kSrc] options:nil error:&err];
+    if (!lib) { printf("compile error %s\n", err.localizedDescription.UTF8String); return 1; }
+    auto pso = [dev newComputePipelineStateWithFunction:[lib newFunctionWithName:@"reflectTrace"] error:&err];
+    if (!pso) { printf("pso error %s\n", err.localizedDescription.UTF8String); return 1; }
+    printf("pipeline threadExecutionWidth=%lu maxTotalThreadsPerThreadgroup=%lu\n", (unsigned long)pso.threadExecutionWidth, (unsigned long)pso.maxTotalThreadsPerThreadgroup);
+
+    // ---- meshes: 0 = box, 1..16 = props (2k..20k tris)
+    std::vector<Mesh> meshes; meshes.push_back(boxMesh());
+    int propDims[16][2] = {{32,32},{32,40},{40,48},{40,64},{48,64},{48,80},{56,80},{64,80},{64,96},{64,112},{72,112},{72,128},{80,128},{80,128},{64,64},{40,40}};
+    size_t propTris = 0;
+    for (int k = 0; k < 16; k++) { meshes.push_back(blobMesh(propDims[k][0], propDims[k][1], 100 + k)); propTris += meshes.back().tcount; }
+    printf("unique meshes=%zu prop triangles total=%zu (avg %zu)\n", meshes.size(), propTris, propTris / 16);
+
+    // ---- BLAS builds
+    std::vector<double> tb;
+    for (int rep = 0; rep < 7; rep++) tb.push_back(buildBlasBatch(meshes, MTLAccelerationStructureUsageNone));
+    printf("BLAS batch build (17 meshes, %zu tris) default: median %.3f ms\n", propTris + 12, median(tb));
+    tb.clear();
+    for (int rep = 0; rep < 7; rep++) tb.push_back(buildBlasBatch(meshes, MTLAccelerationStructureUsagePreferFastBuild));
+    printf("BLAS batch build preferFastBuild: median %.3f ms\n", median(tb));
+    tb.clear();
+    for (int rep = 0; rep < 7; rep++) tb.push_back(buildBlasBatch(meshes, MTLAccelerationStructureUsageRefit));
+    printf("BLAS batch build with refit usage: median %.3f ms\n", median(tb));
+    // single 20k BLAS build vs refit
+    {
+      std::vector<Mesh> one = {meshes[13]};
+      std::vector<double> b1, rf;
+      for (int rep = 0; rep < 9; rep++) b1.push_back(buildBlasBatch(one, MTLAccelerationStructureUsageRefit));
+      auto d = blasDesc(one[0], MTLAccelerationStructureUsageRefit);
+      auto s = [dev accelerationStructureSizesWithDescriptor:d];
+      id<MTLBuffer> sc = [dev newBufferWithLength:std::max<NSUInteger>(s.refitScratchBufferSize, 16) options:MTLResourceStorageModePrivate];
+      for (int rep = 0; rep < 9; rep++) {
+        auto cb = [q commandBuffer]; auto enc = [cb accelerationStructureCommandEncoder];
+        [enc refitAccelerationStructure:one[0].blas descriptor:d destination:one[0].blas scratchBuffer:sc scratchBufferOffset:0];
+        [enc endEncoding]; [cb commit]; [cb waitUntilCompleted]; rf.push_back(gpuMs(cb));
+      }
+      printf("single BLAS %u tris: build %.3f ms, refit %.3f ms\n", one[0].tcount, median(b1), median(rf));
+      // 12-triangle box (a glass shard-sized mesh)
+      std::vector<Mesh> box = {meshes[0]}; std::vector<double> bb;
+      for (int rep = 0; rep < 9; rep++) bb.push_back(buildBlasBatch(box, MTLAccelerationStructureUsageNone));
+      printf("single BLAS 12 tris (box): build %.3f ms\n", median(bb));
+    }
+    // final build for tracing (default usage), then compaction ratio
+    buildBlasBatch(meshes, MTLAccelerationStructureUsageNone);
+    {
+      size_t before = 0, after = 0;
+      id<MTLBuffer> sizes = [dev newBufferWithLength:8 * meshes.size() options:MTLResourceStorageModeShared];
+      auto cb = [q commandBuffer]; auto enc = [cb accelerationStructureCommandEncoder];
+      for (size_t k = 0; k < meshes.size(); k++)
+        [enc writeCompactedAccelerationStructureSize:meshes[k].blas toBuffer:sizes offset:8 * k sizeDataType:MTLDataTypeULong];
+      [enc endEncoding]; [cb commit]; [cb waitUntilCompleted];
+      for (size_t k = 0; k < meshes.size(); k++) { before += meshes[k].blasSize; after += ((uint64_t*)sizes.contents)[k]; }
+      printf("BLAS memory: %.2f MB built, %.2f MB compacted (%.0f%%)\n", before / 1048576.0, after / 1048576.0, 100.0 * after / before);
+      size_t vbib = 0; for (auto& m : meshes) vbib += m.vb.length + m.ib.length;
+      printf("vertex+index buffers: %.2f MB\n", vbib / 1048576.0);
+    }
+
+    // ---- scene: an office grid of 6 m cells, slabs + walls + 2 lenses + props
+    std::mt19937 rng(7); std::uniform_real_distribution<float> U(0, 1);
+    auto put = [&](std::vector<Inst>& v, int mesh, float x, float y, float z, float sx, float sy, float sz, float rotY, uint32_t flags) {
+      Inst in{}; in.mesh = mesh; in.flags = flags; float c = cosf(rotY), s = sinf(rotY);
+      in.m[0][0] = c * sx; in.m[0][1] = 0; in.m[0][2] = s * sz; in.m[0][3] = x;
+      in.m[1][0] = 0; in.m[1][1] = sy; in.m[1][2] = 0; in.m[1][3] = y;
+      in.m[2][0] = -s * sx; in.m[2][1] = 0; in.m[2][2] = c * sz; in.m[2][3] = z; v.push_back(in);
+    };
+    std::vector<Inst> all; int cells = 16; float cell = 6;
+    for (int cx = 0; cx < cells; cx++) for (int cz = 0; cz < cells; cz++) {
+      float x = (cx - cells / 2 + .5f) * cell, z = (cz - cells / 2 + .5f) * cell;
+      put(all, 0, x, -.1f, z, cell, .2f, cell, 0, 0);
+      put(all, 0, x, 3.0f, z, cell, .2f, cell, 0, 0);
+      if (U(rng) < .7f) put(all, 0, x + cell * .5f, 1.45f, z, .15f, 2.9f, cell, 0, 0);
+      if (U(rng) < .7f) put(all, 0, x, 1.45f, z + cell * .5f, cell, 2.9f, .15f, 0, 0);
+      put(all, 0, x - 1.2f, 2.88f, z, .6f, .025f, 1.2f, 0, 1);
+      put(all, 0, x + 1.2f, 2.88f, z, .6f, .025f, 1.2f, 0, 1);
+      for (int k = 0; k < 6; k++) { float s = .5f + U(rng) * 1.0f; put(all, 1 + (int)(U(rng) * 16) % 16, x + (U(rng) - .5f) * 5, s * .5f, z + (U(rng) - .5f) * 5, s, s, s, U(rng) * 6.28f, 0); }
+    }
+    printf("scene: %zu instances in a %.0f m square\n", all.size(), cells * cell);
+    auto nearest = [&](size_t n) { std::vector<Inst> v = all; std::sort(v.begin(), v.end(), [](const Inst& a, const Inst& b) {
+        return a.m[0][3] * a.m[0][3] + a.m[2][3] * a.m[2][3] < b.m[0][3] * b.m[0][3] + b.m[2][3] * b.m[2][3]; });
+      v.resize(std::min(n, v.size())); return v; };
+
+    // ---- TLAS rebuild cost
+    for (size_t n : {256, 1024, 1792, 4096, 16384}) {
+      std::vector<Inst> v;
+      if (n <= all.size()) v = nearest(n); else { v = all; while (v.size() < n) { Inst c = all[v.size() % all.size()]; c.m[1][3] += 3.2f * (v.size() / all.size()); v.push_back(c); } }
+      id<MTLBuffer> db; auto td = tlasDesc(meshes, v, db);
+      auto s = [dev accelerationStructureSizesWithDescriptor:td];
+      id<MTLAccelerationStructure> tl = [dev newAccelerationStructureWithSize:s.accelerationStructureSize];
+      id<MTLBuffer> sc = [dev newBufferWithLength:std::max<NSUInteger>(s.buildScratchBufferSize, 16) options:MTLResourceStorageModePrivate];
+      std::vector<double> t;
+      for (int rep = 0; rep < 9; rep++) {
+        auto cb = [q commandBuffer]; auto enc = [cb accelerationStructureCommandEncoder];
+        [enc buildAccelerationStructure:tl descriptor:td scratchBuffer:sc scratchBufferOffset:0];
+        [enc endEncoding]; [cb commit]; [cb waitUntilCompleted]; t.push_back(gpuMs(cb));
+      }
+      printf("TLAS rebuild %zu instances: median %.3f ms (%.2f MB)\n", n, median(t), s.accelerationStructureSize / 1048576.0);
+    }
+
+    // ---- reflection tracing
+    struct Frame { float camPos[4], camRight[4], camUp[4], camFwd[4]; float tanHalf, aspect; uint32_t w, h; float coverage; uint32_t lightCount, shadowLights; float maxDist; float lights[64][4]; };
+    auto runTrace = [&](const std::vector<Inst>& v, uint32_t W, uint32_t H, float coverage, uint32_t lightCount, uint32_t shadowLights, float maxDist, bool residency) {
+      id<MTLBuffer> db; auto td = tlasDesc(meshes, v, db);
+      auto s = [dev accelerationStructureSizesWithDescriptor:td];
+      id<MTLAccelerationStructure> tl = [dev newAccelerationStructureWithSize:s.accelerationStructureSize];
+      id<MTLBuffer> sc = [dev newBufferWithLength:std::max<NSUInteger>(s.buildScratchBufferSize, 16) options:MTLResourceStorageModePrivate];
+      { auto cb = [q commandBuffer]; auto enc = [cb accelerationStructureCommandEncoder];
+        [enc buildAccelerationStructure:tl descriptor:td scratchBuffer:sc scratchBufferOffset:0]; [enc endEncoding]; [cb commit]; [cb waitUntilCompleted]; }
+      std::vector<GpuInst> gi(v.size());
+      for (size_t k = 0; k < v.size(); k++) { auto& m = meshes[v[k].mesh]; gi[k].vb = m.vb.gpuAddress; gi[k].ib = m.ib.gpuAddress; gi[k].tcount = m.tcount; gi[k].flags = v[k].flags;
+        for (int c = 0; c < 4; c++) { gi[k].m0[c] = v[k].m[0][c]; gi[k].m1[c] = v[k].m[1][c]; gi[k].m2[c] = v[k].m[2][c]; } }
+      id<MTLBuffer> gib = [dev newBufferWithBytes:gi.data() length:sizeof(GpuInst) * gi.size() options:MTLResourceStorageModeShared];
+      auto texd = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA16Float width:W height:H mipmapped:NO];
+      texd.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead; texd.storageMode = MTLStorageModePrivate;
+      id<MTLTexture> out = [dev newTextureWithDescriptor:texd];
+      Frame f{}; f.camPos[1] = 1.6f; f.camRight[0] = 1; f.camUp[1] = 1; f.camFwd[2] = 1; f.tanHalf = tanf(38.f * M_PI / 180.f);
+      f.aspect = (float)W / H; f.w = W; f.h = H; f.coverage = coverage; f.lightCount = lightCount; f.shadowLights = shadowLights; f.maxDist = maxDist;
+      for (uint32_t k = 0; k < 64; k++) { float a = k * 2.399f, r = 2.f + 1.7f * sqrtf((float)k); f.lights[k][0] = r * cosf(a); f.lights[k][1] = 2.8f; f.lights[k][2] = r * sinf(a); f.lights[k][3] = 10.f; }
+      std::vector<double> t;
+      for (int rep = 0; rep < 25; rep++) {
+        auto cb = [q commandBuffer]; auto enc = [cb computeCommandEncoder];
+        [enc setComputePipelineState:pso]; [enc setTexture:out atIndex:0]; [enc setAccelerationStructure:tl atBufferIndex:0];
+        [enc setBytes:&f length:sizeof(f) atIndex:1]; [enc setBuffer:gib offset:0 atIndex:2];
+        if (residency) { for (auto& m : meshes) { [enc useResource:m.blas usage:MTLResourceUsageRead]; [enc useResource:m.vb usage:MTLResourceUsageRead]; [enc useResource:m.ib usage:MTLResourceUsageRead]; } }
+        MTLSize tg = MTLSizeMake(g_tg, (g_tg == 32 ? 32 : g_tg), 1);
+        [enc dispatchThreads:MTLSizeMake(W, H, 1) threadsPerThreadgroup:tg];
+        [enc endEncoding]; [cb commit]; [cb waitUntilCompleted];
+        if (cb.status != MTLCommandBufferStatusCompleted) { printf("trace failed: %s\n", cb.error.localizedDescription.UTF8String); return -1.0; }
+        if (rep >= 3) t.push_back(gpuMs(cb));
+      }
+      return median(t);
+    };
+    auto near256 = nearest(256);
+    size_t sceneTris = 0; for (auto& in : all) sceneTris += meshes[in.mesh].tcount;
+    size_t tris256 = 0; for (auto& in : near256) tris256 += meshes[in.mesh].tcount;
+    printf("full scene %zu instances / %.2f M instanced tris; nearest-256 %.2f M tris\n", all.size(), sceneTris / 1e6, tris256 / 1e6);
+    struct Case { const char* name; const std::vector<Inst>* v; uint32_t W, H; float cov; uint32_t L, S; float dist; };
+    std::vector<Case> cases = {
+      {"256 inst, 1080p, glass 25%, 0 lights", &near256, 1920, 1080, .25f, 0, 0, 30},
+      {"full,     1080p, glass 25%, 0 lights", &all, 1920, 1080, .25f, 0, 0, 30},
+      {"full,     1080p, glass 25%, 32 lights unshadowed", &all, 1920, 1080, .25f, 32, 0, 30},
+      {"full,     1080p, glass 25%, 32 lights, 4 shadowed", &all, 1920, 1080, .25f, 32, 4, 30},
+      {"full,     1080p, glass 25%, 32 lights, 8 shadowed", &all, 1920, 1080, .25f, 32, 8, 30},
+      {"full,     1080p, glass 100%, 32 lights, 4 shadowed", &all, 1920, 1080, 1.f, 32, 4, 30},
+      {"full,     1440p, glass 25%, 32 lights, 4 shadowed", &all, 2560, 1440, .25f, 32, 4, 30},
+      {"full,     2160p, glass 25%, 32 lights, 4 shadowed", &all, 3840, 2160, .25f, 32, 4, 30},
+      {"full,     1080p, glass 25%, 0 lights, maxDist 10000", &all, 1920, 1080, .25f, 0, 0, 10000},
+    };
+    for (auto& c : cases) {
+      double ms = runTrace(*c.v, c.W, c.H, c.cov, c.L, c.S, c.dist, true);
+      double rays = (double)c.W * c.H * c.cov * (1 + c.S * 0.5);  // shadow rays only for lights in range & facing: rough upper bound
+      printf("TRACE %-52s %.3f ms  (~%.0f Mrays/s primary-reflection only: %.0f)\n", c.name, ms, rays / (ms * 1e3), (double)c.W * c.H * c.cov / (ms * 1e3));
+    }
+  }
+  return 0;
+}

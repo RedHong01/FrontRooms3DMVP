@@ -1,0 +1,34 @@
+device Apple M3 Max supportsRaytracing=1
+plugin loaded · DeviceSupportsRaytracing=1 · lastError=''
+
+[layout] C++ sizeof(GpuInstanceInfo)=88 offsetof(objectToWorld)=40 offsetof(materialIndex)=36
+[layout] MSL sizeof(InstanceInfo)=96 offset(objectToWorld0)=48 offset(materialIndex)=36 sizeof(MaterialInfo)=32 sizeof(EventData)=96
+[layout] kernel reads instance 0: materialIndex=0 (C++ wrote 0) triangleCount=12 (wrote 12) translation.x=1 (wrote 3.5) translation.z=2.24208e-44 (wrote -7.25) indices=0x0000002000000000 (wrote 0x2000000000)
+[layout] kernel reads instance 1: materialIndex=0 (C++ wrote 1) triangleCount=1065353216 (wrote 13) translation.x=1.2 (wrote 4.5) translation.z=4.48416e-44 (wrote -7.25) indices=0x0000000000000030 (wrote 0x2000000001)
+[layout] kernel reads instance 2: materialIndex=1085276160 (C++ wrote 2) triangleCount=0 (wrote 14) translation.x=0 (wrote 5.5) translation.z=1.4013e-45 (wrote -7.25) indices=0x0000000000000002 (wrote 0x2000000002)
+
+[scene] pane footprint with Unity's projection (tan(fov/2)): x 573..905, y 285..534 (83250 px)
+
+[A_game_order_wall_pane_prop_floor_side] fovSlot=1.2566 [0 back wall meshIndex=0 -> traced BLAS of mesh 0] [1 pane meshIndex=1 -> traced BLAS of mesh 1] [2 green cube prop meshIndex=1 -> traced BLAS of mesh 1] [3 floor meshIndex=2 -> traced BLAS of mesh 1 WRONG] [4 side wall meshIndex=3 -> traced BLAS of mesh 2 WRONG]
+  covered=27648 px, bbox x 602..793 y 317..460 (expected x 573..905 y 285..534) · reset-frame covered=0
+  mean reflected rgb = 0.059 0.006 0.005
+
+[B_pane_first] fovSlot=1.2566 [0 pane meshIndex=0 -> traced BLAS of mesh 0] [1 back wall meshIndex=1 -> traced BLAS of mesh 1] [2 green cube prop meshIndex=0 -> traced BLAS of mesh 0] [3 floor meshIndex=2 -> traced BLAS of mesh 0 WRONG] [4 side wall meshIndex=3 -> traced BLAS of mesh 2 WRONG]
+  covered=27648 px, bbox x 602..793 y 317..460 (expected x 573..905 y 285..534) · reset-frame covered=0
+  mean reflected rgb = 0.059 0.006 0.005
+
+[C_pane_first_tan_fov] fovSlot=0.7265 [0 pane meshIndex=0 -> traced BLAS of mesh 0] [1 back wall meshIndex=1 -> traced BLAS of mesh 1] [2 green cube prop meshIndex=0 -> traced BLAS of mesh 0] [3 floor meshIndex=2 -> traced BLAS of mesh 0 WRONG] [4 side wall meshIndex=3 -> traced BLAS of mesh 2 WRONG]
+  covered=82668 px, bbox x 574..905 y 285..533 (expected x 573..905 y 285..534) · reset-frame covered=0
+  mean reflected rgb = 0.058 0.006 0.005
+
+[D_game_order_tan_fov] fovSlot=0.7265 [0 back wall meshIndex=0 -> traced BLAS of mesh 0] [1 pane meshIndex=1 -> traced BLAS of mesh 1] [2 green cube prop meshIndex=1 -> traced BLAS of mesh 1] [3 floor meshIndex=2 -> traced BLAS of mesh 1 WRONG] [4 side wall meshIndex=3 -> traced BLAS of mesh 2 WRONG]
+  covered=82668 px, bbox x 574..905 y 285..533 (expected x 573..905 y 285..534) · reset-frame covered=0
+  mean reflected rgb = 0.058 0.006 0.005
+
+[cost] registration of 256 instances / 201 unique meshes (2048 tris each): AddMesh total 1066.2 ms, whole rebuild 1068.1 ms, ok=1
+[cost] trace 1920x1080 (shipped fov bug, pane covers view): 4.94 ms per frame (wall clock incl. submit), covered=1124068
+[cost] trace 1920x1080 (tan fov): 7.82 ms per frame, covered=2073600
+[cost] trace 1920x1080, no glass flagged (primary rays only): 4.16 ms per frame, covered=0
+[cost] synchronous BLAS build (2048 tris, commit+waitUntilCompleted): 7.91 ms each (mean of 20)
+
+lastError=''

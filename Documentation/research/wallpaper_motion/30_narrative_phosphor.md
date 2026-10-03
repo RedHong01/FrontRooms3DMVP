@@ -316,7 +316,7 @@ Revision 2 had an ink halo around the Relay (the herald brown-out). It is **with
 
 ### A.11 Frozen ink content v1 (for `_FR_InkType` / `_FR_InkSubstance`)
 
-Frozen 2026-10-03 so that the wallpaper-print chat can render without guessing. Layer numbers follow `Tools/print/README.md` § "Planned: glow-ink textures". Red may rewrite any string before render; anything else needs a new revision of this section.
+Frozen 2026-10-03 so that the wallpaper-print chat can render without guessing. **Rendered the same day:** `Tools/print/ink/out/` (`ink_preview.png`, `ink_report.json`). Every layer is seamless, and strokes keep a mean ≥ 0.84 per 100 mm square. Two fit exceptions were approved: layers 5 and 7, noted in the table. Layer numbers follow `Tools/print/README.md` § "Planned: glow-ink textures". Red may rewrite any string before render; anything else needs a new revision of this section.
 
 **Common to every type layer:**
 
@@ -340,9 +340,9 @@ Frozen 2026-10-03 so that the wallpaper-print chat can render without guessing. 
 | 2 HERE door | M2 | rotated | 22 mm | `EXIT` |
 | 3 HERE window | M2 | rotated | 22 mm | `EXIT · BREAK GLASS` |
 | 4 STOP | M3 | horizontal, pairs | `NO` 30 mm over `EXIT` 18 mm | See the STOP note below |
-| 5 BREACH | M4 | rotated | 22 mm | `OUT OF SERVICE · DOES NOT CLOSE` |
+| 5 BREACH | M4 | rotated | 22 mm | `OUT OF SERVICE · DOES NOT CLOSE` (one cycle: tracking +4 mm, and the rest in word spaces, +3.37 mm each; approved after render) |
 | 6 Pressure chevron | M5 | horizontal | 22 mm | `ALARM · THIS WAY OUT` |
-| 7 Pressure door | M5 | rotated | 22 mm | `FIRE DOOR · KEEP CLOSED` |
+| 7 Pressure door | M5 | rotated | **20 mm** | `FIRE DOOR · KEEP CLOSED` (two cycles, tracking −0.96 mm; 20 mm cap approved after render so the US phrase stays whole) |
 | 8 Forged FLOW | M10 | horizontal, hand-lettered | ≈ 22 mm | `THIƧ WAY OUT` (see below) |
 | 9 GROUND scratch *(new; uses a reserved slot)* | M9 | wall-anchored, one cluster | 25–35 mm | See the scratch note below |
 | 10–15 | reserved | | | |
@@ -404,9 +404,9 @@ Notes:
     {"layer": 3, "mark": "M2 HERE window", "orient": "rotated", "cap_mm": 22, "phrase": "EXIT · BREAK GLASS"},
     {"layer": 4, "mark": "M3 STOP", "orient": "pairs", "cell_mm": [125, 62.5], "top": {"text": "NO", "cap_mm": 30},
       "bottom": {"text": "EXIT", "cap_mm": 18}, "gap_mm": 6, "row_offset": "half cell"},
-    {"layer": 5, "mark": "M4 BREACH", "orient": "rotated", "cap_mm": 22, "phrase": "OUT OF SERVICE · DOES NOT CLOSE"},
+    {"layer": 5, "mark": "M4 BREACH", "orient": "rotated", "cap_mm": 22, "phrase": "OUT OF SERVICE · DOES NOT CLOSE", "tracking_mm": 4.0, "extra_word_space_mm": 3.37},
     {"layer": 6, "mark": "M5 pressure chevron", "orient": "horizontal", "cap_mm": 22, "phrase": "ALARM · THIS WAY OUT"},
-    {"layer": 7, "mark": "M5 pressure door", "orient": "rotated", "cap_mm": 22, "phrase": "FIRE DOOR · KEEP CLOSED"},
+    {"layer": 7, "mark": "M5 pressure door", "orient": "rotated", "cap_mm": 20, "phrase": "FIRE DOOR · KEEP CLOSED", "tracking_mm": -0.96},
     {"layer": 8, "mark": "M10 forged FLOW", "orient": "horizontal", "cap_mm": 22, "phrase": "THIƧ WAY OUT",
       "hand": {"stroke_mm": [2.5, 4], "rot_deg": 5, "baseline_mm": 2.5, "scale": 0.08, "spacing_mm": 3, "pitch_drift_mm": 4, "seed": 1990}},
     {"layer": 9, "mark": "M9 GROUND scratch", "orient": "cluster", "value_bg": 0.0, "value_mark": 1.0, "composite": "max",

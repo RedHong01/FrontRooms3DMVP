@@ -6,7 +6,7 @@ Written by the chat 怪物追捕机制设计审计 (systems), with:
 - **关卡设计** (map / Relay code owner): level design, feasibility. See §9.
 - **Design the narrative of the phosphor wallpaper print** (narrative): fiction. See §10 and `research/relay_pursuit/30_narrative.md`.
 
-Figma: section `FRONTROOMS · RELAY PURSUIT · AUDIT + REDESIGN` on page 2099:76.
+Figma: design file `0tCbAiVUlrPId3RWd9LRif`, page 2099:76, section `FRONTROOMS · RELAY PURSUIT · AUDIT + REDESIGN` (2441:3804) at x 7897, y 26369, frames RP01–RP10 (2441:3805 … 2441:3883). Diagram data: real generator output (Python port of the `FrontRoomsMap` edge rules) and autopilot reports; scripts and SVGs in `research/relay_pursuit/sim/`.
 
 **Red's brief (2026-10-03).** Right now the player has no room to explore the Backrooms and has to keep running. Pursuit should follow a logic:
 - the Relay starts tracking the player's sound only after something calls it, such as entering certain rooms or breaking glass;
@@ -207,8 +207,16 @@ This is Red's "entering certain rooms". The full list is in §9 (level design) a
 - every trigger is readable **before** the player commits: a sign, a fixture or a sound at the doorway;
 - every trigger offers something in return: a shortcut, a key, or a new zone.
 
-| Trigger | Fires on | Reward that makes it a choice |
-|---|---|---|
+| Trigger (EGRESS set) | Read from outside | Fires on | Reward that makes it a choice |
+|---|---|---|---|
+| Window (every tall zone) | the glass itself | glass broken | the only way into a tall zone |
+| Alarm door | push bar: "EMERGENCY EXIT ONLY — ALARM WILL SOUND" | opening it | a shortcut over a zone border, no key |
+| Detector room | ceiling smoke detector, red LED blinking, seen through the arch | stepping 1.5 m inside | the quick way through |
+| Electrical room | "ELECTRICAL ROOM — AUTHORIZED PERSONNEL ONLY", transformer hum | stepping 1.5 m inside | the zone key, from tier 3 |
+| Glass floor (`Loud`) | glass across the first 1.2 m of the doorway | stepping past the strip | the shorter route |
+| Paging room (optional) | wall handset, speaker hiss | stepping 1.5 m inside | a key or desk |
+
+---|---|---|
 | Window (all tall zones) | glass broken | the only way into a tall zone; fast |
 | Alarm door: push bar reading "EMERGENCY EXIT ONLY — ALARM WILL SOUND" | opening it | a shortcut across a zone border, no key needed |
 | Ringing phone (Office) | entering the room. The phone rings every 3 s (+8 each ring) until E picks it up | the room's key or desk; pick it up to silence it |
@@ -434,7 +442,7 @@ Full chapter: `research/relay_pursuit/30_narrative.md` (written by the narrative
 | Chase | Full alarm |
 | Search | Floor sweep, room by room |
 | Withdraw | Reset to normal |
-| Caught | "OCCUPANT ACCOUNTED FOR" (optional Caught line) |
+| Caught | Accounted for. Optional Caught line "OCCUPANT ACCOUNTED FOR", not yet approved by Red |
 
 **The staged warning in EGRESS** (chapter §5):
 
