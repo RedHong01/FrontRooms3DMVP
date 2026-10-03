@@ -29,12 +29,17 @@ namespace FrontRooms.Map
     /// <summary>A lamp's temperament, per cell. Auto rolls it from the seed, as everywhere else.</summary>
     public enum ModuleLamp : byte { Auto, Steady, Stutter, Failing, Dead, Dim, Off }
 
-    /// <summary>One prop: a kit asset at a point in metres from the module's south-west corner (a cell line), turned by yaw degrees (0 = front faces +Z).</summary>
+    /// <summary>
+    /// One prop: a kit asset at a point in metres from the module's south-west
+    /// corner (a cell line), y metres above the floor (wall pieces: a clock,
+    /// a window), turned by yaw degrees (0 = front faces +Z).
+    /// </summary>
     [Serializable]
     public struct ModuleProp
     {
         public string kit;
         public float x, z, yaw;
+        public float y;
         public bool noCollider;
     }
 
@@ -224,7 +229,7 @@ namespace FrontRooms.Map
             for (var k = 0; k < r.props.Length; k++)
             {
                 var p = r.props[k];
-                r.props[k] = new ModuleProp { kit = p.kit, x = p.z, z = w - p.x, yaw = (p.yaw + 90f) % 360f, noCollider = p.noCollider };
+                r.props[k] = new ModuleProp { kit = p.kit, x = p.z, z = w - p.x, y = p.y, yaw = (p.yaw + 90f) % 360f, noCollider = p.noCollider };
             }
             for (var k = 0; k < r.customColumns.Length; k++)
             {
@@ -281,6 +286,8 @@ namespace FrontRooms.Map
                 if (customColumns.Length > 0 && (width < 3 || depth < 3)) warnings.Add("Columns in a room under 3 x 3 cells: the map's own rule never puts them there.");
             }
 
+            if (width >= MaxCells - 1 || depth >= MaxCells - 1)
+                warnings.Add("A side of 7 or 8 cells meets the chunk border: the map decides the edges there and may open one of your walls to keep the maze connected. Keep props off those walls.");
             if (fill == ModuleFill.Office && theme != ZoneTheme.Office) warnings.Add("Office fill in a Level 0 room.");
             if (fill == ModuleFill.Pile && (width < 4 || depth < 4)) warnings.Add("A pile needs a hall of 4 x 4 cells to look right.");
 
@@ -296,10 +303,170 @@ namespace FrontRooms.Map
                 Bounds(p, f, out var x0, out var z0, out var x1, out var z1);
                 if (x0 < clearMin - .01f || z0 < clearMin - .01f || x1 > WidthMetres - clearMin + .01f || z1 > DepthMetres - clearMin + .01f)
                     errors.Add(label + ": stands in or beyond a wall.");
-                if (f[4] > ceiling - ModuleUnits.CeilingClearance) errors.Add(label + ": " + f[4].ToString("0.00") + " m tall, the ceiling is " + ceiling.ToString("0.0") + " m.");
+                if (p.y + f[4] > ceiling - ModuleUnits.CeilingClearance) errors.Add(label + ": reaches " + (p.y + f[4]).ToString("0.00") + " m, the ceiling is " + ceiling.ToString("0.0") + " m.");
+                if (p.y > ModuleUnits.RelayHeight) continue; // wall pieces up high leave the floor free
                 foreach (var strip in EntryStrips())
                     if (x0 < strip[2] && strip[0] < x1 && z0 < strip[3] && strip[1] < z1) { warnings.Add(label + ": blocks the floor inside an opening (keep " + ModuleUnits.EntryClearDepth.ToString("0.0") + " m clear)."); break; }
+                foreach (var strip in InnerStrips())
+                {
+                    if (!(x0 < strip[2] && strip[0] < x1 && z0 < strip[3] && strip[1] < z1)) continue;
+                    if (strip[4] > 0f) errors.Add(label + ": stands in an inner wall.");
+                    else warnings.Add(label + ": blocks the floor at an inner doorway.");
+                    break;
+                }
             }
+
+            // Can the player get from every opening to every other, and into every cell, past the props and inner walls?
+            if (errors.Count == 0 && openings > 0 && !Walkable(footprint, out var problem)) errors.Add(problem);
+        }
+
+        /// <summary>
+        /// Inner edges as (x0, z0, x1, z1, isWall) in module metres: an inner
+        /// wall's 0.16 m band, or the floor kept clear both sides of an inner
+        /// doorway (arch). Open inner edges are just floor.
+        /// </summary>
+        public List<float[]> InnerStrips()
+        {
+            var cs = MapGrid.CellSize;
+            var h = ModuleUnits.WallHalf;
+            var d = ModuleUnits.EntryClearDepth + h;
+            var strips = new List<float[]>();
+            for (var j = 0; j < depth; j++)
+            for (var i = 0; i < width; i++)
+            {
+                if (i < width - 1 && innerEast[i + j * (width - 1)] != ModuleEdge.Open)
+                {
+                    var wall = innerEast[i + j * (width - 1)] == ModuleEdge.Wall;
+                    var r = wall ? h : d;
+                    var x = (i + 1) * cs;
+                    strips.Add(new[] { x - r, j * cs, x + r, (j + 1) * cs, wall ? 1f : 0f });
+                }
+                if (j < depth - 1 && innerNorth[i + j * width] != ModuleEdge.Open)
+                {
+                    var wall = innerNorth[i + j * width] == ModuleEdge.Wall;
+                    var r = wall ? h : d;
+                    var z = (j + 1) * cs;
+                    strips.Add(new[] { i * cs, z - r, (i + 1) * cs, z + r, wall ? 1f : 0f });
+                }
+            }
+            return strips;
+        }
+
+        /// <summary>
+        /// Floods the floor on a 0.25 m grid with the player's 0.3 m body,
+        /// from the first opening, past walls (perimeter and inner) and props
+        /// on the floor. False, with the reason, if an opening or a cell is
+        /// cut off. Inner doorways count as open along their whole edge (where
+        /// the map puts the gap varies), so this is a lower bound on trouble.
+        /// </summary>
+        public bool Walkable(Func<string, float[]> footprint, out string problem)
+        {
+            problem = null;
+            const float step = .25f;
+            var cs = MapGrid.CellSize;
+            var body = ModuleUnits.PlayerRadius;
+            int nx = (int)Math.Round(WidthMetres / step), nz = (int)Math.Round(DepthMetres / step);
+            var blocked = new bool[nx * nz];
+            var rects = new List<float[]>();
+            foreach (var p in props)
+            {
+                if (p.noCollider || p.y > ModuleUnits.RelayHeight || string.IsNullOrEmpty(p.kit)) continue;
+                var f = footprint?.Invoke(p.kit);
+                if (f == null) continue;
+                Bounds(p, f, out var x0, out var z0, out var x1, out var z1);
+                rects.Add(new[] { x0, z0, x1, z1 });
+            }
+            foreach (var w in InnerStrips()) if (w[4] > 0f) rects.Add(new[] { w[0], w[1], w[2], w[3] });
+            for (var k = 0; k < blocked.Length; k++)
+            {
+                float x = (k % nx + .5f) * step, z = (k / nx + .5f) * step;
+                // Perimeter walls: everywhere but the openings.
+                var nearWall = x < ModuleUnits.WallHalf + body || z < ModuleUnits.WallHalf + body || x > WidthMetres - ModuleUnits.WallHalf - body || z > DepthMetres - ModuleUnits.WallHalf - body;
+                if (nearWall && !InOpening(x, z, body)) { blocked[k] = true; continue; }
+                foreach (var r in rects)
+                    if (x > r[0] - body && x < r[2] + body && z > r[1] - body && z < r[3] + body) { blocked[k] = true; break; }
+            }
+
+            // One seed per perimeter opening: a free node inside the floor kept
+            // clear behind it, nearest the opening's middle. None: the opening is blocked.
+            var seeds = new List<int>();
+            var names = new List<string>();
+            void Seed(float[] strip, string name)
+            {
+                float cx = (strip[0] + strip[2]) * .5f, cz = (strip[1] + strip[3]) * .5f;
+                var best = -1;
+                var bestD = float.MaxValue;
+                for (var k = 0; k < blocked.Length; k++)
+                {
+                    if (blocked[k]) continue;
+                    float x = (k % nx + .5f) * step, z = (k / nx + .5f) * step;
+                    if (x < strip[0] || x > strip[2] || z < strip[1] || z > strip[3]) continue;
+                    var d2 = (x - cx) * (x - cx) + (z - cz) * (z - cz);
+                    if (d2 < bestD) { bestD = d2; best = k; }
+                }
+                seeds.Add(best);
+                names.Add(name);
+            }
+            var depthClear = ModuleUnits.EntryClearDepth + ModuleUnits.WallHalf;
+            for (var i = 0; i < width; i++)
+            {
+                if (south[i] != ModuleEdge.Wall) Seed(new[] { i * cs, 0f, (i + 1) * cs, depthClear }, "the south opening of column " + (i + 1));
+                if (north[i] != ModuleEdge.Wall) Seed(new[] { i * cs, DepthMetres - depthClear, (i + 1) * cs, DepthMetres }, "the north opening of column " + (i + 1));
+            }
+            for (var j = 0; j < depth; j++)
+            {
+                if (west[j] != ModuleEdge.Wall) Seed(new[] { 0f, j * cs, depthClear, (j + 1) * cs }, "the west opening of row " + (j + 1));
+                if (east[j] != ModuleEdge.Wall) Seed(new[] { WidthMetres - depthClear, j * cs, WidthMetres, (j + 1) * cs }, "the east opening of row " + (j + 1));
+            }
+            for (var s = 0; s < seeds.Count; s++)
+                if (seeds[s] < 0) { problem = "Props block " + names[s] + "."; return false; }
+            if (seeds.Count == 0) return true;
+
+            var seen = new bool[blocked.Length];
+            var queue = new Queue<int>();
+            queue.Enqueue(seeds[0]);
+            seen[seeds[0]] = true;
+            while (queue.Count > 0)
+            {
+                var k = queue.Dequeue();
+                int x = k % nx, z = k / nx;
+                if (x > 0) Visit(k - 1);
+                if (x < nx - 1) Visit(k + 1);
+                if (z > 0) Visit(k - nx);
+                if (z < nz - 1) Visit(k + nx);
+            }
+            void Visit(int k)
+            {
+                if (seen[k] || blocked[k]) return;
+                seen[k] = true;
+                queue.Enqueue(k);
+            }
+            for (var s = 1; s < seeds.Count; s++)
+                if (!seen[seeds[s]]) { problem = "Props or inner walls cut " + names[s] + " off from " + names[0] + "."; return false; }
+            var per = (int)Math.Round(cs / step);
+            for (var j = 0; j < depth; j++)
+            for (var i = 0; i < width; i++)
+            {
+                var any = false;
+                for (var b = 0; b < per && !any; b++)
+                for (var a = 0; a < per && !any; a++)
+                    any = seen[i * per + a + (j * per + b) * nx];
+                if (!any) { problem = "Props or inner walls leave cell (" + (i + 1) + ", " + (j + 1) + ") unreachable."; return false; }
+            }
+            return true;
+        }
+
+        bool InOpening(float x, float z, float body)
+        {
+            var cs = MapGrid.CellSize;
+            var i = Math.Min(width - 1, Math.Max(0, (int)(x / cs)));
+            var j = Math.Min(depth - 1, Math.Max(0, (int)(z / cs)));
+            var lo = ModuleUnits.WallHalf + body;
+            if (z < lo && south[i] != ModuleEdge.Wall) return true;
+            if (z > DepthMetres - lo && north[i] != ModuleEdge.Wall) return true;
+            if (x < lo && west[j] != ModuleEdge.Wall) return true;
+            if (x > WidthMetres - lo && east[j] != ModuleEdge.Wall) return true;
+            return false;
         }
 
         static readonly int[][] Steps = { new[] { 1, 0 }, new[] { -1, 0 }, new[] { 0, 1 }, new[] { 0, -1 } };

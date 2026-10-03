@@ -1,5 +1,7 @@
 # 21 — Dating the domestic-furniture / pile assets
 
+> Superseded by `22_era_lock.md` (2026-10-02). This draft stopped before its tables were written.
+
 STATUS: IN PROGRESS (2026-10-02). Written incrementally.
 
 Scope: the domestic / pile assets in `Frontrooms3D/Tools/Blender/frontrooms_kit/assets/` (dresser_70s, rolling_cabinet, side_table_turned, ladder_chair, bar_stool, queen_anne_armchair, table_lamp_pleated, torchiere, pallet, crate, sofa3, club_chair, pouf, display_cabinet, bookcase, ply_cabinet, hutch, dresser_low, step_stool, nightstand2, urn, hat_stand, wall_clock, doorway_studs) plus the downloaded Poly Haven "Green Chair 01" (`Kit_BergereChair`).

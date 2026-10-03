@@ -1,0 +1,2866 @@
+{
+ "oversample": 2,
+ "padding": 16,
+ "assets": [
+  {
+   "name": "Kit_BarStool",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.5151,
+    0.76,
+    0.5151
+   ],
+   "boundsMin": [
+    -0.2576,
+    0,
+    -0.2576
+   ],
+   "boundsMax": [
+    0.2576,
+    0.76,
+    0.2576
+   ],
+   "triangles": 1600,
+   "trianglesLod1": 688,
+   "slots": [
+    "Prop_WoodWalnut",
+    "Prop_Chrome",
+    "Prop_Label"
+   ],
+   "tags": [
+    "pile"
+   ],
+   "pile": "Seat",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     290,
+     412
+    ],
+    "side": [
+     290,
+     412
+    ],
+    "top": [
+     290,
+     290
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_BergereChair",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.6731,
+    1.0585,
+    0.6644
+   ],
+   "boundsMin": [
+    -0.3365,
+    0,
+    -0.3322
+   ],
+   "boundsMax": [
+    0.3365,
+    1.0585,
+    0.3322
+   ],
+   "triangles": 4213,
+   "trianglesLod1": 1894,
+   "slots": [
+    "Prop_VelvetPink",
+    "Prop_WoodWalnut"
+   ],
+   "tags": [
+    "pile"
+   ],
+   "pile": "Seat",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     369,
+     562
+    ],
+    "side": [
+     365,
+     562
+    ],
+    "top": [
+     369,
+     365
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Binders",
+   "sheetPpm": 1000,
+   "pngPpm": 2000,
+   "size_m": [
+    0.3034,
+    0.2943,
+    0.2792
+   ],
+   "boundsMin": [
+    -0.1514,
+    0,
+    -0.139
+   ],
+   "boundsMax": [
+    0.152,
+    0.2943,
+    0.1402
+   ],
+   "triangles": 360,
+   "trianglesLod1": 0,
+   "slots": [
+    "Prop_Vinyl",
+    "Prop_Paper",
+    "Prop_Label",
+    "Prop_FabricTeal"
+   ],
+   "tags": [
+    "office",
+    "desk_top"
+   ],
+   "pile": "Small",
+   "palette": "office90s",
+   "placement": "DeskTop",
+   "px": {
+    "front": [
+     639,
+     621
+    ],
+    "side": [
+     591,
+     621
+    ],
+    "top": [
+     639,
+     591
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Bookcase",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.9,
+    1.8,
+    0.3
+   ],
+   "boundsMin": [
+    -0.45,
+    0,
+    -0.15
+   ],
+   "boundsMax": [
+    0.45,
+    1.8,
+    0.15
+   ],
+   "triangles": 554,
+   "trianglesLod1": 248,
+   "slots": [
+    "Prop_WoodOak",
+    "Prop_Chipboard",
+    "Prop_Label"
+   ],
+   "tags": [
+    "domestic",
+    "case_goods",
+    "pile",
+    "pile_piece",
+    "shelving"
+   ],
+   "pile": "Case",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     482,
+     932
+    ],
+    "side": [
+     182,
+     932
+    ],
+    "top": [
+     482,
+     182
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_CRTMonitor",
+   "sheetPpm": 500,
+   "pngPpm": 1000,
+   "size_m": [
+    0.372,
+    0.407,
+    0.524
+   ],
+   "boundsMin": [
+    -0.186,
+    0,
+    -0.311
+   ],
+   "boundsMax": [
+    0.186,
+    0.407,
+    0.213
+   ],
+   "triangles": 3096,
+   "trianglesLod1": 1456,
+   "slots": [
+    "Prop_PlasticBeige",
+    "Prop_PlasticBlack",
+    "Prop_ScreenCRT",
+    "Prop_PlasticGrey"
+   ],
+   "tags": [
+    "office",
+    "electronics",
+    "desk_top",
+    "pile_piece"
+   ],
+   "pile": "Screen",
+   "palette": "office90s",
+   "placement": "DeskTop",
+   "px": {
+    "front": [
+     404,
+     439
+    ],
+    "side": [
+     557,
+     439
+    ],
+    "top": [
+     404,
+     557
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_CRTTV",
+   "sheetPpm": 500,
+   "pngPpm": 1000,
+   "size_m": [
+    0.62,
+    0.5,
+    0.4885
+   ],
+   "boundsMin": [
+    -0.31,
+    0,
+    -0.241
+   ],
+   "boundsMax": [
+    0.31,
+    0.5,
+    0.2475
+   ],
+   "triangles": 1806,
+   "trianglesLod1": 818,
+   "slots": [
+    "Prop_PlasticBlack",
+    "Prop_Rubber",
+    "Prop_ScreenCRT",
+    "Prop_Label"
+   ],
+   "tags": [
+    "pile",
+    "electronics",
+    "screen",
+    "domestic"
+   ],
+   "pile": "Screen",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     652,
+     532
+    ],
+    "side": [
+     521,
+     532
+    ],
+    "top": [
+     652,
+     521
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_ClubChair",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.85,
+    0.82,
+    0.8614
+   ],
+   "boundsMin": [
+    -0.425,
+    0,
+    -0.4244
+   ],
+   "boundsMax": [
+    0.425,
+    0.82,
+    0.437
+   ],
+   "triangles": 3805,
+   "trianglesLod1": 1521,
+   "slots": [
+    "Prop_FabricTeal",
+    "Prop_WoodDark"
+   ],
+   "tags": [
+    "domestic",
+    "upholstery",
+    "seat",
+    "pile_piece"
+   ],
+   "pile": "Soft",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     457,
+     442
+    ],
+    "side": [
+     463,
+     442
+    ],
+    "top": [
+     457,
+     463
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_ClubChair_Oatmeal",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.85,
+    0.82,
+    0.8614
+   ],
+   "boundsMin": [
+    -0.425,
+    0,
+    -0.4244
+   ],
+   "boundsMax": [
+    0.425,
+    0.82,
+    0.437
+   ],
+   "triangles": 3805,
+   "trianglesLod1": 1521,
+   "slots": [
+    "Prop_FabricBeige",
+    "Prop_WoodDark"
+   ],
+   "tags": [
+    "domestic",
+    "upholstery",
+    "seat",
+    "pile_piece"
+   ],
+   "pile": "Soft",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     457,
+     442
+    ],
+    "side": [
+     463,
+     442
+    ],
+    "top": [
+     457,
+     463
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Copier",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.9227,
+    1.1407,
+    0.6651
+   ],
+   "boundsMin": [
+    -0.3146,
+    0.0003,
+    -0.3556
+   ],
+   "boundsMax": [
+    0.6081,
+    1.141,
+    0.3095
+   ],
+   "triangles": 2204,
+   "trianglesLod1": 924,
+   "slots": [
+    "Prop_PlasticGrey",
+    "Prop_PlasticBlack",
+    "Prop_PlasticBeige",
+    "Prop_CopierPanel"
+   ],
+   "tags": [
+    "office",
+    "wall_unit"
+   ],
+   "pile": "Case",
+   "palette": "office90s",
+   "placement": "Wall",
+   "px": {
+    "front": [
+     494,
+     603
+    ],
+    "side": [
+     365,
+     603
+    ],
+    "top": [
+     494,
+     365
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Crate",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.0008,
+    0.7504,
+    0.8008
+   ],
+   "boundsMin": [
+    -0.5004,
+    0,
+    -0.4004
+   ],
+   "boundsMax": [
+    0.5004,
+    0.7504,
+    0.4004
+   ],
+   "triangles": 696,
+   "trianglesLod1": 292,
+   "slots": [
+    "Prop_Plywood",
+    "Prop_PinePallet",
+    "Prop_SteelBlack",
+    "Prop_StencilBlack"
+   ],
+   "tags": [
+    "storage",
+    "crate",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Crate",
+   "palette": "storage",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     533,
+     408
+    ],
+    "side": [
+     433,
+     408
+    ],
+    "top": [
+     533,
+     433
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Credenza",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.52,
+    0.76,
+    0.4603
+   ],
+   "boundsMin": [
+    -0.76,
+    0,
+    -0.2303
+   ],
+   "boundsMax": [
+    0.76,
+    0.76,
+    0.23
+   ],
+   "triangles": 1108,
+   "trianglesLod1": 738,
+   "slots": [
+    "Prop_WoodCherry",
+    "Prop_Hardboard",
+    "Prop_Label",
+    "Prop_Brass"
+   ],
+   "tags": [
+    "office",
+    "domestic",
+    "case_goods",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Case",
+   "palette": "office90s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     792,
+     412
+    ],
+    "side": [
+     263,
+     412
+    ],
+    "top": [
+     792,
+     263
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_CubiclePanel",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.524,
+    1.52,
+    0.067
+   ],
+   "boundsMin": [
+    -0.762,
+    0,
+    -0.0335
+   ],
+   "boundsMax": [
+    0.762,
+    1.52,
+    0.0335
+   ],
+   "triangles": 456,
+   "trianglesLod1": 184,
+   "slots": [
+    "Prop_SteelPutty",
+    "Prop_PlasticBlack",
+    "Prop_FabricCubicle"
+   ],
+   "tags": [
+    "office",
+    "panel",
+    "office_cluster_only"
+   ],
+   "pile": "Case",
+   "palette": "office90s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     794,
+     792
+    ],
+    "side": [
+     66,
+     792
+    ],
+    "top": [
+     794,
+     66
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_CubiclePanelShort",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.762,
+    1.52,
+    0.067
+   ],
+   "boundsMin": [
+    -0.381,
+    0,
+    -0.0335
+   ],
+   "boundsMax": [
+    0.381,
+    1.52,
+    0.0335
+   ],
+   "triangles": 456,
+   "trianglesLod1": 184,
+   "slots": [
+    "Prop_SteelPutty",
+    "Prop_PlasticBlack",
+    "Prop_FabricCubicle"
+   ],
+   "tags": [
+    "office",
+    "panel"
+   ],
+   "pile": null,
+   "palette": null,
+   "placement": "Floor",
+   "px": {
+    "front": [
+     413,
+     792
+    ],
+    "side": [
+     66,
+     792
+    ],
+    "top": [
+     413,
+     66
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_CubiclePanelTall",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.524,
+    1.65,
+    0.067
+   ],
+   "boundsMin": [
+    -0.762,
+    0,
+    -0.0335
+   ],
+   "boundsMax": [
+    0.762,
+    1.65,
+    0.0335
+   ],
+   "triangles": 472,
+   "trianglesLod1": 184,
+   "slots": [
+    "Prop_SteelPutty",
+    "Prop_PlasticBlack",
+    "Prop_FabricCubicle"
+   ],
+   "tags": [
+    "office",
+    "panel",
+    "office_cluster_only"
+   ],
+   "pile": "Case",
+   "palette": "office90s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     794,
+     857
+    ],
+    "side": [
+     66,
+     857
+    ],
+    "top": [
+     794,
+     66
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_DeskPedestal",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.37,
+    0.76,
+    0.7172
+   ],
+   "boundsMin": [
+    -0.685,
+    0,
+    -0.355
+   ],
+   "boundsMax": [
+    0.685,
+    0.76,
+    0.3622
+   ],
+   "triangles": 1742,
+   "trianglesLod1": 696,
+   "slots": [
+    "Prop_WoodCherry",
+    "Prop_Backer",
+    "Prop_Brass"
+   ],
+   "tags": [
+    "office",
+    "desk",
+    "case_goods",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Table",
+   "palette": "office90s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     717,
+     412
+    ],
+    "side": [
+     391,
+     412
+    ],
+    "top": [
+     717,
+     391
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_DeskPhone",
+   "sheetPpm": 1000,
+   "pngPpm": 2000,
+   "size_m": [
+    0.201,
+    0.0872,
+    0.3245
+   ],
+   "boundsMin": [
+    -0.1005,
+    0,
+    -0.1923
+   ],
+   "boundsMax": [
+    0.1005,
+    0.0872,
+    0.1322
+   ],
+   "triangles": 966,
+   "trianglesLod1": 290,
+   "slots": [
+    "Prop_PlasticBeige",
+    "Prop_PlasticGrey",
+    "Prop_GlassCRT",
+    "Prop_PhoneKeys"
+   ],
+   "tags": [
+    "office",
+    "desk_top",
+    "pile_piece"
+   ],
+   "pile": "Small",
+   "palette": "office90s",
+   "placement": "DeskTop",
+   "px": {
+    "front": [
+     434,
+     207
+    ],
+    "side": [
+     682,
+     207
+    ],
+    "top": [
+     434,
+     682
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_DisplayCabinet",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.9,
+    1.8,
+    0.4
+   ],
+   "boundsMin": [
+    -0.45,
+    0,
+    -0.2
+   ],
+   "boundsMax": [
+    0.45,
+    1.8,
+    0.2
+   ],
+   "triangles": 1154,
+   "trianglesLod1": 460,
+   "slots": [
+    "Prop_WoodOak",
+    "Prop_Glass",
+    "Prop_Hardboard",
+    "Prop_Brass"
+   ],
+   "tags": [
+    "domestic",
+    "case_goods",
+    "pile",
+    "pile_piece",
+    "glass"
+   ],
+   "pile": "Case",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     482,
+     932
+    ],
+    "side": [
+     232,
+     932
+    ],
+    "top": [
+     482,
+     232
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_DoorwayStuds",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.2522,
+    2.327,
+    0.1416
+   ],
+   "boundsMin": [
+    -0.626,
+    0,
+    -0.07
+   ],
+   "boundsMax": [
+    0.6262,
+    2.327,
+    0.0716
+   ],
+   "triangles": 438,
+   "trianglesLod1": 182,
+   "slots": [
+    "Prop_Studs",
+    "Prop_TapeBlue"
+   ],
+   "tags": [
+    "arch",
+    "wall_decor"
+   ],
+   "pile": null,
+   "palette": null,
+   "placement": "Wall",
+   "px": {
+    "front": [
+     659,
+     1196
+    ],
+    "side": [
+     103,
+     1196
+    ],
+    "top": [
+     659,
+     103
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_DoorwayStuds140",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.5522,
+    2.327,
+    0.1425
+   ],
+   "boundsMin": [
+    -0.776,
+    0,
+    -0.07
+   ],
+   "boundsMax": [
+    0.7762,
+    2.327,
+    0.0725
+   ],
+   "triangles": 438,
+   "trianglesLod1": 182,
+   "slots": [
+    "Prop_Studs",
+    "Prop_TapeBlue"
+   ],
+   "tags": [
+    "arch",
+    "wall_decor"
+   ],
+   "pile": null,
+   "palette": null,
+   "placement": "Wall",
+   "px": {
+    "front": [
+     809,
+     1196
+    ],
+    "side": [
+     104,
+     1196
+    ],
+    "top": [
+     809,
+     104
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_DoorwayStuds180",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.9523,
+    2.327,
+    0.1446
+   ],
+   "boundsMin": [
+    -0.976,
+    0,
+    -0.07
+   ],
+   "boundsMax": [
+    0.9763,
+    2.327,
+    0.0746
+   ],
+   "triangles": 438,
+   "trianglesLod1": 182,
+   "slots": [
+    "Prop_Studs",
+    "Prop_TapeBlue"
+   ],
+   "tags": [
+    "arch",
+    "wall_decor"
+   ],
+   "pile": null,
+   "palette": null,
+   "placement": "Wall",
+   "px": {
+    "front": [
+     1009,
+     1196
+    ],
+    "side": [
+     105,
+     1196
+    ],
+    "top": [
+     1009,
+     105
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Dresser70s",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.86,
+    1.22,
+    0.4605
+   ],
+   "boundsMin": [
+    -0.43,
+    0,
+    -0.228
+   ],
+   "boundsMax": [
+    0.43,
+    1.22,
+    0.2325
+   ],
+   "triangles": 1614,
+   "trianglesLod1": 676,
+   "slots": [
+    "Prop_WoodTeak",
+    "Prop_Hardboard",
+    "Prop_Label",
+    "Prop_Brass"
+   ],
+   "tags": [
+    "domestic",
+    "case_goods",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Case",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     462,
+     642
+    ],
+    "side": [
+     263,
+     642
+    ],
+    "top": [
+     462,
+     263
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_DresserLow",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.4,
+    0.78,
+    0.4803
+   ],
+   "boundsMin": [
+    -0.7,
+    0,
+    -0.2403
+   ],
+   "boundsMax": [
+    0.7,
+    0.78,
+    0.24
+   ],
+   "triangles": 1588,
+   "trianglesLod1": 1106,
+   "slots": [
+    "Prop_WoodCherry",
+    "Prop_Hardboard",
+    "Prop_Label",
+    "Prop_Brass"
+   ],
+   "tags": [
+    "domestic",
+    "case_goods",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Case",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     732,
+     422
+    ],
+    "side": [
+     273,
+     422
+    ],
+    "top": [
+     732,
+     273
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_FilingCabinet",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.38,
+    1.32,
+    0.6602
+   ],
+   "boundsMin": [
+    -0.19,
+    0,
+    -0.33
+   ],
+   "boundsMax": [
+    0.19,
+    1.32,
+    0.3302
+   ],
+   "triangles": 1040,
+   "trianglesLod1": 446,
+   "slots": [
+    "Prop_SteelPutty",
+    "Prop_SteelBlack",
+    "Prop_Aluminium",
+    "Prop_Label"
+   ],
+   "tags": [
+    "office",
+    "wall_unit"
+   ],
+   "pile": "Case",
+   "palette": "office90s",
+   "placement": "Wall",
+   "px": {
+    "front": [
+     222,
+     692
+    ],
+    "side": [
+     363,
+     692
+    ],
+    "top": [
+     222,
+     363
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_HatStand",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.4467,
+    1.8012,
+    0.4467
+   ],
+   "boundsMin": [
+    -0.2233,
+    -0.0012,
+    -0.2233
+   ],
+   "boundsMax": [
+    0.2233,
+    1.8,
+    0.2233
+   ],
+   "triangles": 1218,
+   "trianglesLod1": 352,
+   "slots": [
+    "Prop_WoodDark"
+   ],
+   "tags": [
+    "domestic",
+    "office",
+    "coat_stand",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Tall",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     256,
+     933
+    ],
+    "side": [
+     256,
+     933
+    ],
+    "top": [
+     256,
+     256
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Hutch",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1,
+    1.9,
+    0.513
+   ],
+   "boundsMin": [
+    -0.5,
+    0,
+    -0.25
+   ],
+   "boundsMax": [
+    0.5,
+    1.9,
+    0.263
+   ],
+   "triangles": 1744,
+   "trianglesLod1": 696,
+   "slots": [
+    "Prop_WoodEbony",
+    "Prop_Brass",
+    "Prop_Glass"
+   ],
+   "tags": [
+    "domestic",
+    "case_goods",
+    "pile",
+    "pile_piece",
+    "glass"
+   ],
+   "pile": "Case",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     532,
+     982
+    ],
+    "side": [
+     289,
+     982
+    ],
+    "top": [
+     532,
+     289
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Hutch_Cherry",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1,
+    1.9,
+    0.513
+   ],
+   "boundsMin": [
+    -0.5,
+    0,
+    -0.25
+   ],
+   "boundsMax": [
+    0.5,
+    1.9,
+    0.263
+   ],
+   "triangles": 1744,
+   "trianglesLod1": 696,
+   "slots": [
+    "Prop_WoodCherry",
+    "Prop_Brass",
+    "Prop_Glass"
+   ],
+   "tags": [
+    "domestic",
+    "case_goods",
+    "pile",
+    "pile_piece",
+    "glass"
+   ],
+   "pile": "Case",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     532,
+     982
+    ],
+    "side": [
+     289,
+     982
+    ],
+    "top": [
+     532,
+     289
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_InteriorWindow",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    2.44,
+    1.22,
+    0.1207
+   ],
+   "boundsMin": [
+    -1.22,
+    0,
+    -0.06
+   ],
+   "boundsMax": [
+    1.22,
+    1.22,
+    0.0607
+   ],
+   "triangles": 114,
+   "trianglesLod1": 0,
+   "slots": [
+    "Prop_SteelBlack",
+    "Prop_GlassCRT"
+   ],
+   "tags": [
+    "office",
+    "wall_decor"
+   ],
+   "pile": null,
+   "palette": null,
+   "placement": "Wall",
+   "px": {
+    "front": [
+     1252,
+     642
+    ],
+    "side": [
+     93,
+     642
+    ],
+    "top": [
+     1252,
+     93
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Keyboard",
+   "sheetPpm": 1000,
+   "pngPpm": 2000,
+   "size_m": [
+    0.46,
+    0.0343,
+    0.2816
+   ],
+   "boundsMin": [
+    -0.23,
+    0,
+    -0.1869
+   ],
+   "boundsMax": [
+    0.23,
+    0.0343,
+    0.0947
+   ],
+   "triangles": 1306,
+   "trianglesLod1": 98,
+   "slots": [
+    "Prop_KeyboardKeys",
+    "Prop_PlasticBeige",
+    "Prop_PlasticGrey",
+    "Prop_PlasticBlack"
+   ],
+   "tags": [
+    "office",
+    "desk_top",
+    "pile_piece"
+   ],
+   "pile": "Small",
+   "palette": "office90s",
+   "placement": "DeskTop",
+   "px": {
+    "front": [
+     952,
+     101
+    ],
+    "side": [
+     596,
+     101
+    ],
+    "top": [
+     952,
+     596
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_LadderChair",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.45,
+    0.965,
+    0.499
+   ],
+   "boundsMin": [
+    -0.225,
+    0,
+    -0.283
+   ],
+   "boundsMax": [
+    0.225,
+    0.965,
+    0.216
+   ],
+   "triangles": 1778,
+   "trianglesLod1": 689,
+   "slots": [
+    "Prop_WoodOak"
+   ],
+   "tags": [
+    "pile"
+   ],
+   "pile": "Seat",
+   "palette": "hotel",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     257,
+     515
+    ],
+    "side": [
+     282,
+     515
+    ],
+    "top": [
+     257,
+     282
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Mouse",
+   "sheetPpm": 2000,
+   "pngPpm": 4000,
+   "size_m": [
+    0.22,
+    0.0375,
+    0.2622
+   ],
+   "boundsMin": [
+    -0.11,
+    0,
+    -0.1722
+   ],
+   "boundsMax": [
+    0.11,
+    0.0375,
+    0.09
+   ],
+   "triangles": 280,
+   "trianglesLod1": 0,
+   "slots": [
+    "Prop_FabricChair",
+    "Prop_PlasticBeige",
+    "Prop_PlasticBlack"
+   ],
+   "tags": [
+    "office",
+    "desk_top"
+   ],
+   "pile": null,
+   "palette": null,
+   "placement": "DeskTop",
+   "px": {
+    "front": [
+     912,
+     182
+    ],
+    "side": [
+     1081,
+     182
+    ],
+    "top": [
+     912,
+     1081
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Nightstand2",
+   "sheetPpm": 500,
+   "pngPpm": 1000,
+   "size_m": [
+    0.5,
+    0.6,
+    0.415
+   ],
+   "boundsMin": [
+    -0.25,
+    0,
+    -0.2
+   ],
+   "boundsMax": [
+    0.25,
+    0.6,
+    0.215
+   ],
+   "triangles": 894,
+   "trianglesLod1": 392,
+   "slots": [
+    "Prop_WoodOak",
+    "Prop_Hardboard",
+    "Prop_Brass"
+   ],
+   "tags": [
+    "domestic",
+    "case_goods",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Case",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     532,
+     632
+    ],
+    "side": [
+     447,
+     632
+    ],
+    "top": [
+     532,
+     447
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_OfficeDesk",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.524,
+    0.7412,
+    0.762
+   ],
+   "boundsMin": [
+    -0.762,
+    0,
+    -0.381
+   ],
+   "boundsMax": [
+    0.762,
+    0.7412,
+    0.381
+   ],
+   "triangles": 1366,
+   "trianglesLod1": 560,
+   "slots": [
+    "Prop_LaminateBeige",
+    "Prop_SteelBrown",
+    "Prop_SteelPutty"
+   ],
+   "tags": [
+    "office",
+    "workstation"
+   ],
+   "pile": "Table",
+   "palette": "office90s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     794,
+     403
+    ],
+    "side": [
+     413,
+     403
+    ],
+    "top": [
+     794,
+     413
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_PCDesktop",
+   "sheetPpm": 1000,
+   "pngPpm": 2000,
+   "size_m": [
+    0.42,
+    0.1409,
+    0.5035
+   ],
+   "boundsMin": [
+    -0.21,
+    0,
+    -0.287
+   ],
+   "boundsMax": [
+    0.21,
+    0.1409,
+    0.2165
+   ],
+   "triangles": 740,
+   "trianglesLod1": 270,
+   "slots": [
+    "Prop_PlasticBlack",
+    "Prop_SteelPutty",
+    "Prop_PlasticBeige"
+   ],
+   "tags": [
+    "office",
+    "electronics",
+    "desk_top",
+    "pile_piece"
+   ],
+   "pile": "Small",
+   "palette": "office90s",
+   "placement": "DeskTop",
+   "px": {
+    "front": [
+     872,
+     314
+    ],
+    "side": [
+     1039,
+     314
+    ],
+    "top": [
+     872,
+     1039
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Pallet",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.2057,
+    0.144,
+    1.0031
+   ],
+   "boundsMin": [
+    -0.6039,
+    0,
+    -0.5017
+   ],
+   "boundsMax": [
+    0.6018,
+    0.144,
+    0.5014
+   ],
+   "triangles": 994,
+   "trianglesLod1": 436,
+   "slots": [
+    "Prop_PinePallet",
+    "Prop_SteelBlack"
+   ],
+   "tags": [
+    "storage",
+    "pallet",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Crate",
+   "palette": "storage",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     635,
+     104
+    ],
+    "side": [
+     534,
+     104
+    ],
+    "top": [
+     635,
+     534
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_PanelPost",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.064,
+    1.52,
+    0.064
+   ],
+   "boundsMin": [
+    -0.032,
+    0,
+    -0.032
+   ],
+   "boundsMax": [
+    0.032,
+    1.52,
+    0.032
+   ],
+   "triangles": 108,
+   "trianglesLod1": 0,
+   "slots": [
+    "Prop_SteelPutty"
+   ],
+   "tags": [
+    "office",
+    "panel"
+   ],
+   "pile": null,
+   "palette": null,
+   "placement": "Floor",
+   "px": {
+    "front": [
+     64,
+     792
+    ],
+    "side": [
+     64,
+     792
+    ],
+    "top": [
+     64,
+     64
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_PanelPostTall",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.064,
+    1.65,
+    0.064
+   ],
+   "boundsMin": [
+    -0.032,
+    0,
+    -0.032
+   ],
+   "boundsMax": [
+    0.032,
+    1.65,
+    0.032
+   ],
+   "triangles": 108,
+   "trianglesLod1": 0,
+   "slots": [
+    "Prop_SteelPutty"
+   ],
+   "tags": [
+    "office",
+    "panel"
+   ],
+   "pile": null,
+   "palette": null,
+   "placement": "Floor",
+   "px": {
+    "front": [
+     64,
+     857
+    ],
+    "side": [
+     64,
+     857
+    ],
+    "top": [
+     64,
+     64
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_PaperStack",
+   "sheetPpm": 1000,
+   "pngPpm": 2000,
+   "size_m": [
+    0.3459,
+    0.0987,
+    0.3269
+   ],
+   "boundsMin": [
+    -0.178,
+    0,
+    -0.1749
+   ],
+   "boundsMax": [
+    0.1679,
+    0.0987,
+    0.1521
+   ],
+   "triangles": 286,
+   "trianglesLod1": 0,
+   "slots": [
+    "Prop_Paper",
+    "Prop_Cardboard",
+    "Prop_Label",
+    "Prop_SteelBlack"
+   ],
+   "tags": [
+    "office",
+    "desk_top"
+   ],
+   "pile": "Small",
+   "palette": "office90s",
+   "placement": "DeskTop",
+   "px": {
+    "front": [
+     724,
+     230
+    ],
+    "side": [
+     686,
+     230
+    ],
+    "top": [
+     724,
+     686
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_PlyCabinet",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.9063,
+    1.2,
+    0.4763
+   ],
+   "boundsMin": [
+    -0.4531,
+    0,
+    -0.2253
+   ],
+   "boundsMax": [
+    0.4531,
+    1.2,
+    0.251
+   ],
+   "triangles": 414,
+   "trianglesLod1": 0,
+   "slots": [
+    "Prop_Plywood",
+    "Prop_Chipboard",
+    "Prop_Chrome",
+    "Prop_Label"
+   ],
+   "tags": [
+    "storage",
+    "case_goods",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Case",
+   "palette": "storage",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     486,
+     632
+    ],
+    "side": [
+     271,
+     632
+    ],
+    "top": [
+     486,
+     271
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Pouf",
+   "sheetPpm": 500,
+   "pngPpm": 1000,
+   "size_m": [
+    0.5,
+    0.403,
+    0.5043
+   ],
+   "boundsMin": [
+    -0.25,
+    0,
+    -0.2529
+   ],
+   "boundsMax": [
+    0.25,
+    0.403,
+    0.2514
+   ],
+   "triangles": 766,
+   "trianglesLod1": 298,
+   "slots": [
+    "Prop_FabricNavy"
+   ],
+   "tags": [
+    "domestic",
+    "upholstery",
+    "pile_piece"
+   ],
+   "pile": "Small",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     532,
+     435
+    ],
+    "side": [
+     537,
+     435
+    ],
+    "top": [
+     532,
+     537
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_QueenAnneArmchair",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.6932,
+    1.0584,
+    0.7018
+   ],
+   "boundsMin": [
+    -0.3466,
+    0,
+    -0.3658
+   ],
+   "boundsMax": [
+    0.3466,
+    1.0584,
+    0.336
+   ],
+   "triangles": 4918,
+   "trianglesLod1": 1720,
+   "slots": [
+    "Prop_WoodWalnut",
+    "Prop_VelvetPink"
+   ],
+   "tags": [
+    "pile",
+    "seat",
+    "domestic"
+   ],
+   "pile": "Seat",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     379,
+     562
+    ],
+    "side": [
+     383,
+     562
+    ],
+    "top": [
+     379,
+     383
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_RollingCabinet",
+   "sheetPpm": 500,
+   "pngPpm": 1000,
+   "size_m": [
+    0.5,
+    0.62,
+    0.4865
+   ],
+   "boundsMin": [
+    -0.25,
+    0,
+    -0.23
+   ],
+   "boundsMax": [
+    0.25,
+    0.62,
+    0.2565
+   ],
+   "triangles": 892,
+   "trianglesLod1": 374,
+   "slots": [
+    "Prop_WoodCherry",
+    "Prop_Hardboard",
+    "Prop_Brass",
+    "Prop_Rubber"
+   ],
+   "tags": [
+    "domestic",
+    "case_goods",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Case",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     532,
+     652
+    ],
+    "side": [
+     519,
+     652
+    ],
+    "top": [
+     532,
+     519
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_SideTableTurned",
+   "sheetPpm": 500,
+   "pngPpm": 1000,
+   "size_m": [
+    0.46,
+    0.66,
+    0.46
+   ],
+   "boundsMin": [
+    -0.23,
+    0,
+    -0.23
+   ],
+   "boundsMax": [
+    0.23,
+    0.66,
+    0.23
+   ],
+   "triangles": 2688,
+   "trianglesLod1": 1102,
+   "slots": [
+    "Prop_WoodWalnut",
+    "Prop_Brass",
+    "Prop_Rubber"
+   ],
+   "tags": [
+    "domestic",
+    "table",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Table",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     492,
+     692
+    ],
+    "side": [
+     492,
+     692
+    ],
+    "top": [
+     492,
+     492
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Sofa3",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.9997,
+    0.8221,
+    0.908
+   ],
+   "boundsMin": [
+    -0.9998,
+    0,
+    -0.45
+   ],
+   "boundsMax": [
+    0.9998,
+    0.8221,
+    0.458
+   ],
+   "triangles": 5918,
+   "trianglesLod1": 2366,
+   "slots": [
+    "Prop_FabricBeige",
+    "Prop_WoodDark"
+   ],
+   "tags": [
+    "domestic",
+    "upholstery",
+    "seat",
+    "pile_piece"
+   ],
+   "pile": "Soft",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     1032,
+     444
+    ],
+    "side": [
+     486,
+     444
+    ],
+    "top": [
+     1032,
+     486
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Sofa3_Charcoal",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.9997,
+    0.8221,
+    0.908
+   ],
+   "boundsMin": [
+    -0.9998,
+    0,
+    -0.45
+   ],
+   "boundsMax": [
+    0.9998,
+    0.8221,
+    0.458
+   ],
+   "triangles": 5918,
+   "trianglesLod1": 2366,
+   "slots": [
+    "Prop_FabricCharcoal",
+    "Prop_WoodDark"
+   ],
+   "tags": [
+    "domestic",
+    "upholstery",
+    "seat",
+    "pile_piece"
+   ],
+   "pile": "Soft",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     1032,
+     444
+    ],
+    "side": [
+     486,
+     444
+    ],
+    "top": [
+     1032,
+     486
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Sofa3_Floral",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    1.9997,
+    0.8221,
+    0.908
+   ],
+   "boundsMin": [
+    -0.9998,
+    0,
+    -0.45
+   ],
+   "boundsMax": [
+    0.9998,
+    0.8221,
+    0.458
+   ],
+   "triangles": 5918,
+   "trianglesLod1": 2366,
+   "slots": [
+    "Prop_FabricFloral",
+    "Prop_WoodDark"
+   ],
+   "tags": [
+    "domestic",
+    "upholstery",
+    "seat",
+    "pile_piece"
+   ],
+   "pile": "Soft",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     1032,
+     444
+    ],
+    "side": [
+     486,
+     444
+    ],
+    "top": [
+     1032,
+     486
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_StepStool",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.4498,
+    1.0003,
+    0.4991
+   ],
+   "boundsMin": [
+    -0.2249,
+    -0.0003,
+    -0.2497
+   ],
+   "boundsMax": [
+    0.2249,
+    1,
+    0.2494
+   ],
+   "triangles": 696,
+   "trianglesLod1": 278,
+   "slots": [
+    "Prop_WoodOak"
+   ],
+   "tags": [
+    "domestic",
+    "seat",
+    "pile",
+    "pile_piece"
+   ],
+   "pile": "Seat",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     257,
+     533
+    ],
+    "side": [
+     282,
+     533
+    ],
+    "top": [
+     257,
+     282
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_TableLampPleated",
+   "sheetPpm": 500,
+   "pngPpm": 1000,
+   "size_m": [
+    0.38,
+    0.6211,
+    0.38
+   ],
+   "boundsMin": [
+    -0.19,
+    -0.0001,
+    -0.19
+   ],
+   "boundsMax": [
+    0.19,
+    0.621,
+    0.19
+   ],
+   "triangles": 1492,
+   "trianglesLod1": 626,
+   "slots": [
+    "Prop_Brass",
+    "Prop_CeramicGlaze",
+    "Prop_LampShade",
+    "Prop_PlasticBlack"
+   ],
+   "tags": [
+    "pile",
+    "lamp",
+    "domestic",
+    "table_top"
+   ],
+   "pile": "Tall",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     412,
+     654
+    ],
+    "side": [
+     412,
+     654
+    ],
+    "top": [
+     412,
+     412
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_TaskChair",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.6171,
+    0.9527,
+    0.6534
+   ],
+   "boundsMin": [
+    -0.3113,
+    0.0002,
+    -0.3558
+   ],
+   "boundsMax": [
+    0.3058,
+    0.9529,
+    0.2977
+   ],
+   "triangles": 4484,
+   "trianglesLod1": 1792,
+   "slots": [
+    "Prop_PlasticBlack",
+    "Prop_Chrome",
+    "Prop_FabricChair"
+   ],
+   "tags": [
+    "office",
+    "seat"
+   ],
+   "pile": "Seat",
+   "palette": "office90s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     341,
+     509
+    ],
+    "side": [
+     359,
+     509
+    ],
+    "top": [
+     341,
+     359
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Torchiere",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.362,
+    1.8525,
+    0.362
+   ],
+   "boundsMin": [
+    -0.181,
+    0,
+    -0.181
+   ],
+   "boundsMax": [
+    0.181,
+    1.8525,
+    0.181
+   ],
+   "triangles": 636,
+   "trianglesLod1": 267,
+   "slots": [
+    "Prop_SteelBlack",
+    "Prop_PlasticWhite"
+   ],
+   "tags": [
+    "pile",
+    "lamp",
+    "domestic"
+   ],
+   "pile": "Tall",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     213,
+     959
+    ],
+    "side": [
+     213,
+     959
+    ],
+    "top": [
+     213,
+     213
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_TrashBin",
+   "sheetPpm": 1000,
+   "pngPpm": 2000,
+   "size_m": [
+    0.3604,
+    0.38,
+    0.2604
+   ],
+   "boundsMin": [
+    -0.1802,
+    0,
+    -0.1302
+   ],
+   "boundsMax": [
+    0.1802,
+    0.38,
+    0.1302
+   ],
+   "triangles": 500,
+   "trianglesLod1": 0,
+   "slots": [
+    "Prop_PlasticGrey"
+   ],
+   "tags": [
+    "office"
+   ],
+   "pile": "Small",
+   "palette": "office90s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     753,
+     792
+    ],
+    "side": [
+     553,
+     792
+    ],
+    "top": [
+     753,
+     553
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_Urn",
+   "sheetPpm": 1000,
+   "pngPpm": 2000,
+   "size_m": [
+    0.2799,
+    0.38,
+    0.2756
+   ],
+   "boundsMin": [
+    -0.1399,
+    0,
+    -0.1378
+   ],
+   "boundsMax": [
+    0.1399,
+    0.38,
+    0.1378
+   ],
+   "triangles": 644,
+   "trianglesLod1": 270,
+   "slots": [
+    "Prop_Ceramic",
+    "Prop_Rubber"
+   ],
+   "tags": [
+    "domestic",
+    "decor",
+    "pile_piece"
+   ],
+   "pile": "Small",
+   "palette": "domestic70s",
+   "placement": "Floor",
+   "px": {
+    "front": [
+     592,
+     792
+    ],
+    "side": [
+     584,
+     792
+    ],
+    "top": [
+     592,
+     584
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_VendingMachine",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.91,
+    1.83,
+    0.917
+   ],
+   "boundsMin": [
+    -0.453,
+    0,
+    -0.4481
+   ],
+   "boundsMax": [
+    0.457,
+    1.83,
+    0.4689
+   ],
+   "triangles": 2432,
+   "trianglesLod1": 1020,
+   "slots": [
+    "Prop_SteelBlack",
+    "Prop_Glass",
+    "Prop_VendingFront"
+   ],
+   "tags": [
+    "office",
+    "wall_unit"
+   ],
+   "pile": "Case",
+   "palette": "office90s",
+   "placement": "Wall",
+   "px": {
+    "front": [
+     487,
+     947
+    ],
+    "side": [
+     491,
+     947
+    ],
+    "top": [
+     487,
+     491
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_WallClock",
+   "sheetPpm": 1000,
+   "pngPpm": 2000,
+   "size_m": [
+    0.32,
+    0.32,
+    0.0495
+   ],
+   "boundsMin": [
+    -0.16,
+    -0.16,
+    0
+   ],
+   "boundsMax": [
+    0.16,
+    0.16,
+    0.0495
+   ],
+   "triangles": 538,
+   "trianglesLod1": 0,
+   "slots": [
+    "Prop_PlasticBlack",
+    "Prop_PlasticWhite",
+    "Prop_PlasticRed",
+    "Prop_Glass"
+   ],
+   "tags": [
+    "office",
+    "wall_decor"
+   ],
+   "pile": null,
+   "palette": null,
+   "placement": "Wall",
+   "px": {
+    "front": [
+     672,
+     672
+    ],
+    "side": [
+     131,
+     672
+    ],
+    "top": [
+     672,
+     131
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  },
+  {
+   "name": "Kit_WaterCooler",
+   "sheetPpm": 250,
+   "pngPpm": 500,
+   "size_m": [
+    0.408,
+    1.3385,
+    0.3815
+   ],
+   "boundsMin": [
+    -0.245,
+    0,
+    -0.2115
+   ],
+   "boundsMax": [
+    0.163,
+    1.3385,
+    0.17
+   ],
+   "triangles": 2398,
+   "trianglesLod1": 1006,
+   "slots": [
+    "Prop_PlasticBlack",
+    "Prop_PlasticWhite",
+    "Prop_PlasticRed",
+    "Prop_BottleBlue"
+   ],
+   "tags": [
+    "office",
+    "wall_unit"
+   ],
+   "pile": "Tall",
+   "palette": "office90s",
+   "placement": "Wall",
+   "px": {
+    "front": [
+     236,
+     702
+    ],
+    "side": [
+     223,
+     702
+    ],
+    "top": [
+     236,
+     223
+    ],
+    "persp": [
+     1152,
+     864
+    ]
+   }
+  }
+ ],
+ "failed": []
+}

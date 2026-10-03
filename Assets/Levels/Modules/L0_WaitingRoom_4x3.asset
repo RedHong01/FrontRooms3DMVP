@@ -1,0 +1,72 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58cc46c43b38b46bea2553f1ea679bee, type: 3}
+  m_Name: L0_WaitingRoom_4x3
+  m_EditorClassIdentifier: Assembly-CSharp::FrontRoomsRoomModule
+  notes: 'Level 0: a waiting room cut in two by a partition with a doorway. Chairs
+    face nobody.'
+  data:
+    width: 4
+    depth: 3
+    height: 1
+    theme: 0
+    south: 00020000
+    north: 00000100
+    west: 000200
+    east: 000000
+    innerEast: 010100010102010100
+    innerNorth: 0101010101010101
+    columns: 1
+    customColumns: []
+    fill: 0
+    props:
+    - kit: Kit_LadderChair
+      x: 1.2
+      z: 8.638598
+      yaw: 180
+      y: 0
+      noCollider: 0
+    - kit: Kit_LadderChair
+      x: 1.8
+      z: 8.638598
+      yaw: 180
+      y: 0
+      noCollider: 0
+    - kit: Kit_LadderChair
+      x: 2.4
+      z: 8.638598
+      yaw: 180
+      y: 0
+      noCollider: 0
+    - kit: Kit_SideTableTurned
+      x: 3.2
+      z: 8.66
+      yaw: 180
+      y: 0
+      noCollider: 0
+    - kit: Kit_WallClock
+      x: 4.5
+      z: 8.86525
+      yaw: 180
+      y: 2.1
+      noCollider: 0
+    - kit: Kit_Torchiere
+      x: 0.29099998
+      z: 6.6
+      yaw: 90
+      y: 0
+      noCollider: 0
+    lamps: 000000000004000000000003
+    weight: 1
+    allowRotate: 1
+    minTier: 0
+    maxTier: 4

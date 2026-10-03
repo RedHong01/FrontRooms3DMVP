@@ -1,4 +1,4 @@
-"""Black 21-inch CRT television, c. 1993-99 (the living-room / motel set:
+"""Black 21-inch CRT television, c. 1987-99 (the living-room / motel set:
 black textured cabinet, flat-square tube behind a rounded bezel, slotted
 speaker grilles either side of the tube, a chin with power button, IR
 window, silver nameplate and a silver control strip with six keys, a

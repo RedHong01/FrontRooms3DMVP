@@ -30,10 +30,11 @@ public sealed class FrontRoomsMapWalker : MonoBehaviour
     float flashUntil;
     GUIStyle large, meta, center;
 
-    public static FrontRoomsMapWalker Spawn(FrontRoomsMapWorld world, Vector3 position)
+    public static FrontRoomsMapWalker Spawn(FrontRoomsMapWorld world, Vector3 position, float yaw = 0f)
     {
         var go = new GameObject("Map test player");
         go.transform.position = position;
+        go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
         var body = go.AddComponent<CharacterController>();
         body.height = 1.75f;
         body.radius = .3f;
@@ -54,6 +55,7 @@ public sealed class FrontRoomsMapWalker : MonoBehaviour
         cameraObject.AddComponent<AudioListener>();
 
         var walker = go.AddComponent<FrontRoomsMapWalker>();
+        walker.yaw = yaw;
         walker.world = world;
         walker.body = body;
         walker.view = view;

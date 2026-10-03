@@ -1,5 +1,7 @@
 # 21 — Dating the office-furniture assets
 
+> Superseded by `22_era_lock.md` (2026-10-02). This draft stopped before its tables were written.
+
 Status: IN PROGRESS (written incrementally). Date: 2026-10-02.
 
 Scope: office_desk, cubicle_panel (+short/tall, panel_post/+tall), task_chair, filing_cabinet, water_cooler, vending_machine, trash_bin, paper_stack, binders, interior_window, credenza, desk_pedestal (modules in `Tools/Blender/frontrooms_kit/assets/`).

@@ -66,14 +66,14 @@
   0.40700000524520874,
   0.21299999952316284
  ],
- "triangles": 3032,
+ "triangles": 3096,
  "slots": [
   "Prop_PlasticBeige",
   "Prop_PlasticBlack",
   "Prop_ScreenCRT",
   "Prop_PlasticGrey"
  ],
- "trianglesLod1": 1392,
+ "trianglesLod1": 1456,
  "frontAxis": "+Z",
  "footprintCentre": [
   -0.0,

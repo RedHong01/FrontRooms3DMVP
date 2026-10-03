@@ -34,6 +34,13 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     Transform hunter;
     [SerializeField, Tooltip("When the Relay is released, how it listens, hunts, searches, chases and breaks doors.")]
     FrontRoomsHunterTuning hunterTuning = new FrontRoomsHunterTuning();
+    /// <summary>A map run began (after the noclip): the map and the Relay exist. For listeners such as the sound layer.</summary>
+    public static event Action<FrontRoomsMapWorld, FrontRoomsMapHunter> MapRunStarted;
+    /// <summary>The map run is torn down (restart reloads the scene, or Play stops).</summary>
+    public static event Action MapRunEnded;
+    /// <summary>The player started climbing through a broken window, at its opening.</summary>
+    public static event Action<Vector3> PlayerClimbed;
+
     [SerializeField, Tooltip("The Level 0 maze's numbers: generation, run seed, streaming, light budget, dressing (Assets/Levels/FrontRoomsLevel0.asset). Empty: the code defaults.")]
     FrontRoomsLevelProfile levelProfile;
     FrontRoomsRelayRig hunterRig;
@@ -555,6 +562,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         mapPlay = true;
         SetPhase(Phase.Playing);
         Event("start", "map seed " + runSeed);
+        MapRunStarted?.Invoke(map, relay);
         Log("NOCLIP · Level 0 maze, seed " + runSeed + " · " + map.BuiltChunkCount + " chunks built");
     }
 
@@ -681,6 +689,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             climbTo.y = feet.y;
             climbTime = 0f;
             FoleyFootstep(Flat(feet), FrontRoomsFoleyActor.Player, FrontRoomsFoleySurface.Carpet, false, .3f);
+            PlayerClimbed?.Invoke(center);
             return true;
         }
         return false;
@@ -1334,6 +1343,11 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     }
     void Flash(string message, float duration = 3f) { flash = message; flashTime = duration; }
     void Event(string kind, string detail) { events.Add(elapsed.ToString("0.000", CultureInfo.InvariantCulture) + "," + kind + ",\"" + detail.Replace("\"", "\"\"") + "\"," + RelayDistance().ToString("0.00", CultureInfo.InvariantCulture)); }
+    void OnDestroy()
+    {
+        if (map != null) MapRunEnded?.Invoke();
+    }
+
     void End()
     {
         if (phase != Phase.Playing) return;
@@ -1362,7 +1376,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     public const string AutopilotDoneFile = "Temp/frontrooms-autopilot-done.txt";
     const float AutopilotPlaySeconds = 75f;
     static readonly GridCoord[] AutoSteps = { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
-    bool autopilot, autoFinished, autoRelayShot;
+    bool autopilot, autoFinished, autoRelayShot, autoOfficeShot;
+    float autoOfficeCheckAt;
     float autoClock, autoPlayClock, autoNextShot, autoStuckClock, autoDistance, autoReleaseTime = -1f, autoMinRelay = float.MaxValue;
     int autoShots, autoFrames, autoErrors, autoRoutes, autoDoorsOpened, autoMaxChunks;
     Vector3 autoLastPosition;
@@ -1487,6 +1502,16 @@ public sealed class FrontRooms3DGame : MonoBehaviour
                 }
             }
         }
+        // The first time the walk is in a dressed Office room: look round it (four views), for the furniture.
+        if (!autoOfficeShot && playerRoot != null && autoPlayClock >= autoOfficeCheckAt && map.ZoneOf(map.CellOf(playerRoot.position)).theme == ZoneTheme.Office)
+        {
+            autoOfficeCheckAt = autoPlayClock + .5f;
+            if (OfficeDressingNear(playerRoot.position, 4.5f))
+            {
+                autoOfficeShot = true;
+                AutopilotLookAround("office");
+            }
+        }
         if (autoPlayClock > .6f && autoPlayClock >= autoNextShot)
         {
             autoNextShot = autoPlayClock + 9f;
@@ -1582,6 +1607,34 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     {
         if (cam == null) return;
         AutopilotRender(cam, name);
+    }
+
+    bool OfficeDressingNear(Vector3 point, float radius)
+    {
+        // Dressing roots sit directly under the chunk roots, which sit directly under the map.
+        foreach (Transform chunk in map.transform)
+            foreach (Transform t in chunk)
+                if (t.name == "office dressing")
+                    foreach (var r in t.GetComponentsInChildren<Renderer>())
+                        if ((r.bounds.center - point).sqrMagnitude < radius * radius) return true;
+        return false;
+    }
+
+    /// <summary>Four views from the player's eye, a quarter turn apart, level.</summary>
+    void AutopilotLookAround(string label)
+    {
+        if (cam == null) return;
+        var go = new GameObject("AUTOPILOT / look-around camera");
+        var shot = go.AddComponent<Camera>();
+        shot.CopyFrom(cam);
+        shot.enabled = false;
+        go.transform.position = cam.transform.position;
+        for (var i = 0; i < 4; i++)
+        {
+            go.transform.rotation = Quaternion.Euler(6f, yaw + i * 90f, 0f);
+            AutopilotRender(shot, (autoShots < 10 ? "0" : "") + autoShots + "_" + label + "_" + i * 90);
+        }
+        Destroy(go);
     }
 
     /// <summary>A third-person look at the Relay from behind the player's side of it, to check the rig is placed and animating.</summary>

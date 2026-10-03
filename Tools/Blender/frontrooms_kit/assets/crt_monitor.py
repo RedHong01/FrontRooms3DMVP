@@ -1,5 +1,5 @@
-"""Beige 15" CRT monitor, c. 1994-97 (the generic office tube: tilt/swivel
-plinth, thick lower bezel with buttons, tapered tube housing, rear vents).
+"""Beige 15" CRT monitor, c. 1987-96 (the generic office VGA tube: tilt/swivel
+plinth, thick lower bezel with thumbwheels, tapered tube housing, rear vents).
 
 Real-world reference size: 0.37 m wide, 0.40 m tall on its plinth, 0.40 m
 deep. Sits on a desk or on a desktop PC case (origin = underside of plinth).
@@ -42,12 +42,15 @@ def build(kit):
     kit.box((opening_w + 0.004, 0.02, opening_h + 0.004), (0, -0.168, opening_cz), BLACK, bevel=0.0, name="tube surround")
     kit.bulged_panel(opening_w - 0.002, opening_h - 0.002, 0.012, (0, -0.183, opening_cz), "Prop_ScreenCRT", name="screen glass")
 
-    # Chin details: power button with its recess, adjust buttons, badge.
+    # Chin details: power button with its recess, two knurled brightness/contrast
+    # thumbwheels (push-button OSDs are c. 1993+; era lock = 1990), badge.
     chin_z = casing_bottom + chin * 0.5
     kit.box((0.034, 0.006, 0.020), (0.135, -0.2055, chin_z), DARK, bevel=0.002, name="power recess")
     kit.box((0.026, 0.008, 0.013), (0.135, -0.209, chin_z), BEIGE, bevel=0.003, name="power button")
-    for k in range(4):
-        kit.box((0.014, 0.006, 0.008), (-0.14 + k * 0.022, -0.2075, chin_z), DARK, bevel=0.002, name="adjust button")
+    for k in range(2):
+        wx = -0.135 + k * 0.030
+        kit.box((0.022, 0.008, 0.024), (wx, -0.2050, chin_z), DARK, bevel=0.002, name="thumbwheel slot")
+        kit.cylinder(0.0105, 0.007, (wx, -0.2025, chin_z), DARK, verts=18, rot=(0, 90, 0), bevel=0.001, segments=1, name="thumbwheel")
     kit.box((0.06, 0.003, 0.010), (0, -0.2065, chin_z + 0.004), DARK, bevel=0.001, name="badge")
 
     # Power and video cables drooping off the back to the desk.

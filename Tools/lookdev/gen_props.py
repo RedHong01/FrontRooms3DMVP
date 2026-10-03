@@ -245,7 +245,7 @@ def keyboard_keys():
 # Prop_Label is a 4 x 4 atlas of 256 px cells (kitlib Kit.atlas_cell(i, 4, 4),
 # row-major from the top-left):
 #   0-3   typed drawer cards  A-C, D-F, G-K, L-P
-#   4-7   typed cards         1994, 1995, PAYROLL, MISC
+#   4-7   typed cards         1989, 1990, PAYROLL, MISC (era lock: no printed date after 1990)
 #   8-9   binder spine inserts (portrait, drawn in the cell's middle 40 %)
 #   10    folder tab strip (wide, drawn in the cell's middle band)
 #   11    furniture maker's paper label (stamped model / date)
@@ -267,7 +267,7 @@ def labels():
         dr.line([x + 20, y + 150, x + C - 20, y + 150], fill=(170, 160, 200), width=2)
         tb = dr.textbbox((0, 0), text, font=mono)
         dr.text((x + (C - (tb[2] - tb[0])) / 2, y + 100), text, font=mono, fill=ink)
-    for i, t in enumerate(["A - C", "D - F", "G - K", "L - P", "1994", "1995", "PAYROLL", "MISC"]):
+    for i, t in enumerate(["A - C", "D - F", "G - K", "L - P", "1989", "1990", "PAYROLL", "MISC"]):
         card(i, t)
     for i, t in ((8, "Q3 REPORTS"), (9, "MINUTES")):
         x, y = cell(i)

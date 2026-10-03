@@ -1,4 +1,4 @@
-"""Beige horizontal desktop PC, c. 1993-97 (the slimline office box the CRT
+"""Beige horizontal desktop PC, c. 1987-95 (the slimline office box the CRT
 sits on: Compaq Deskpro / Dell OptiPlex / IBM PC 300 desktop family).
 
 Real-world reference size (synthesis §5.3): 0.42 m wide, 0.42 m deep,

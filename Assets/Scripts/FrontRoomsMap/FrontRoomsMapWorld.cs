@@ -62,6 +62,12 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     public event Action<Vector3> DoorBroken;
     /// <summary>The player picked up a zone key.</summary>
     public event Action<GridCoord> KeyTaken;
+    /// <summary>Every frame E is held on glass: the window's position and how far it is to breaking (0-1).</summary>
+    public event Action<Vector3, float> GlassHold;
+    /// <summary>E was let go before the glass broke.</summary>
+    public event Action<Vector3> GlassHoldReleased;
+    /// <summary>The player tried a door that needs this zone's key.</summary>
+    public event Action<Vector3> DoorLocked;
 
     /// <summary>What lies between two side-by-side cells right now.</summary>
     public enum Passage { Open, Wall, ClosedDoor, Glass }
@@ -108,6 +114,8 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     sealed class BuiltChunk
     {
         public GameObject root;
+        // Meshes this map generated for the chunk (shell blocks, collision): freed with it.
+        public readonly List<Mesh> meshes = new List<Mesh>();
         public readonly List<Fixture> fixtures = new List<Fixture>();
         public readonly List<Door> doors = new List<Door>();
         public readonly List<Window> windows = new List<Window>();
@@ -190,6 +198,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     // Modules placed by hand (the Level Designer preview), stamped whenever their chunk is generated.
     readonly List<(RoomModuleData module, GridCoord chunk, int x, int y)> placedModules = new List<(RoomModuleData, GridCoord, int, int)>();
     Vector3? spawnOverride;
+    float spawnYaw;
     readonly List<GridCoord> scratch = new List<GridCoord>();
     readonly List<Door> movingDoors = new List<Door>();
     Transform player;
@@ -223,7 +232,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         BuildMaterials();
         if (!standalone || !Application.isPlaying) return;
         ApplyRenderSettings();
-        Begin(FrontRoomsMapWalker.Spawn(this, SpawnWorldPosition).transform);
+        Begin(FrontRoomsMapWalker.Spawn(this, SpawnWorldPosition, transform.eulerAngles.y + spawnYaw).transform);
     }
 
     /// <summary>
@@ -288,6 +297,35 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         return transform.TransformPoint(SpawnPoint() + Vector3.up * ModuleUnits.PlayerEye);
     }
 
+    void FreeMeshes(BuiltChunk chunk)
+    {
+        foreach (var mesh in chunk.meshes) Kill(mesh);
+        chunk.meshes.Clear();
+    }
+
+    // Materials this map made for itself (lens, key, glass, fallbacks): freed with it.
+    readonly List<Material> ownedMaterials = new List<Material>();
+
+    Material Own(Material material)
+    {
+        if (material != null) ownedMaterials.Add(material);
+        return material;
+    }
+
+    void OnDestroy() => Release();
+
+    /// <summary>
+    /// Free the meshes and materials this map made. Runs on destroy in Play
+    /// mode; edit-mode tools (the Level Designer preview) call it before
+    /// DestroyImmediate, since edit mode never calls OnDestroy here.
+    /// </summary>
+    public void Release()
+    {
+        foreach (var chunk in built.Values) FreeMeshes(chunk);
+        foreach (var material in ownedMaterials) Kill(material);
+        ownedMaterials.Clear();
+    }
+
     void CreateCache()
     {
         Cache = new FrontRoomsMapCache(settings);
@@ -306,7 +344,11 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     }
 
     /// <summary>Start the walker or capture eye here (map space) instead of the middle of chunk (0, 0).</summary>
-    public void OverrideSpawn(Vector3 mapPosition) => spawnOverride = mapPosition;
+    public void OverrideSpawn(Vector3 mapPosition, float yaw = 0f)
+    {
+        spawnOverride = mapPosition;
+        spawnYaw = yaw;
+    }
 
     static void Kill(UnityEngine.Object target)
     {
@@ -418,6 +460,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             windowByCollider.Remove(c);
             shellColliders.Remove(c);
         }
+        FreeMeshes(chunk);
         Kill(chunk.root);
         built.Remove(coord);
         droppedAt[coord] = Time.time;
@@ -493,12 +536,17 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             var ceiling = HeightOfClass(b % heights);
             var go = new GameObject("Block " + b / heights + " · " + ceiling.ToString("0.0") + " m");
             go.transform.SetParent(chunk.root.transform, false);
-            foreach (var pair in builders[b]) AddRenderer(go, pair.Key, pair.Value, chunk.root.transform.position.y + ceiling);
+            foreach (var pair in builders[b])
+            {
+                var mesh = AddRenderer(go, pair.Key, pair.Value, chunk.root.transform.position.y + ceiling);
+                if (mesh != null) chunk.meshes.Add(mesh);
+            }
         }
         var col = new GameObject("Collision");
         col.transform.SetParent(chunk.root.transform, false);
         var shell = col.AddComponent<MeshCollider>();
         shell.sharedMesh = collision.ToMesh("Chunk collision " + coord);
+        chunk.meshes.Add(shell.sharedMesh);
         shellColliders.Add(shell);
 
         if (data.hasKey && !keysHeld.Contains(data.ownZone.id))
@@ -526,12 +574,13 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     /// A shell renderer. <paramref name="ceilingWorldY"/> is the world height
     /// of its ceiling plane: the surface shader grimes the 1.6 m under it.
     /// </summary>
-    void AddRenderer(GameObject parent, Material material, MeshBuilder builder, float ceilingWorldY)
+    Mesh AddRenderer(GameObject parent, Material material, MeshBuilder builder, float ceilingWorldY)
     {
-        if (builder.vertices.Count == 0 || material == null) return;
+        if (builder.vertices.Count == 0 || material == null) return null;
         var go = new GameObject(material.name);
         go.transform.SetParent(parent.transform, false);
-        go.AddComponent<MeshFilter>().sharedMesh = builder.ToMesh(parent.name + " " + material.name);
+        var mesh = builder.ToMesh(parent.name + " " + material.name);
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
         var r = go.AddComponent<MeshRenderer>();
         r.sharedMaterial = material;
         r.shadowCastingMode = ShadowCastingMode.On;
@@ -541,6 +590,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             props.SetFloat(CeilingHeightId, ceilingWorldY);
             r.SetPropertyBlock(props);
         }
+        return mesh;
     }
 
     delegate MeshBuilder BuilderFn(int blockIndex, Material material);
@@ -967,7 +1017,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             // A module's own props go in first; the kits fill round them.
             var module = data.ModuleOf(r);
             var obstacles = new List<Rect>(columns);
-            if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module));
+            if (module != null) obstacles.AddRange(PlaceProps(chunk, room, module, clear));
             var fill = module == null ? ModuleFill.Auto : module.fill;
             var office = fill == ModuleFill.Office || (fill == ModuleFill.Auto && zone.theme == ZoneTheme.Office);
             if (office)
@@ -1001,7 +1051,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     /// A module's props, placed with the visual chat's kit library at their
     /// module positions. Returns their footprints in chunk-local metres.
     /// </summary>
-    List<Rect> PlaceProps(BuiltChunk chunk, CellRect room, RoomModuleData module)
+    List<Rect> PlaceProps(BuiltChunk chunk, CellRect room, RoomModuleData module, List<Rect> clear)
     {
         var footprints = new List<Rect>();
         if (module.props == null || module.props.Length == 0) return footprints;
@@ -1012,13 +1062,33 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         foreach (var p in module.props)
         {
             if (string.IsNullOrEmpty(p.kit)) continue;
-            if (FrontRoomsKitLibrary.Spawn(p.kit, root, new Vector3(ox + p.x, 0f, oz + p.z), p.yaw, null, !p.noCollider, p.kit) == null) continue;
             var f = KitFootprint(p.kit);
-            if (f == null) continue;
-            RoomModuleData.Bounds(p, f, out var x0, out var z0, out var x1, out var z1);
-            footprints.Add(Rect.MinMaxRect(ox + x0, oz + z0, ox + x1, oz + z1));
+            var onFloor = p.y <= ModuleUnits.RelayHeight;
+            var rect = default(Rect);
+            if (f != null)
+            {
+                RoomModuleData.Bounds(p, f, out var x0, out var z0, out var x1, out var z1);
+                rect = Rect.MinMaxRect(ox + x0, oz + z0, ox + x1, oz + z1);
+                // The map may open a wall the module drew (a chunk-border gate, a reconnection): never block it.
+                if (onFloor && !p.noCollider && clear.Exists(s => s.Overlaps(rect)))
+                {
+                    Debug.LogWarning("[FrontRoomsMap] Module prop " + p.kit + " at (" + p.x.ToString("0.00") + ", " + p.z.ToString("0.00") + ") would block an opening of chunk " + chunk.root.name + "; left out.");
+                    continue;
+                }
+            }
+            if (FrontRoomsKitLibrary.Spawn(p.kit, root, new Vector3(ox + p.x, p.y, oz + p.z), p.yaw, null, !p.noCollider, p.kit) == null) continue;
+            // Wall pieces above head height leave the floor free.
+            if (f == null || !onFloor) continue;
+            footprints.Add(rect);
         }
         return footprints;
+    }
+
+    static float Distance(Rect r, Vector2 p)
+    {
+        var dx = Mathf.Max(r.xMin - p.x, 0f, p.x - r.xMax);
+        var dy = Mathf.Max(r.yMin - p.y, 0f, p.y - r.yMax);
+        return Mathf.Sqrt(dx * dx + dy * dy);
     }
 
     /// <summary>A kit asset's footprint about its pivot and its height: (min x, min z, max x, max z, height), or null.</summary>
@@ -1170,7 +1240,11 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     public void Use(Collider c)
     {
         if (c == null || !doorByCollider.TryGetValue(c, out var door) || door.broken) return;
-        if (!door.open && doorsNeedKeys && !HasKeyHere()) return;
+        if (!door.open && doorsNeedKeys && !HasKeyHere())
+        {
+            DoorLocked?.Invoke(door.position);
+            return;
+        }
         if (!door.open && player != null) SwingAway(door, player.position);
         SetDoor(door, !door.open);
     }
@@ -1207,6 +1281,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         if (c == null || !windowByCollider.TryGetValue(c, out var window)) return false;
         window.hold += dt;
         progress = Mathf.Clamp01(window.hold / 1f);
+        GlassHold?.Invoke(window.position, progress);
         if (window.hold < 1f) return false;
         brokenWindows.Add(window.edge);
         windowByCollider.Remove(c);
@@ -1217,7 +1292,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
 
     public void ReleaseHold(Collider c)
     {
-        if (c != null && windowByCollider.TryGetValue(c, out var window)) window.hold = 0f;
+        if (c == null || !windowByCollider.TryGetValue(c, out var window)) return;
+        if (window.hold > 0f) GlassHoldReleased?.Invoke(window.position);
+        window.hold = 0f;
     }
 
     bool HasKeyHere() => player != null && keysHeld.Contains(Cache.ZoneOf(CellOf(player.position)).id);
@@ -1268,7 +1345,9 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
     /// </summary>
     void BuildMaterials()
     {
-        var level0Lens = FrontRoomsSurfaces.Lit("Map / Level 0 lens", new Color(1f, .98f, .92f), .1f, 0f, new Color(1f, .96f, .84f) * 2.6f);
+        foreach (var material in ownedMaterials) Kill(material);
+        ownedMaterials.Clear();
+        var level0Lens = Own(FrontRoomsSurfaces.Lit("Map / Level 0 lens", new Color(1f, .98f, .92f), .1f, 0f, new Color(1f, .96f, .84f) * 2.6f));
         level0 = new ThemeMaterials
         {
             wall = FrontRoomsSurfaces.Room(RoomRule.Lobby, FrontRoomsSurfaces.Slot.Wall),
@@ -1286,16 +1365,16 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             lens = officeLens != null && officeLens.HasProperty("_EmissionColor") ? officeLens : level0Lens,
             lampIntensity = 5.5f,
         };
-        if (level0.wall == null) level0.wall = FrontRoomsSurfaces.Lit("Map / wall fallback", new Color(.80f, .74f, .48f), .06f);
-        if (level0.floor == null) level0.floor = FrontRoomsSurfaces.Lit("Map / floor fallback", new Color(.55f, .49f, .30f), 0f);
-        if (level0.ceiling == null) level0.ceiling = FrontRoomsSurfaces.Lit("Map / ceiling fallback", new Color(.86f, .83f, .70f), .02f);
+        if (level0.wall == null) level0.wall = Own(FrontRoomsSurfaces.Lit("Map / wall fallback", new Color(.80f, .74f, .48f), .06f));
+        if (level0.floor == null) level0.floor = Own(FrontRoomsSurfaces.Lit("Map / floor fallback", new Color(.55f, .49f, .30f), 0f));
+        if (level0.ceiling == null) level0.ceiling = Own(FrontRoomsSurfaces.Lit("Map / ceiling fallback", new Color(.86f, .83f, .70f), .02f));
         if (office.wall == null) office.wall = level0.wall;
         if (office.floor == null) office.floor = level0.floor;
         if (office.ceiling == null) office.ceiling = level0.ceiling;
-        trim = FrontRoomsSurfaces.CoveBase ?? FrontRoomsSurfaces.Lit("Map test / frame", new Color(.55f, .50f, .36f), .2f);
-        doorLeaf = FrontRoomsSurfaces.DoorVeneer ?? FrontRoomsSurfaces.Lit("Map test / door", new Color(.72f, .66f, .50f), .25f);
-        keyGlow = FrontRoomsSurfaces.Lit("Map test / key", new Color(.96f, .87f, .23f), .4f, 0f, new Color(.96f, .87f, .23f) * .8f);
-        glass = TransparentGlass("Map test / glass", new Color(.75f, .85f, .88f, .28f));
+        trim = FrontRoomsSurfaces.CoveBase ?? Own(FrontRoomsSurfaces.Lit("Map test / frame", new Color(.55f, .50f, .36f), .2f));
+        doorLeaf = FrontRoomsSurfaces.DoorVeneer ?? Own(FrontRoomsSurfaces.Lit("Map test / door", new Color(.72f, .66f, .50f), .25f));
+        keyGlow = Own(FrontRoomsSurfaces.Lit("Map test / key", new Color(.96f, .87f, .23f), .4f, 0f, new Color(.96f, .87f, .23f) * .8f));
+        glass = Own(TransparentGlass("Map test / glass", new Color(.75f, .85f, .88f, .28f)));
     }
 
     static Material TransparentGlass(string name, Color color)

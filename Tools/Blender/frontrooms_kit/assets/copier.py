@@ -1,26 +1,35 @@
-"""Floor-standing office photocopier, c. 1992-98 (Canon NP / Xerox 50xx class:
-an A4/A3 copier body with an in-body exit tray, on its two-cassette paper
-pedestal with swivel casters).
+"""Floor-standing office photocopier, c. 1986-95 (Canon NP / Xerox 50xx class:
+an analog A4/A3 copier body on its two-cassette paper pedestal with swivel
+casters, delivering to a side exit tray on the left flank).
+
+Era fix (2026-10-02, research/office_and_film/22_era_lock.md): the body
+used to carry an in-body exit, a cavity between engine and scanner, which is a
+mid/late-'90s digital-copier layout. A 1990 analog copier closes that gap and
+delivers sideways onto a sloped tray, so the engine is one block up to the
+scanner and the copies sit on the side tray.
 
 Construction, bottom to top: four swivel casters under a grey plinth; a beige
 pedestal with two paper cassettes (grey grips with a dark finger slot,
 paper-level windows, tray-number cards); a grey accent band; the engine body with its
-own cassette and a drop-down front door (pulls, louvre); the in-body exit: a
-70 mm cavity between the engine top and the scanner, open to the front and
-the right (+X) side, walled by the left column and a rear cover, with a grey
-exit tray, the exit slot and roller on the column and a stack of A4 copies;
-then the scanner unit, whose front is the sloped control console carrying the
-CopierPanel decal (4:1 art: LCD, keypad, START), and a grey document cover
-over the platen with rear hinges. Key counter, power switch and the jam-access
-side door on the right flank, cooling louvres and a carrying grip on the
-left, vents, a guarded fan and the power cord on the back.
+own cassette and a drop-down front door (pulls, louvre) running up to the
+scanner seam; then the scanner unit, whose front is the sloped control
+console carrying the CopierPanel decal (4:1 art: LCD, keypad, START), and a
+grey document cover over the platen with rear hinges. Key counter, power
+switch and the jam-access side door on the right flank. On the left flank:
+cooling louvres low down, and under the scanner seam the exit slot with its
+lip and the grey exit tray hooked into the flank, rising 12 degrees outward,
+with paper guides, a flip-up copy stopper and a stack of A4 copies. Vents, a
+guarded fan and the power cord on the back.
 
-Real-world reference size: 0.60 m wide body (0.63 m over the key counter and
-grips), 0.56 m deep body (0.67 m over cassette grips, console lip and the
-power cord on the floor), 1.14 m tall to the top of the cover hinges; the
-body is wider than deep, as on the real machines and in the target office
-image. Front (console, cassettes) faces -Y. Origin = floor, bounds centred on
-x = y = 0 (the body sits 8 mm left of centre to balance the key counter).
+Real-world reference size: 0.60 m wide body (0.63 m over the key counter),
+0.92 m over the side exit tray, 0.56 m deep body (0.67 m over cassette grips,
+console lip and the power cord on the floor), 1.14 m tall to the top of the
+cover hinges; the body is wider than deep, as on the real machines and in the
+target office image. Front (console, cassettes) faces -Y. Origin = floor
+under the body (the body sits 8 mm left of centre to balance the key
+counter); the tray hangs 0.30 m off the left flank, so bounds and footprint
+are off-centre toward -X (Unity +X). Lying on its Side rest the copier rests
+on the right flank, tray up.
 
 Budget pass (2026-10-02, §5.3: 2,500 / 1,000 tris, <= 4 slots):
 * Four slots: PlasticBeige (all light mouldings; the old white engine merges
@@ -60,12 +69,12 @@ BW, BD = 0.60, 0.56   # body width / depth
 FRONT = -BD / 2       # body front plane (y)
 PED_Z0, PED_Z1 = 0.080, 0.440
 BODY_Z0 = 0.452       # engine body underside
-ENG_TOP = 0.858       # engine top = exit tray floor
-SCAN_Z0 = 0.928       # underside of the scanner / platen unit (70 mm exit cavity)
+SCAN_Z0 = 0.928       # underside of the scanner / platen unit
 BODY_Z1 = 1.092       # platen level
 SEAM = 0.010          # dark shut line between engine frame and scanner
-COLW = 0.11           # left column (holds the scanner, carries the exit slot)
-SPD = 0.09            # rear cover depth behind the exit cavity
+EXIT_Y, EXIT_Z = 0.0, 0.872   # side exit slot centre on the left flank
+TRAY_L, TRAY_W = 0.30, 0.33   # exit tray: reach off the flank, width (A3 short edge + guides)
+TRAY_TILT = 12.0              # degrees the tray rises toward its outer end
 
 
 def _uv(obj, rect):
@@ -104,8 +113,7 @@ def _cassette(kit, z0, z1, width, y_face, card_uv, name):
 
 def build(kit):
     x0, x1 = CX - BW / 2, CX + BW / 2
-    xc = x0 + COLW                      # inner face of the left column
-    zt = SCAN_Z0 - SEAM                 # top of the engine frame (column / rear cover)
+    zt = SCAN_Z0 - SEAM                 # top of the engine body
     by = BD / 2
 
     # ------------------------------------------------------------ pedestal
@@ -129,18 +137,9 @@ def build(kit):
             bevel=0.004, segments=1, name="accent band")
 
     # ----------------------------------------------------------- main body
-    # Engine body + left column as one L-section shell (no seam on the left
-    # flank or the column front), extruded front to back. Triangulated so the
-    # concave cap faces import cleanly.
-    outline = [(x0, BODY_Z0), (x1, BODY_Z0), (x1, ENG_TOP), (xc, ENG_TOP), (xc, zt), (x0, zt)]
-    eng = kit.extrude(outline, BD, (0, 0, 0), BEIGE, plane="xz", bevel=0.012, segments=2, name="engine body")
-    tri = eng.modifiers.new("tri", "TRIANGULATE")
-    tri.min_vertices = 5
-    # Rear cover closing the back of the exit cavity (2 mm proud on the back
-    # and the right flank).
-    kit.box((x1 + 0.002 - (x0 + 0.004), SPD + 0.002, zt - 0.001 - (ENG_TOP - 0.012)),
-            ((x0 + 0.004 + x1 + 0.002) / 2, by - SPD / 2 + 0.001, (zt - 0.001 + ENG_TOP - 0.012) / 2), BEIGE,
-            bevel=0.008, segments=1, name="rear cover")
+    # Engine body: one block from the accent band up to the scanner seam (no
+    # in-body exit cavity; the copies leave through the left flank).
+    kit.box((BW, BD, zt - BODY_Z0), (CX, 0, (BODY_Z0 + zt) / 2), BEIGE, bevel=0.012, segments=2, name="engine body")
     # Dark shut line / scanner underside.
     kit.box((BW - 0.02, BD - 0.02, SEAM + 0.004), (CX, 0, zt + SEAM / 2), BLACK, bevel=0.0, name="scanner seam")
 
@@ -168,7 +167,7 @@ def build(kit):
 
     # Body cassette (tray 1) and the drop-down front door above it.
     _cassette(kit, BODY_Z0 + 0.012, BODY_Z0 + 0.112, BW - 0.03, FRONT - 0.020, CARD_UVS[0], "cassette 1")
-    door_z0, door_z1 = BODY_Z0 + 0.122, ENG_TOP - 0.014
+    door_z0, door_z1 = BODY_Z0 + 0.122, zt - 0.024
     kit.box((BW - 0.03, 0.014, door_z1 - door_z0), (CX, FRONT - 0.006, (door_z0 + door_z1) / 2), BEIGE,
             bevel=0.006, segments=1, name="front door")
     for sx in (-1, 1):
@@ -178,29 +177,39 @@ def build(kit):
     # Louvre on the door (fuser cooling).
     for k in range(6):
         kit.quad(0.12, 0.005, (CX + BW * 0.23, FRONT - 0.0135, door_z0 + 0.045 + k * 0.012), BLACK, facing="-y", uv="metres", name="door louvre")
-    # Column front above the door: toner-door release.
-    kit.box((0.040, 0.006, 0.014), (x0 + COLW / 2, FRONT - 0.002, ENG_TOP + 0.030), GREY, bevel=0.0, name="column release")
+    # ------------------------------------------- side exit (left flank, -X)
+    # Exit slot under the scanner seam with a lip over it, and the copy tray
+    # hooked into the flank below it, rising TRAY_TILT degrees outward.
+    kit.quad(0.32, 0.012, (x0 - 0.0006, EXIT_Y, EXIT_Z), BLACK, facing="-x", uv="metres", name="exit slot")
+    kit.box((0.012, 0.35, 0.008), (x0 - 0.005, EXIT_Y, EXIT_Z + 0.013), GREY, bevel=0.0, name="exit lip")
+    t = math.radians(TRAY_TILT)
+    ct, st = math.cos(t), math.sin(t)
+    hx, hz = x0 - 0.006, EXIT_Z - 0.020         # tray hinge: inner edge, mid-plane
 
-    # --------------------------------------------------- in-body exit tray
-    tray_x0, tray_x1 = xc + 0.004, x1 - 0.016
-    tray_y0, tray_y1 = FRONT + 0.016, by - SPD - 0.002
-    tz = ENG_TOP + 0.0025
-    kit.box((tray_x1 - tray_x0, tray_y1 - tray_y0, 0.005), ((tray_x0 + tray_x1) / 2, (tray_y0 + tray_y1) / 2, tz), GREY,
-            bevel=0.0, name="exit tray")
-    # Exit slot and roller on the column's inner face.
-    tyc = (tray_y0 + tray_y1) / 2
-    kit.quad(0.32, 0.012, (xc + 0.0006, tyc, ENG_TOP + 0.030), BLACK, facing="+x", uv="metres", name="exit slot")
-    kit.cylinder(0.0055, 0.30, (xc + 0.003, tyc, ENG_TOP + 0.026), GREY, verts=8, rot=(90, 0, 0), bevel=0.0, name="exit roller")
-    kit.box((0.010, 0.34, 0.006), (xc + 0.004, tyc, ENG_TOP + 0.039), GREY, bevel=0.0, name="exit lip")
-    # Copies that came out and stayed: A4 long edge first (0.21 x 0.297),
-    # pulled toward the front so the stack shows under the console lip.
-    cpx, cpy = xc + 0.018 + 0.105, FRONT + 0.026 + 0.1485
-    cz = tz + 0.0025 + 0.0035           # stack rests on the tray top (tz + 0.0025)
-    _uv(kit.box((0.210, 0.297, 0.007), (cpx, cpy, cz), PANEL, bevel=0.0, uv="decal", name="copies"), PAPER_UV)
-    _uv(kit.box((0.210, 0.297, 0.0015), (cpx + 0.014, cpy + 0.006, cz + 0.0045), PANEL, bevel=0.0, rot=(0, -1.0, 3.0),
+    def on_tray(d, h=0.0):
+        """(x, z) of the point d metres out along the tray, h above its mid-plane."""
+        return hx - d * ct + h * st, hz + d * st + h * ct
+
+    rot = (0, TRAY_TILT, 0)                     # +Y rotation lifts the outer (-X) end
+    tx, tz = on_tray(TRAY_L / 2)
+    kit.box((TRAY_L, TRAY_W, 0.006), (tx, EXIT_Y, tz), GREY, bevel=0.0, rot=rot, name="exit tray")
+    gx, gz = on_tray(TRAY_L / 2, 0.010)
+    for s in (-1, 1):  # paper guides along both long edges
+        kit.box((TRAY_L - 0.02, 0.004, 0.014), (gx, EXIT_Y + s * (TRAY_W / 2 - 0.004), gz), GREY, bevel=0.0, rot=rot,
+                name="paper guide")
+    sx, sz = on_tray(TRAY_L - 0.004, 0.016)
+    kit.box((0.004, 0.12, 0.026), (sx, EXIT_Y, sz), GREY, bevel=0.0, rot=rot, name="copy stopper")
+    for s in (-1, 1):  # hooks into the flank under the slot
+        kit.box((0.014, 0.020, 0.026), (x0 - 0.006, EXIT_Y + s * 0.12, hz - 0.006), GREY, bevel=0.0, name="tray hook")
+    # Copies that came out and stayed: A4 long edge first (0.21 out x 0.297
+    # across), slid back against the flank by the tilt.
+    cd = 0.012 + 0.105
+    cpx, cpz = on_tray(cd, 0.003 + 0.0035)
+    cpy = EXIT_Y
+    _uv(kit.box((0.210, 0.297, 0.007), (cpx, cpy, cpz), PANEL, bevel=0.0, rot=rot, uv="decal", name="copies"), PAPER_UV)
+    tcx, tcz = on_tray(cd + 0.012, 0.003 + 0.007 + 0.00075)
+    _uv(kit.box((0.210, 0.297, 0.0015), (tcx, cpy + 0.006, tcz), PANEL, bevel=0.0, rot=(0, TRAY_TILT - 1.0, 3.0),
                 uv="decal", name="top copy"), PAPER_UV)
-    # Copy stopper flipped up at the open end of the tray.
-    kit.box((0.004, 0.10, 0.020), (tray_x1 - 0.012, cpy, tz + 0.012), GREY, bevel=0.0, rot=(0, 12, 0), name="copy stopper")
 
     # ------------------------------------------------------ platen + cover
     top = BODY_Z1
@@ -225,11 +234,9 @@ def build(kit):
               bevel=0.0, name="side door seam")
     kit.box((0.012, 0.06, 0.016), (x1 + 0.006, sd_y - sd_len / 2 + 0.045, 0.765), GREY, bevel=0.0, name="side door latch")
 
-    # --------------------------------------- left side: louvres + carry grip
+    # ------------------------------------- left side: louvres (below the tray)
     for k in range(9):
         kit.quad(BD * 0.4, 0.006, (x0 - 0.0006, 0.06, 0.62 + k * 0.014), BLACK, facing="-x", uv="metres", name="left louvre")
-    kit.box((0.010, 0.20, 0.034), (x0 - 0.003, -0.05, 0.800), GREY, bevel=0.004, segments=1, name="carry grip")
-    kit.quad(0.18, 0.012, (x0 - 0.0086, -0.05, 0.793), BLACK, facing="-x", uv="metres", name="carry grip slot")
 
     # ------------------------------------------------------------- back
     for r in range(4):
@@ -255,9 +262,14 @@ def build(kit):
     # ------------------------------------------------------------- meta
     kit.support("cover", (CX, lid_y, top + 0.034), (BW - 0.04, lid_d - 0.02))
     kit.anchor("console", (CX, my, mz))
-    kit.anchor("output", (cpx, cpy, cz + 0.006))
+    kit.anchor("output", (cpx, cpy, cpz + 0.006))
     cx0, cx1 = x0 - 0.01, x1 + 0.03
     cy0, cy1 = FRONT - 0.03, by + 0.006
     kit.collider(((cx0 + cx1) / 2, (cy0 + cy1) / 2, (top + 0.034) / 2), (cx1 - cx0, cy1 - cy0, top + 0.034))
+    # Thin box for the exit tray (it sits below 1 m, at hip height), so the
+    # footprint (the union of the colliders) covers it too.
+    ox, oz = on_tray(TRAY_L, 0.030)
+    tx0, tz0 = ox - 0.004, hz - 0.020
+    kit.collider(((tx0 + cx0) / 2, EXIT_Y, (tz0 + oz) / 2), (cx0 - tx0, TRAY_W + 0.02, oz - tz0))
     kit.tag("office", "wall_unit")
     kit.pile("Case", mass=2, palette="office90s", states=["Upright", "Side", "Back"])

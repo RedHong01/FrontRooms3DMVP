@@ -86,6 +86,8 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
     /// <summary>Throw the old map away and build the module's again.</summary>
     public void Rebuild()
     {
+        // Any build consumes a pending one (Open and the captures build at once).
+        dirty = false;
         Clear();
         if (module == null || module.data == null) return;
         var data = module.data.Rotated(rotation);
@@ -110,7 +112,8 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
         Placement(data, out var x0, out var y0);
         world.PlaceModule(data, new GridCoord(0, 0), x0, y0);
         Entrance(data, x0, y0, out var spawn, out var look);
-        world.OverrideSpawn(spawn);
+        var heading = look - spawn;
+        world.OverrideSpawn(spawn, Mathf.Atan2(heading.x, heading.z) * Mathf.Rad2Deg);
         if (Application.isPlaying)
         {
             // Awake builds it standalone, with the walker at the spawn.
@@ -122,8 +125,11 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
             world.BuildForCapture();
             foreach (var t in go.GetComponentsInChildren<Transform>(true)) t.gameObject.hideFlags = HideFlags.DontSave;
         }
+        FrontRoomsPostStack.Ensure(transform);
         if (eye != null)
         {
+            // In Play the walker's camera is the Game view.
+            eye.enabled = !Application.isPlaying;
             eye.transform.position = transform.TransformPoint(spawn + Vector3.up * ModuleUnits.PlayerEye);
             eye.transform.rotation = Quaternion.LookRotation(transform.TransformDirection(look - spawn), Vector3.up) * Quaternion.Euler(4f, 0f, 0f);
             eye.farClipPlane = world.SightDistance;
@@ -141,7 +147,8 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
         var cs = MapGrid.CellSize;
         look = new Vector3((x0 + m.width * .5f) * cs, 0f, (y0 + m.depth * .5f) * cs);
         spawn = look;
-        const float inside = 1.3f;
+        // The whole 0.3 m body stays inside the floor kept clear behind the opening (1.08 m from the cell line).
+        const float inside = ModuleUnits.EntryClearDepth + ModuleUnits.WallHalf - ModuleUnits.PlayerRadius;
         for (var i = 0; i < m.width; i++)
             if (m.south[i] != ModuleEdge.Wall) { spawn = new Vector3((x0 + i + .5f) * cs, 0f, y0 * cs + inside); break; }
         if (spawn != look) { spawn.y = .05f; return; }
@@ -161,6 +168,9 @@ public sealed class FrontRoomsModulePreview : MonoBehaviour
     {
         if (world != null)
         {
+            // Play mode: the standalone map spawned its walker at the scene root, not under the map.
+            if (Application.isPlaying && world.Player != null && world.Player.GetComponent<FrontRoomsMapWalker>() != null) Destroy(world.Player.gameObject);
+            world.Release();
             if (Application.isPlaying) Destroy(world.gameObject); else DestroyImmediate(world.gameObject);
         }
         world = null;

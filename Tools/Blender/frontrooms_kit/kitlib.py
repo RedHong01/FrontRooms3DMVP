@@ -98,6 +98,15 @@ SLOTS = {
     "Prop_PlasticBlue": ((0.05, 0.15, 0.45), 0.4, 0.0),
     "Prop_CeramicGlaze": ((0.86, 0.85, 0.80), 0.15, 0.0),
     "Prop_FoamPU": ((0.03, 0.03, 0.03), 0.75, 0.0),       # soft matte black PU (arm pads)
+    # Creature concept slots (Hunter blockouts; Unity defs in FrontRoomsRenderSetup).
+    "Creature_SkinPale": ((0.62, 0.57, 0.48), 0.58, 0.0),
+    "Creature_SkinSallow": ((0.47, 0.41, 0.30), 0.62, 0.0),
+    "Creature_SkinGrey": ((0.30, 0.29, 0.27), 0.65, 0.0),
+    "Creature_Hair": ((0.05, 0.045, 0.04), 0.8, 0.0),
+    "Creature_Wet": ((0.06, 0.05, 0.045), 0.15, 0.0),
+    "Creature_Nail": ((0.58, 0.52, 0.40), 0.4, 0.0),
+    "Troffer_Lens": ((0.92, 0.90, 0.84), 0.3, 0.0),        # the ceiling's own opal lens (emissive in Unity)
+    "Creature_LensDim": ((0.80, 0.78, 0.70), 0.3, 0.0),    # the same lens glowing faintly (Listen state)
     "Prop_LEDGreen": ((0.1, 0.9, 0.2), 0.3, 0.0),         # emissive indicator lenses
     "Prop_LEDAmber": ((1.0, 0.55, 0.05), 0.3, 0.0),
     "Prop_LEDRed": ((0.9, 0.05, 0.03), 0.3, 0.0),

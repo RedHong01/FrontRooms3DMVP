@@ -1,5 +1,7 @@
 # 21 — Dating the office-electronics assets
 
+> Superseded by `22_era_lock.md` (2026-10-02). This draft stopped before its tables were written.
+
 Status: IN PROGRESS (written incrementally). Date: 2026-10-02.
 
 Scope: crt_monitor, pc_desktop, keyboard, mouse, desk_phone, copier, crt_tv (modules in `Tools/Blender/frontrooms_kit/assets/`). Each module's code was read in full; "as modelled" below means parts actually built in `build()` (part names quoted from the code).

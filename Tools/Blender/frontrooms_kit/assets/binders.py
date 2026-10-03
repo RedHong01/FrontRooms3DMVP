@@ -41,7 +41,7 @@ ROW = [
     (0.050, VINYL, 0.92, 0, (8, True)),     # "Q3 REPORTS" insert
     (0.045, CLOTH, 0.80, 3, (6, False)),    # "PAYROLL" card
     (0.060, VINYL, 0.95, 0, (9, True)),     # "MINUTES" insert
-    (0.040, VINYL, 0.70, 2, (4, False)),    # "1994" card
+    (0.040, VINYL, 0.70, 2, (4, False)),    # "1989" card
 ]
 LEANER = (0.050, CLOTH, 0.85, 0, (7, False))   # "MISC" card
 LEAN_DEG = 9.0

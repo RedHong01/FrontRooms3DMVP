@@ -1,4 +1,4 @@
-"""Black halogen torchiere floor lamp, c. 1992-98 (the 300 W "uplight" every
+"""Black halogen torchiere floor lamp, c. 1985-97, US sales from 1983 (the 300 W "uplight" every
 dorm room and furniture showroom had: weighted steel disc base, slim
 three-section steel pole with threaded couplings, a rotary dimmer pod at
 hand height, a wide shallow bowl with a rolled lip, white enamel inside and
