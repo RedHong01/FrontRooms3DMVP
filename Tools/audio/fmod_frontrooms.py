@@ -599,6 +599,22 @@ DAMP = {  # Dampness 0-1 on the player's step layers; 0.4 = ordinary Level 0 car
 
 DOOR3D = dict(spatial=True, min=1.0, max=26.0, bus="Mechanism", bank="SFX")
 
+# Stream double doors (FrontRoomsDoorSound Mode.Stream): one instance per leaf, Leaf = Lead (left hinge) or
+# Follow (right). The two pools are disjoint recorded moments (recorded_library.build_stream_doors), so a pair
+# never plays one take twice, and the Follow starts 28 ms late: two leaves of one push, not one sound doubled.
+FOLLOW_DELAY = .028
+
+
+def leaf_tracks(name, takes, start=0.0, volume=0.0, follow_db=-2.0, **kw):
+    """Odd-numbered takes (_01, _03 ...) on a Lead track, even on a Follow track 28 ms later and follow_db quieter.
+    Two tracks, not two overlapping instruments on one, so FMOD never crossfades them."""
+    lead, follow = takes[0::2], takes[1::2] or takes
+    return [dict(name=name + " Lead", sounds=[dict(files=lead, cond=[["Leaf", "Lead"]], start=start, volume=volume,
+                                                   **kw)]),
+            dict(name=name + " Follow", sounds=[dict(files=follow, cond=[["Leaf", "Follow"]], start=start + FOLLOW_DELAY,
+                                                     volume=volume + follow_db, **kw)])]
+
+
 SPEC = {
     "eventRoots": ["Ambience", "Mechanism", "Foley", "Relay", "Subjective", "Music"],
     "params": {
@@ -622,6 +638,7 @@ SPEC = {
         "RelayGait": dict(labels=["Walk", "Run", "Drag"]),
         "RelayState": dict(labels=["Hunt", "Search", "Chase", "Lost"]),
         "FixtureEvent": dict(labels=["Strike", "Tick", "Pop"]),
+        "Leaf": dict(labels=["Lead", "Follow"]),
     },
     "buses": [
         dict(name="AMB", volume=-2), dict(name="Hum", parent="AMB"), dict(name="Air", parent="AMB", volume=-4),
@@ -639,8 +656,8 @@ SPEC = {
         # ---------------------------------------------------------- ambience
         dict(path="Ambience/HumBed", bus="Hum", bank="Ambience", params=["Tension"], ahdsr=[1500, 2000],
              note="Room-tone hum. Global Tension fades in a detuned layer (120 vs 118.5 Hz) whose beating is the danger cue.",
-             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_hum_bed_loop.wav")], loop=True, volume=-14)]),
-                     dict(name="Beat", sounds=[dict(files=[rec("Ambience/amb_hum_beat_loop.wav")], loop=True, volume=-14)],
+             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_hum_bed_loop.wav")], loop=True, volume=-17)]),
+                     dict(name="Beat", sounds=[dict(files=[rec("Ambience/amb_hum_beat_loop.wav")], loop=True, volume=-17)],
                           auto=[dict(prop="volume", param="Tension", points=[[0, -60], [.35, -20], [1, -1]])])]),
         dict(path="Ambience/AirBed", bus="Air", bank="Ambience", params=["Zone"], ahdsr=[2000, 2000],
              note="Recorded room tone (50 Hz mains notched out so it never beats against the 120 Hz hum). "
@@ -650,8 +667,9 @@ SPEC = {
                      dict(name="Mall", sounds=[dict(files=[rec("Ambience/amb_air_mall_loop.wav")], loop=True, volume=-6)],
                           auto=[dict(prop="volume", param="Zone", points=[[0, -40], [1, -24], [2, 0], [3, -40]])])]),
         dict(path="Ambience/Fixture", spatial=True, min=.5, max=9.0, bus="Hum", bank="Ambience", params=["Level"],
-             ahdsr=[40, 120], note="One per lit fixture near the listener. Level = the lamp's brightness this frame.",
-             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_fixture_close_loop.wav")], loop=True, volume=-16)],
+             ahdsr=[40, 120], note="One per lit fixture near the listener (4 voices, started 0.53 s apart so the same loop never sums in phase). "
+                  "Level = the lamp's brightness this frame. -28 dB: measured in-game 2026-10-02, 6 lamps at -16 were louder than the footsteps.",
+             tracks=[dict(name="Hum", sounds=[dict(files=[rec("Ambience/amb_fixture_close_loop.wav")], loop=True, volume=-28)],
                           auto=[dict(prop="volume", param="Level", points=[[0, -60], [.05, -30], [1, 0]])])]),
         dict(path="Ambience/FixtureEvent", spatial=True, min=.5, max=14.0, bus="Hum", bank="Ambience",
              params=["FixtureEvent"],
@@ -711,8 +729,33 @@ SPEC = {
              note="Latch rips out. The game also fires StopLimit at Impact 1 when the leaf hits the wall.",
              tracks=[dict(name="Break", sounds=[dict(files=lib("Door/door_break_rip"), randPitch=1)])]),
         dict(path="Mechanism/Door/AutoOperator", **DOOR3D,
-             note="Title corridor doors open themselves: operator relay + motor.",
+             note="Unused since the stream doors moved to StreamOpen / StreamClose (they are manual doors on "
+                  "closers, not operator doors); kept for A/B.",
              tracks=[dict(name="Operator", sounds=[dict(files=files("Door/door_auto_operator", 2))])]),
+        dict(path="Mechanism/Door/StreamOpen", **DOOR3D, params=["Leaf"],
+             note="One leaf of the stream's flush wooden double door swinging open, 0 -> 88 deg in 0.9 s on a "
+                  "smoothstep (still at both ends, fastest at 0.45 s). One instance per leaf at the leaf's centre. "
+                  "Swing = a whole recorded swing (843829), Lead / Follow from disjoint pools, Follow 28 ms "
+                  "late and 2 dB down. Release = the leaf leaving its stop, once per pair (Lead only). No motor, "
+                  "no creak loop, nothing at rest. A pair renders about -30 LUFS (momentary max) at 3 m, "
+                  "3 dB under the player's carpet steps.",
+             tracks=leaf_tracks("Swing", lib("Door/door_stream_swing"), volume=-9, randPitch=.5, randVol=1.5) + [
+                     dict(name="Release", sounds=[dict(files=lib("Door/door_stream_release"), cond=[["Leaf", "Lead"]],
+                                                       volume=-21, randPitch=.5)])]),
+        dict(path="Mechanism/Door/StreamClose", **DOOR3D, params=["Leaf"],
+             note="The terminal door: each leaf swings 88 -> 0 deg in 0.9 s and seats with no speed left. Same "
+                  "swing pools as StreamOpen half a semitone down, then a dry seat thump at 0.876 s (Lead) / "
+                  "0.904 s (Follow), so it lands on the frame the leaves stop. No latch: StreamLock follows.",
+             tracks=leaf_tracks("Swing", lib("Door/door_stream_swing"), volume=-9, pitch=-.5, randPitch=.5,
+                                randVol=1.5) +
+                    leaf_tracks("Seat", lib("Door/door_stream_seat"), start=.876, volume=-10, randPitch=.5)),
+        dict(path="Mechanism/Door/StreamLock", **DOOR3D, max_=30.0,
+             note="Once per pair, after the terminal door's leaves come to rest and the game has shut it for good "
+                  "(RoomStream.TerminalDoorShut): a held silence, then the lock from the far side at 0.55 s "
+                  "(DOOR_FOLEY_SEGMENTS T-C4/T-C5). Wooden latch clack until a deadbolt recording exists. "
+                  "The way back is gone.",
+             tracks=[dict(name="Lock", sounds=[dict(files=lib("Door/door_latch_soft"), start=.55, volume=-4,
+                                                    randPitch=.5)])]),
         # ---------------------------------------------------------- window
         dict(path="Mechanism/Window/Stress", spatial=True, min=1.0, max=22.0, bus="Mechanism", bank="SFX",
              params=["Progress"], ahdsr=[50, 150], note="While the player holds E on glass. Progress = hold 0-1.",

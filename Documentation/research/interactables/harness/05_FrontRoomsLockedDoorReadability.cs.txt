@@ -1,0 +1,301 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+
+/// <summary>
+/// PRIVATE CLONE ONLY (interactables workflow, locked-door type research).
+/// Readability test for "locked doors must look different from afar":
+/// one end wall per condition carries [free door] [candidate locked door]
+/// [open doorway into an unlit room], seen from 6 / 12 / 20 m at the
+/// player's eye (1.62 m) and FOV (76 deg vertical, FrontRooms3DGame.cs).
+/// Conditions: Level 0 lit, Level 0 dim (no lamp within 6 m of the wall),
+/// Office under its zone grade. Door parts are primitive mock-ups of the
+/// candidate specs (render-only boxes and cylinders), not kit models.
+/// Output: Verification/locked_door_readability (PNG + rects.json).
+/// Batch: -executeMethod FrontRoomsLockedDoorReadability.RunBatch
+/// </summary>
+public static class FrontRoomsLockedDoorReadability
+{
+    const float Depth = 22f, Width = 8f, Eye = 1.62f, Fov = 76f;
+    const float FreeX = -2f, CandX = 0f, OpenX = 2f;
+    static readonly float[] Distances = { 6f, 12f, 20f };
+    static string[] Candidates = { "P1_veneer_deadbolt", "P2_hm_almond", "P2b_hm_almond_lite", "P3_hm_bronze", "P4_veneer_halflite" };
+    static readonly string[] Round3 = { "REC_storeroom", "REC_storeroom_lite" };
+    static bool dips;
+    static Material tagRed, keyBrass;
+    static readonly string[] Round2 = { "P2_hm_almond", "P2c_hm_almond_darkframe", "P2d_hm_almond_darkframe_lite", "P2p_hm_putty_kitslot" };
+    static Material putty;
+
+    static Material veneer, trim, brass, chrome, enamel, bronze, signDark, signLight, glassDark, glassObscure, steelKick;
+
+    [MenuItem("FrontRooms/Rendering/Locked door readability (private)")]
+    public static void Capture() => Run();
+
+    public static void RunBatch() { foreach (var a in Environment.GetCommandLineArgs()) if (a == "-round2") { Candidates = Round2; outName = "locked_door_readability_r2"; } else if (a == "-round3") { Candidates = Round3; outName = "locked_door_readability_r3"; dips = true; } Run(); }
+    static string outName = "locked_door_readability";
+
+    static Color S(int r, int g, int b) => new Color32((byte)r, (byte)g, (byte)b, 255);
+
+    static void Materials()
+    {
+        veneer = FrontRoomsSurfaces.DoorVeneer;
+        trim = FrontRoomsSurfaces.CoveBase;
+        brass = FrontRoomsSurfaces.TryGet("Prop_Brass") ?? FrontRoomsSurfaces.Lit("RD brass", S(176, 138, 74), .7f, 1f);
+        chrome = FrontRoomsSurfaces.TryGet("Prop_Aluminium") ?? FrontRoomsSurfaces.Lit("RD satin chrome", S(184, 184, 180), .65f, 1f);
+        steelKick = chrome;
+        // Candidate enamel: almond-white semi-gloss (period "almond"), lighter than the kit's putty.
+        enamel = FrontRoomsSurfaces.Lit("RD door enamel almond", S(205, 197, 176), .5f);
+        bronze = FrontRoomsSurfaces.Lit("RD door enamel dark bronze", S(59, 46, 37), .45f);
+        signDark = FrontRoomsSurfaces.Lit("RD sign dark brown laminate", S(48, 36, 30), .35f);
+        signLight = FrontRoomsSurfaces.Lit("RD sign ivory laminate", S(226, 220, 200), .35f);
+        glassDark = FrontRoomsSurfaces.Lit("RD wired lite (unlit room beyond)", S(22, 26, 26), .9f);
+        glassObscure = FrontRoomsSurfaces.Lit("RD obscure glass", S(196, 200, 194), .55f);
+        tagRed = FrontRoomsSurfaces.TryGet("Prop_PlasticRed") ?? FrontRoomsSurfaces.Lit("RD tag red", S(140, 20, 16), .4f);
+        keyBrass = brass;
+        putty = FrontRoomsSurfaces.TryGet("Prop_SteelPutty") ?? FrontRoomsSurfaces.Lit("RD putty fallback", S(166, 159, 137), .45f);
+    }
+
+    static GameObject Box(Transform p, string n, Vector3 pos, Vector3 size, Material m) => FrontRoomsKitLookdev.Box(p, n, pos, size, m);
+
+    static GameObject Disc(Transform p, string n, Vector3 pos, float dia, float depth, Material m)
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        go.name = n;
+        go.transform.SetParent(p, false);
+        go.transform.localPosition = pos;
+        go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        go.transform.localScale = new Vector3(dia, depth * .5f, dia);
+        UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+        go.GetComponent<MeshRenderer>().sharedMaterial = m;
+        return go;
+    }
+
+    // Opening centre (x, 0, Depth); wall faces at Depth -/+ 0.08; the camera looks +Z at the near (-Z) face.
+    const float Face = Depth - .08f;
+    const float LeafT = .045f;
+    const float LeafFace = Depth - LeafT * .5f;
+
+    static Transform Door(Transform room, string kind, float x)
+    {
+        var d = new GameObject("door " + kind).transform;
+        d.SetParent(room, false);
+        var latch = x + .5f - .08f; // hinge on the low-x jamb, latch on +x (as the map)
+        bool rec = kind.StartsWith("REC");
+        bool hm = kind.StartsWith("P2") || kind.StartsWith("P3") || rec;
+        var leafMat = kind.StartsWith("P2p") ? putty : (kind.StartsWith("P2") || rec) ? enamel : kind.StartsWith("P3") ? bronze : veneer;
+        var frameMat = (kind.Contains("darkframe") || rec) ? bronze : leafMat;
+        Box(d, "leaf", new Vector3(x, 1.05f, Depth), new Vector3(1f, 2.1f, LeafT), leafMat);
+        if (hm)
+        {
+            // Hollow-metal frame: 2 in (0.051) face, wraps the wall, same paint as the leaf.
+            const float f = .051f;
+            Box(d, "HM jamb L", new Vector3(x - .5f - f * .5f, (2.1f + f) * .5f, Depth), new Vector3(f, 2.1f + f, .2f), frameMat);
+            Box(d, "HM jamb R", new Vector3(x + .5f + f * .5f, (2.1f + f) * .5f, Depth), new Vector3(f, 2.1f + f, .2f), frameMat);
+            Box(d, "HM head", new Vector3(x, 2.1f + f * .5f, Depth), new Vector3(1f + 2f * f, f, .2f), frameMat);
+            // 10 in kick plate, door width less 2 in (ADAAG A4.13.9), brushed steel.
+            Box(d, "kick plate", new Vector3(x, .127f + .003f, LeafFace - .001f), new Vector3(.95f, .254f, .002f), steelKick);
+            // 10 x 3 in engraved sign at 60 in (ADAAG height), centred on the leaf.
+            var plate = kind.StartsWith("P3") ? signLight : signDark;
+            var letters = kind.StartsWith("P3") ? signDark : signLight;
+            Box(d, "sign plate", new Vector3(x, 1.524f, LeafFace - .002f), new Vector3(.254f, .076f, .003f), plate);
+            Box(d, "sign letters (mock band)", new Vector3(x, 1.524f, LeafFace - .0036f), new Vector3(.2f, .022f, .0005f), letters);
+            if (rec)
+            {
+                // Storeroom key-in-knob (02 §4.1): rose 65 mm, ball knob 54 mm, face 67 mm proud, keyway on the knob axis.
+                Disc(d, "rose", new Vector3(latch, 1f, LeafFace - .005f), .065f, .01f, chrome);
+                Disc(d, "knob neck", new Vector3(latch, 1f, LeafFace - .02f), .022f, .03f, chrome);
+                var knob = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                knob.name = "knob"; knob.transform.SetParent(d, false);
+                knob.transform.localPosition = new Vector3(latch, 1f, LeafFace - .067f + .027f);
+                knob.transform.localScale = new Vector3(.054f, .054f, .054f);
+                UnityEngine.Object.DestroyImmediate(knob.GetComponent<Collider>());
+                knob.GetComponent<MeshRenderer>().sharedMaterial = chrome;
+                Disc(d, "plug face", new Vector3(latch, 1f, LeafFace - .0668f), .013f, .0015f, brass);
+                Box(d, "keyway", new Vector3(latch, 1f, LeafFace - .0678f), new Vector3(.0025f, .0085f, .0008f), signDark);
+                // Zone number plate (03 §2.5): beside the knob toward the hinge, never above it.
+                Box(d, "zone number plate", new Vector3(latch - .13f, 1f, LeafFace - .0015f), new Vector3(.10f, .05f, .003f), tagRed);
+                Box(d, "zone digits (mock)", new Vector3(latch - .13f, 1f, LeafFace - .0032f), new Vector3(.05f, .03f, .0005f), signLight);
+            }
+            else
+            {
+                // Storeroom lever with key in lever: satin chrome rose and lever at the lock point.
+                Disc(d, "rose", new Vector3(latch, 1f, LeafFace - .005f), .07f, .01f, chrome);
+                Box(d, "lever", new Vector3(latch - .05f, 1f, LeafFace - .055f), new Vector3(.12f, .02f, .02f), chrome);
+                Box(d, "lever neck", new Vector3(latch, 1f, LeafFace - .03f), new Vector3(.024f, .024f, .05f), chrome);
+            }
+            if (kind.EndsWith("_lite"))
+            {
+                // 4 x 25 in narrow lite, latch side, glazing bead in the leaf paint.
+                Box(d, "lite bead", new Vector3(x + .25f, 1.55f, LeafFace - .004f), new Vector3(.14f, .68f, .006f), leafMat);
+                Box(d, "lite glass", new Vector3(x + .25f, 1.55f, LeafFace - .0075f), new Vector3(.102f, .635f, .002f), glassDark);
+            }
+        }
+        else
+        {
+            // Wood casing as the map's trim today: 0.07 face, 0.20 deep, CoveBase surface.
+            Box(d, "casing L", new Vector3(x - .5f - .035f, (2.1f + .07f) * .5f, Depth), new Vector3(.07f, 2.17f, .2f), trim);
+            Box(d, "casing R", new Vector3(x + .5f + .035f, (2.1f + .07f) * .5f, Depth), new Vector3(.07f, 2.17f, .2f), trim);
+            Box(d, "casing head", new Vector3(x, 2.1f + .035f, Depth), new Vector3(1.14f, .07f, .2f), trim);
+            // Passage lever (no keyway), brass, at the lock point.
+            Disc(d, "rose", new Vector3(latch, 1f, LeafFace - .005f), .065f, .01f, brass);
+            Box(d, "lever", new Vector3(latch - .05f, 1f, LeafFace - .055f), new Vector3(.12f, .02f, .02f), brass);
+            Box(d, "lever neck", new Vector3(latch, 1f, LeafFace - .03f), new Vector3(.022f, .022f, .05f), brass);
+            if (kind == "P1_veneer_deadbolt")
+            {
+                // Deadbolt at 48 in (SDI 111A deadlock strike) + a small brass zone tag plate.
+                Disc(d, "deadbolt rose", new Vector3(latch, 1.219f, LeafFace - .006f), .07f, .012f, brass);
+                Box(d, "zone tag plate", new Vector3(latch - .12f, 1.219f, LeafFace - .0015f), new Vector3(.07f, .045f, .002f), brass);
+            }
+            if (kind == "P4_veneer_halflite")
+            {
+                Box(d, "lite bead", new Vector3(x, 1.52f, LeafFace - .004f), new Vector3(.66f, .89f, .008f), trim);
+                Box(d, "obscure glass", new Vector3(x, 1.52f, LeafFace - .009f), new Vector3(.62f, .85f, .002f), glassObscure);
+                Box(d, "gold-leaf lettering (mock band)", new Vector3(x, 1.62f, LeafFace - .0105f), new Vector3(.3f, .035f, .0005f), brass);
+            }
+        }
+        return d;
+    }
+
+    struct R { public string name; public Vector3 a, b; } // world-space rect corners (min, max) on the near face
+
+    static void Run()
+    {
+        var outDir = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", outName);
+        Directory.CreateDirectory(outDir);
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        EditorSceneManager.SetActiveScene(scene);
+        Materials();
+        var root = new GameObject("LOCKED DOOR READABILITY").transform;
+        FrontRoomsLook.ApplyAmbient();
+        FrontRoomsPostStack.Ensure(root);
+        var openings = new[]
+        {
+            new FrontRoomsKitLookdev.Opening { side = 1, centre = FreeX, width = 1f },
+            new FrontRoomsKitLookdev.Opening { side = 1, centre = CandX, width = 1f },
+            new FrontRoomsKitLookdev.Opening { side = 1, centre = OpenX, width = 1f },
+        };
+        var rooms = new List<(string name, Transform room)>
+        {
+            ("L0lit", FrontRoomsKitLookdev.Room(root, "L0 lit", new Vector3(0f, 0f, 0f), Width, Depth, RoomRule.Lobby, openings)),
+            ("L0dim", FrontRoomsKitLookdev.Room(root, "L0 dim", new Vector3(60f, 0f, 0f), Width, Depth, RoomRule.Lobby, openings)),
+            ("Office", FrontRoomsKitLookdev.Room(root, "Office", new Vector3(120f, 0f, 0f), Width, Depth, RoomRule.Office, openings)),
+        };
+        // Dim: the lamps nearest the end wall are dead (frames 39/48 of the audit show this is common).
+        var dead = new List<GameObject>();
+        foreach (Transform c in rooms[1].room) if (c.name.StartsWith("troffer") && c.localPosition.z > Depth - 6f) dead.Add(c.gameObject);
+        foreach (var g in dead) UnityEngine.Object.DestroyImmediate(g);
+        FrontRoomsPostStack.EnsureZoneVolume(rooms[2].room, "Office", new Bounds(new Vector3(0f, 1.45f, Depth * .5f), new Vector3(Width + 4f, 3.2f, Depth + 6f)), 1.5f);
+
+        var cameraObject = new GameObject("READABILITY camera");
+        var camera = cameraObject.AddComponent<Camera>();
+        camera.nearClipPlane = .06f;
+        camera.farClipPlane = 80f;
+        camera.clearFlags = CameraClearFlags.SolidColor;
+        camera.backgroundColor = Color.black;
+        FrontRoomsPostStack.ConfigureCamera(camera);
+        var rt = new RenderTexture(1920, 1080, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
+        camera.targetTexture = rt;
+        camera.fieldOfView = Fov;
+
+        var json = new StringBuilder("[\n");
+        var first = true;
+        foreach (var (cname, room) in rooms)
+        {
+            var free = Door(room, "FREE_veneer", FreeX);
+            foreach (var cand in Candidates)
+            {
+                var c = Door(room, cand, CandX);
+                foreach (var dist in Distances)
+                {
+                    var eye = room.TransformPoint(new Vector3(0f, Eye, Depth - .08f - dist));
+                    camera.transform.SetPositionAndRotation(eye, room.rotation);
+                    camera.Render();
+                    camera.Render();
+                    var file = cname + "_" + cand + "_" + dist.ToString("00", CultureInfo.InvariantCulture) + "m.png";
+                    FrontRoomsKitLookdev.Save(rt, Path.Combine(outDir, file));
+                    // Screen rects (PNG pixels, y down) of the measured regions, inset to skip edges and hardware.
+                    var regions = new List<R>
+                    {
+                        new R { name = "free_leaf", a = new Vector3(FreeX - .3f, .35f, Face), b = new Vector3(FreeX + .2f, .85f, Face) },
+                        new R { name = "cand_leaf", a = new Vector3(CandX - .3f, .35f, Face), b = new Vector3(CandX + .2f, .85f, Face) },
+                        new R { name = "cand_upper", a = new Vector3(CandX - .35f, 1.15f, Face), b = new Vector3(CandX + .1f, 1.9f, Face) },
+                        new R { name = "open_void", a = new Vector3(OpenX - .3f, .35f, Face), b = new Vector3(OpenX + .3f, 1.9f, Face) },
+                        new R { name = "wall_between", a = new Vector3(-1.3f, .5f, Face), b = new Vector3(-.7f, 1.8f, Face) },
+                        new R { name = "cand_whole", a = new Vector3(CandX - .5f, 0f, Face), b = new Vector3(CandX + .5f, 2.1f, Face) },
+                        new R { name = "free_whole", a = new Vector3(FreeX - .5f, 0f, Face), b = new Vector3(FreeX + .5f, 2.1f, Face) },
+                    };
+                    json.Append(first ? "" : ",\n");
+                    first = false;
+                    json.Append("{\"file\":\"" + file + "\",\"condition\":\"" + cname + "\",\"candidate\":\"" + cand + "\",\"distance\":" + dist.ToString(CultureInfo.InvariantCulture) + ",\"rects\":{");
+                    for (var i = 0; i < regions.Count; i++)
+                    {
+                        var r = regions[i];
+                        var p0 = camera.WorldToScreenPoint(room.TransformPoint(r.a));
+                        var p1 = camera.WorldToScreenPoint(room.TransformPoint(r.b));
+                        var x0 = Mathf.Min(p0.x, p1.x); var x1 = Mathf.Max(p0.x, p1.x);
+                        var y0 = 1080f - Mathf.Max(p0.y, p1.y); var y1 = 1080f - Mathf.Min(p0.y, p1.y);
+                        json.Append((i > 0 ? "," : "") + "\"" + r.name + "\":[" + F(x0) + "," + F(y0) + "," + F(x1) + "," + F(y1) + "]");
+                    }
+                    json.Append("}}");
+                }
+                // Close look at 2.4 m, 0.6 m off-axis toward the latch (what the player sees walking up).
+                var near = room.TransformPoint(new Vector3(CandX + .6f, Eye, Depth - .08f - 2.4f));
+                var target = room.TransformPoint(new Vector3(CandX + .1f, 1.25f, Depth));
+                camera.transform.SetPositionAndRotation(near, Quaternion.LookRotation(target - near));
+                camera.Render();
+                camera.Render();
+                FrontRoomsKitLookdev.Save(rt, Path.Combine(outDir, cname + "_" + cand + "_close.png"));
+                if (dips && cname != "L0dim") Dip(room, camera, rt, outDir, cname + "_" + cand);
+                UnityEngine.Object.DestroyImmediate(c.gameObject);
+            }
+            UnityEngine.Object.DestroyImmediate(free.gameObject);
+        }
+        json.Append("\n]\n");
+        File.WriteAllText(Path.Combine(outDir, "rects.json"), json.ToString());
+        camera.targetTexture = null;
+        rt.Release();
+        Debug.Log("[LockedDoorReadability] wrote " + outDir);
+    }
+
+
+    /// <summary>Audit §3.2 head dip: start (eye 1.62, 1.0 m back) to pose P (0.45 m out, eye 1.35, FOV 62) on the keyway, then key in and turned.</summary>
+    static void Dip(Transform room, Camera camera, RenderTexture rt, string outDir, string prefix)
+    {
+        var latch = CandX + .5f - .08f;
+        var keyhole = room.TransformPoint(new Vector3(latch, 1f, LeafFace - .0678f));
+        var normal = -room.forward; // toward the player
+        void Frame(string name, Vector3 eye, Vector3 look, float fov)
+        {
+            camera.fieldOfView = fov;
+            camera.transform.SetPositionAndRotation(eye, Quaternion.LookRotation(look - eye));
+            camera.Render(); camera.Render();
+            FrontRoomsKitLookdev.Save(rt, Path.Combine(outDir, prefix + "_dip_" + name + ".png"));
+        }
+        var start = room.TransformPoint(new Vector3(latch - .25f, Eye, LeafFace - 1.0f));
+        var p = keyhole + normal * .45f + Vector3.up * .35f;
+        Frame("0_start", start, room.TransformPoint(new Vector3(CandX, 1.3f, Depth)), Fov);
+        Frame("1_mid", Vector3.Lerp(start, p, .5f), Vector3.Lerp(room.TransformPoint(new Vector3(CandX, 1.3f, Depth)), keyhole, .7f), Mathf.Lerp(Fov, 62f, .5f));
+        Frame("2_P", p, keyhole, 62f);
+        // Brass key: blade 28 x 8 x 2 mm inserted to the shoulder, bow 25 x 30 x 2.5 mm, teeth up (02 §4.2).
+        var key = new GameObject("key").transform;
+        key.SetParent(room, false);
+        key.position = keyhole; key.rotation = room.rotation;
+        Box(key, "blade (in)", new Vector3(0f, 0f, .012f), new Vector3(.002f, .008f, .024f), keyBrass);
+        Box(key, "shoulder", new Vector3(0f, 0f, -.003f), new Vector3(.0025f, .012f, .006f), keyBrass);
+        Box(key, "bow", new Vector3(0f, .0f, -.02f), new Vector3(.0025f, .03f, .025f), keyBrass);
+        Box(key, "ring", new Vector3(0f, -.03f, -.032f), new Vector3(.002f, .028f, .028f), chrome);
+        Box(key, "fob", new Vector3(0f, -.08f, -.032f), new Vector3(.003f, .07f, .04f), tagRed);
+        Frame("3_key_in", p, keyhole, 62f);
+        key.Rotate(0f, 0f, 90f, Space.Self);
+        Frame("4_key_turned", p, keyhole, 62f);
+        UnityEngine.Object.DestroyImmediate(key.gameObject);
+        camera.fieldOfView = Fov;
+    }
+
+    static string F(float v) => v.ToString("0.0", CultureInfo.InvariantCulture);
+}

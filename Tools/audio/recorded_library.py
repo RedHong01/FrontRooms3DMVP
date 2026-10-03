@@ -42,11 +42,11 @@ CATALOG = [
     (583287, "Profispiesser", "583287__profispiesser__fx-sasc-wet-water-rag-movement-squishy-soggy-movement-plants.wav",
      "CC0", "Wet", "Moisture and peel layers"),
     (768656, "Nox_Sound", "768656__nox_sound__foley_door_wood_handle_metal_locked_sequence_stereo.wav", "CC0",
-     "Doors", "Handle, locked rattle"),
+     "Doors", "Handle, locked rattle, stream-door seat"),
     (341176, "klangfabrik", "341176__klangfabrik__stairwell-door-panic-bar-and-slam.wav", "CC0", "Doors",
      "Unlatch (panic bar), latch strike, slam"),
     (843829, "thaighaudio", "843829__thaighaudio__doorwood_community-centre-door-a-test_thaighaudio_2026.wav", "CC0",
-     "Doors", "Swing, stops, latch"),
+     "Doors", "Swing (stream doors), stops, latch"),
     (160213, "qubodup", "160213__qubodup__kickingforcingbreaking-wooden-door.flac", "CC0", "Doors",
      "Relay blow, break"),
     (454098, "kyles", "454098__kyles__neon-tube-fluorescent-light-hum-cu2.flac", "CC0", "Fluorescent",
@@ -225,6 +225,13 @@ BODY_TILE = "highpass=f=60," + HUM_NOTCH + ",equalizer=f=2800:t=q:w=1:g=2.5,lowp
 RELAY_BODY = "highpass=f=35,equalizer=f=90:t=q:w=1:g=3," + HUM_NOTCH + ",lowpass=f=3800,lowpass=f=3800"
 THAIG = "highpass=f=50,equalizer=f=560:t=q:w=4:g=-14,afftdn=nr=10:nf=-62:tn=1"
 KLANG = "highpass=f=50,afftdn=nr=14:nf=-54:tn=1"
+# 843829 swing textures (+37..40 dB of make-up gain later): the hall's 10-60 Hz rumble and >9 kHz hiss out, the
+# leaf's 550 Hz mode only trimmed (THAIG's -14 dB notch would take the wood out of a swing), light denoise.
+# The hall floor stays ~12 dB (LUFS) under each swing: in the game it sits ~6 dB under the air/hum bed.
+# anlmdn=s=0.0001 instead of afftdn takes it 6 dB further down but bares the chatter's 14 Hz ticks.
+STREAM = "highpass=f=80,highpass=f=80,equalizer=f=556:t=q:w=4:g=-4,afftdn=nr=10:nf=-70:tn=1,lowpass=f=9000"
+GROAN = ",equalizer=f=427:t=q:w=5:g=-5"            # 843829 @24.9-25.8 only: its 427 Hz groan sits +15 dB proud
+SEAT = "highpass=f=50,lowpass=f=400,lowpass=f=400"   # 768656 leaf-in-frame thumps without the lever clicks
 
 
 def entry(sid):
@@ -450,6 +457,39 @@ def level_set(items, peak=-3.0):
         total = min(g + shift, -1.0 - p)
         k = 10 ** (total / 20)
         out.append([v * k for v in x])
+    return out
+
+
+def momentary(x):
+    """Rough EBU momentary max: loudest 400 ms RMS after the same 100 Hz one-pole, the file padded by 400 ms
+    (ebur128 reads a short file that way). Within 0.2 dB of ffmpeg's M on mid-band swings, ~0.6 dB low on thumps."""
+    a = math.exp(-TAU * 100 / SR)
+    lp, acc, sq = 0.0, 0.0, [0.0]
+    for v in list(x) + [0.0] * int(.4 * SR):
+        lp = (1 - a) * v + a * lp
+        acc += (v - lp) * (v - lp)
+        sq.append(acc)
+    w, best = int(.4 * SR), 0.0
+    for i in range(0, len(sq) - w, int(.01 * SR)):
+        best = max(best, (sq[i + w] - sq[i]) / w)
+    return db(math.sqrt(best))
+
+
+def level_momentary(items, target=-23.0, peak=-3.0):
+    """Every item at the same momentary loudness (a texture's peak says little about how loud it is)."""
+    out = []
+    for x in items:
+        k = 10 ** (min(target - momentary(x), peak - peak_db(x)) / 20)
+        out.append([v * k for v in x])
+    return out
+
+
+def ride(x, depth=6.0, swing=.9):
+    """Fader ride to picture: -depth dB with the leaf at rest, 0 dB at its fastest (the smoothstep's middle)."""
+    out = []
+    for i, v in enumerate(x):
+        u = min(1.0, i / SR / swing)
+        out.append(v * 10 ** (-depth * (1 - 4 * u * (1 - u)) / 20))
     return out
 
 
@@ -716,6 +756,41 @@ def build_doors():
     emit_one("Door/door_swing_creak_loop.wav", level_rms(loop, -20), ref(CREAK, .30), "hinge stick-slip, looped")
 
 
+def build_stream_doors():
+    """Title-stream double doors (FrontRoomsDoorSound Mode.Stream): one whole recorded swing per leaf, 0.9 s.
+    843829 is the only recording of a wooden leaf actually moving. It has four usable swing moments,
+    A 2.40-3.36, B 9.24-10.21, C 24.93-25.85 and D 20.00-20.72 s; each gives two takes (another trim,
+    +-0.6/0.7 st or a gentle time-stretch). Odd numbers (the Lead pool) are A/D, even (Follow) B/C, so the
+    two leaves of a pair never play the same moment. Nothing here is synthesized."""
+    print("stream doors")
+    sw = prepared(843829, STREAM)
+    sg = prepared(843829, STREAM + GROAN)
+    up, dn, dg = st(.6), st(-.7), st(-.6)
+    takes = [
+        (cut(sw, 2.40, .96, pre=0, fin=.06, fout=.22), 2.40, "A"),
+        (ride(cut(sw, 9.235, .97, pre=0, fin=.012, fout=.18)), 9.235, "B"),
+        (cut(prepared(843829, STREAM + ",atempo=1.12"), 2.36 / 1.12, .929, pre=0, fin=.06, fout=.20), 2.36, "A x1.12"),
+        (ride(cut(sg, 24.95, .90, pre=0, fin=.06, fout=.24)), 24.95, "C"),
+        (ride(cut(prepared(843829, STREAM + ",atempo=0.8"), 20.00 / .8, .90, pre=0, fin=.15, fout=.16)), 20.00, "D x0.8"),
+        (ride(cut(prepared(843829, varispeed(up) + "," + STREAM), 9.29 / up, .92 / up, pre=0, fin=.10, fout=.18)),
+         9.29, "B +0.6 st"),
+        (cut(prepared(843829, varispeed(dn) + "," + STREAM), 2.44 / dn, .89 / dn, pre=0, fin=.05, fout=.22), 2.44,
+         "A -0.7 st"),
+        (ride(cut(prepared(843829, varispeed(dg) + "," + STREAM + GROAN), 24.93 / dg, .87 / dg, pre=0, fin=.08,
+                  fout=.26)), 24.93, "C -0.6 st"),
+    ]
+    emit("Door/door_stream_swing", level_momentary([x for x, _, _ in takes]),
+         ["%s %s" % (ref(843829, t), k) for _, t, k in takes],
+         "one leaf's whole 0.9 s swing, closer/hinge rub; odd = Lead pool, even = Follow pool", level=False, tight=False)
+    t_rel = [12.795, 28.29]
+    emit("Door/door_stream_release", level_momentary([cut(sw, t, .30, pre=0, fin=.002, fout=.14) for t in t_rel]),
+         [ref(843829, t) for t in t_rel], "leaf leaves its stop (push start, hall tail cut)", level=False, tight=False)
+    nx = prepared(768656, SEAT)
+    t_seat = [3.623, 3.195, 8.502, 10.460]
+    emit("Door/door_stream_seat", level_momentary([cut(nx, t - .006, .22, pre=0, fin=.002, fout=.10) for t in t_seat]),
+         [ref(768656, t) for t in t_seat], "leaf settles into the frame, dry, below 400 Hz", level=False, tight=False)
+
+
 def build_ambience():
     print("ambience")
     hum = prepared(454098, "highpass=f=40,lowpass=f=7000")
@@ -773,6 +848,7 @@ def build():
     build_steps()
     build_relay()
     build_doors()
+    build_stream_doors()
     build_ambience()
     build_glass_keys()
     os.makedirs(BUILD, exist_ok=True)

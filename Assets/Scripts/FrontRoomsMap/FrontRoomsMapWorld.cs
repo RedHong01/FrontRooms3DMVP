@@ -98,6 +98,14 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         public float level = 1f;
         // Near the start area (its light would reach through the stream rooms' walls): 1 north of the door line, 2 south of it.
         public byte startGroup;
+        // WebGL (TickFixturesNearOnly): the light's position relative to its chunk
+        // root (chunk roots only translate), what this map last set on the Light,
+        // and the lens emission factor last written, so a far lamp costs no native
+        // call per frame.
+        public Vector3 offset;
+        public bool lightOn = true;
+        public LightShadows shadowMode = LightShadows.None;
+        public float emissionWritten = -1f;
     }
 
     public sealed class Door
@@ -1118,6 +1126,7 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         light.shadowNearPlane = .1f;
         fixture.baseIntensity = theme.lampIntensity * (height > 4f ? 1.6f : 1f);
         fixture.light = light;
+        fixture.offset = light.transform.position - chunk.root.transform.position;
         fixture.startGroup = StartLampGroup(cell, light.range);
         // About one lamp in three may cast shadows, and only near the player.
         fixture.castsShadow = MapHash.Unit(MapHash.Hash(seed, cell.x, cell.y, 223)) < .34f;
@@ -1157,9 +1166,25 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
         return cell.y >= startDoorCell.y ? (byte)1 : (byte)2;
     }
 
+    /// <summary>
+    /// WebGL only (from the platform; tools may force it): per-frame Light and
+    /// property-block calls go only to the lamps that can be lit, within
+    /// lightRadius of the player. A lamp further away keeps its flicker clock,
+    /// holds its Light off, and rewrites its lens emission only when the glow
+    /// moves by more than <see cref="FarEmissionStep"/> (a stutter, a dropout,
+    /// a blink), never for the steady 2–3% shimmer. A chunk whose footprint is
+    /// beyond lightRadius skips the distance test altogether. The desktop path
+    /// below is unchanged.
+    /// </summary>
+    public static bool TickFixturesNearOnly { get; set; } = Application.platform == RuntimePlatform.WebGLPlayer;
+
+    const float FarEmissionStep = .05f;
+    static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
+
     void TickFixtures(float dt)
     {
         if (player == null) return;
+        if (TickFixturesNearOnly) { TickFixturesNear(dt); return; }
         var p = player.position;
         foreach (var chunk in built.Values)
         foreach (var f in chunk.fixtures)
@@ -1179,6 +1204,97 @@ public sealed class FrontRoomsMapWorld : MonoBehaviour
             block.SetColor("_EmissionColor", f.emission * Mathf.Max(.04f, f.level * held));
             f.panel.SetPropertyBlock(block);
         }
+    }
+
+    void TickFixturesNear(float dt)
+    {
+        var p = player.position;
+        var r2 = lightRadius * lightRadius;
+        foreach (var chunk in built.Values)
+        {
+            if (chunk.fixtures.Count == 0) continue;
+            var root = chunk.root.transform.position;
+            // Nearest point of the chunk's footprint to the player, in XZ.
+            var cx = Mathf.Max(root.x - p.x, 0f, p.x - (root.x + MapGrid.ChunkSize));
+            var cz = Mathf.Max(root.z - p.z, 0f, p.z - (root.z + MapGrid.ChunkSize));
+            var chunkFar = cx * cx + cz * cz >= r2;
+            foreach (var f in chunk.fixtures)
+            {
+                f.clock += dt;
+                f.level = Level(f);
+                var held = f.startGroup == 1 ? StartLampsNorth : f.startGroup == 2 ? StartLampsSouth : 1f;
+                var d = lightRadius;
+                if (!chunkFar) d = Vector2.Distance(new Vector2(root.x + f.offset.x, root.z + f.offset.z), new Vector2(p.x, p.z));
+                var fade = Mathf.Clamp01((lightRadius - d) / 3f) * held;
+                var on = fade > 0f && f.level > .01f;
+                if (f.lightOn != on) { f.light.enabled = on; f.lightOn = on; }
+                var factor = Mathf.Max(.04f, f.level * held);
+                if (on)
+                {
+                    // Lit: the same per-frame updates as the desktop path.
+                    f.light.intensity = f.baseIntensity * f.level * fade;
+                    var shadows = f.castsShadow && d < shadowRadius ? LightShadows.Soft : LightShadows.None;
+                    if (f.shadowMode != shadows) { f.light.shadows = shadows; f.shadowMode = shadows; }
+                    WriteEmission(f, factor);
+                    continue;
+                }
+                // Off: only a real change of glow reaches the renderer.
+                if (f.shadowMode != LightShadows.None) { f.light.shadows = LightShadows.None; f.shadowMode = LightShadows.None; }
+                if (Mathf.Abs(factor - f.emissionWritten) > FarEmissionStep) WriteEmission(f, factor);
+            }
+        }
+    }
+
+    void WriteEmission(Fixture f, float factor)
+    {
+        f.panel.GetPropertyBlock(block);
+        block.SetColor(EmissionColorId, f.emission * factor);
+        f.panel.SetPropertyBlock(block);
+        f.emissionWritten = factor;
+    }
+
+    public void TickFixturesForTools(float dt) => TickFixtures(dt);
+
+    /// <summary>
+    /// Tools: every lamp's Light and lens against the lamp formula, read back
+    /// from the components (lit within lightRadius with level above 0.01 and
+    /// its start group not held, at baseIntensity × level × fade, soft shadows
+    /// within shadowRadius when it casts; otherwise off). A lit lens carries
+    /// exactly the current glow; an unlit one within <see cref="FarEmissionStep"/>
+    /// of it. Returns the number of disagreements, with what they were.
+    /// </summary>
+    public int CheckLampStatesForTools(out int lit, out int total, List<string> problems)
+    {
+        lit = 0; total = 0;
+        var mismatches = 0;
+        var p = player.position;
+        var read = new MaterialPropertyBlock();
+        foreach (var chunk in built.Values)
+        foreach (var f in chunk.fixtures)
+        {
+            total++;
+            var lp = f.light.transform.position;
+            var d = Vector2.Distance(new Vector2(lp.x, lp.z), new Vector2(p.x, p.z));
+            var held = f.startGroup == 1 ? StartLampsNorth : f.startGroup == 2 ? StartLampsSouth : 1f;
+            var fade = Mathf.Clamp01((lightRadius - d) / 3f) * held;
+            var on = fade > 0f && f.level > .01f;
+            var factor = Mathf.Max(.04f, f.level * held);
+            f.panel.GetPropertyBlock(read);
+            var glow = read.GetColor(EmissionColorId);
+            var expectedGlow = f.emission * factor;
+            string problem = null;
+            if (f.light.enabled != on) problem = "enabled " + f.light.enabled + " expected " + on;
+            else if (on && Mathf.Abs(f.light.intensity - f.baseIntensity * f.level * fade) > 1e-4f) problem = "intensity " + f.light.intensity + " expected " + f.baseIntensity * f.level * fade;
+            else if (on && f.light.shadows != (f.castsShadow && d < shadowRadius ? LightShadows.Soft : LightShadows.None)) problem = "shadows " + f.light.shadows;
+            else if (!on && f.light.shadows != LightShadows.None) problem = "shadows " + f.light.shadows + " while off";
+            else if (on && (glow - expectedGlow).maxColorComponent > 1e-4f) problem = "lit glow " + glow + " expected " + expectedGlow;
+            else if (!on && Mathf.Abs(glow.maxColorComponent - expectedGlow.maxColorComponent) > FarEmissionStep * Mathf.Max(f.emission.maxColorComponent, 1e-6f) + 1e-4f) problem = "far glow " + glow + " expected about " + expectedGlow;
+            if (on) lit++;
+            if (problem == null) continue;
+            mismatches++;
+            if (problems != null && problems.Count < 12) problems.Add(f.light.transform.parent.name + " d " + d.ToString("0.0") + " level " + f.level.ToString("0.00") + ": " + problem);
+        }
+        return mismatches;
     }
 
     static float Level(Fixture f)

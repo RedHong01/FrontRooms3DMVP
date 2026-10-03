@@ -49,9 +49,36 @@ public static class FrontRoomsCloudBuild
         Verify();
         SwitchTarget(BuildTarget.WebGL);
         ApplyWebGLSettings();
+        // The shipped backend: automatic, which is WebGL 2 for the Web target.
+        PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, true);
         var output = Path.Combine(Root, "WebGL");
         Directory.CreateDirectory(output);
         Build(output, BuildTarget.WebGL, "WebGL");
+    }
+
+    // WebGPU evaluation package (WebGL performance analysis, 2026-10-02): the
+    // same player settings as the WebGL package, with WebGPU first and WebGL 2
+    // as the fallback where the browser has no WebGPU, written to its own folder
+    // so the two can be measured side by side. The graphics API list goes back
+    // to automatic afterwards, so the project is never left on the test backend.
+    [MenuItem("FrontRooms 3D/Cloud Build WebGL (WebGPU test)")]
+    public static void BuildWebGLWebGPU()
+    {
+        Verify();
+        SwitchTarget(BuildTarget.WebGL);
+        ApplyWebGLSettings();
+        PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, false);
+        PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL, new[] { GraphicsDeviceType.WebGPU, GraphicsDeviceType.OpenGLES3 });
+        try
+        {
+            var output = Path.Combine(Root, "WebGL-WebGPU");
+            Directory.CreateDirectory(output);
+            Build(output, BuildTarget.WebGL, "WebGL-WebGPU");
+        }
+        finally
+        {
+            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, true);
+        }
     }
 
     static void Verify()
@@ -108,7 +135,9 @@ public static class FrontRoomsCloudBuild
         PlayerSettings.WebGL.threadsSupport = false;
         PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
         PlayerSettings.WebGL.wasmArithmeticExceptions = WebGLWasmArithmeticExceptions.Ignore;
-        PlayerSettings.WebGL.initialMemorySize = 128;
+        // 256 MB initial heap (was 128): the title alone grows the heap several
+        // times from 128 MB; fewer memory.grow steps at startup, same ceiling.
+        PlayerSettings.WebGL.initialMemorySize = 256;
         PlayerSettings.WebGL.maximumMemorySize = 1024;
         PlayerSettings.WebGL.memoryGrowthMode = WebGLMemoryGrowthMode.Geometric;
         PlayerSettings.WebGL.geometricMemoryGrowthStep = 0.2f;
@@ -120,6 +149,9 @@ public static class FrontRoomsCloudBuild
         PlayerSettings.WebGL.closeOnQuit = false;
         PlayerSettings.SetManagedStrippingLevel(UnityEditor.Build.NamedBuildTarget.WebGL, ManagedStrippingLevel.High);
         PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.WebGL, ScriptingImplementation.IL2CPP);
+        // Master: the most optimised IL2CPP/Emscripten code for the Web target
+        // (longer build). The game is main-thread bound in the browser.
+        PlayerSettings.SetIl2CppCompilerConfiguration(UnityEditor.Build.NamedBuildTarget.WebGL, Il2CppCompilerConfiguration.Master);
         EditorUserBuildSettings.webGLBuildSubtarget = WebGLTextureSubtarget.Generic;
         EditorUserBuildSettings.development = false;
         EditorUserBuildSettings.allowDebugging = false;

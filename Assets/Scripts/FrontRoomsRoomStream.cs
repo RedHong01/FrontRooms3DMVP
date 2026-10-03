@@ -1754,6 +1754,9 @@ public sealed class FrontRoomsRoomStream : MonoBehaviour
         room.doorSoundPlayed = true;
         DoorOpeningStarted?.Invoke(room.sequence, new Vector3(centerX, RoomHeight * .42f, room.endZ));
         if (room.doorAudio == null || (doorCreakClip == null && doorLatchClip == null && doorTravelClip == null)) return;
+        // Legacy clips only as a fallback when FMOD is not running (AUDIO_CONTRACT rule 3):
+        // the sound chat's FMOD door Foley is timed to this door's 0.9 s / 88° motion.
+        if (FrontRooms.Audio.FrontRoomsFmod.Ready) return;
         // A very small deterministic pitch variation keeps repeated streamed
         // doors from sounding phase-locked while preserving the same source.
         room.doorAudio.pitch = .97f + Mathf.Abs(room.sequence % 7) * .01f;

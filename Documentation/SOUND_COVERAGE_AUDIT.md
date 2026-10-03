@@ -29,7 +29,7 @@ Status key:
 | Try a locked door | `DoorLocked` | handle rattles on the bolt (A10) | Recorded, but doors only lock when a level profile sets `doorsNeedKeys` (default off) |
 | **Unlock a door with a key** | none: there is no unlock event | ordinary door Foley only. No key in the lock, no bolt turn | **Silent**, waiting on the `DoorUnlocked` hook (map chat) |
 | Open / close a manual door | hinge rotation (`FrontRoomsDoorSound`) | handle, latch, stops, slow-swing creak (A09, A11–A13); closer hiss and fast-close air (C02, C03) | Recorded + Synth |
-| Automatic title-stream doors | hinge rotation | operator motor (C04, flagged) | Synth |
+| Title-stream double doors | hinge rotation (Stream mode) | recorded wooden swing per leaf, release, soft seat + lock on the terminal door (DOOR_FOLEY_SEGMENTS.md); motor and creak removed 2026-10-02 | Recorded (deadbolt still a stand-in) |
 | Relay squeezing through a door frame | `FrontRoomsRelayRig.DoorSqueeze` (a value, no event) | nothing | **Silent**, waiting on a rig event (visual chat) |
 
 ## Windows
@@ -57,7 +57,7 @@ Status key:
 |---|---|---|---|
 | Room hum | always on, Tension global | tube hum with tension beating (A16) | Recorded |
 | Air / room tone per zone | Zone global | hall air vs tall-room air (A19) | Recorded |
-| Nearest lamp | lamp discovery | fixture hum (A17) | Recorded |
+| Nearest lamp | lamp discovery | fixture hum (A17), 4 voices started 0.53 s apart, −28 dB (was 6 in-phase voices, louder than footsteps) | Recorded |
 | Lamp flicker | lamp intensity | starter strike and ballast ticks (A18, flagged) | Recorded |
 | A tube failing | none | pop (C06) is in the banks, but nothing triggers it | Unused |
 

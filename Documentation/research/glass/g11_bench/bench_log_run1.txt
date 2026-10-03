@@ -1,0 +1,21 @@
+[1] CAPS (play mode): gfx Metal · Apple M3 Max · Metal · OS Mac OS X 26.6.2 · supportsRayTracing False · supportsRayTracingShaders False · supportsInlineRayTracing False · supportsComputeShaders True · UnifiedRayTracing backends: Hardware False, Compute True · build target StandaloneOSX
+[119] run started · seed 516574485 · quality High · realtimeReflectionProbes True · pipeline FrontRooms_URP
+[613] Level 0 window candidates 6
+[647] bench window (282, 206)→(282, 207) · camera side zone Level0/Low · pane centre (271.50, 1.18, 45.00) · camera (271.50, 1.62, 43.50)
+[649] lights enabled whose range reaches the camera position: 37 · all enabled lights: 111
+[649] BASE game camera 1920x1080 MSAA4: median 44.22 ms (min 37.63), CPU part 33.45 ms · renderers in frustum 655
+[649] planar camera at (271.50, 1.62, 46.50) · renderers in its frustum on the player's side of the pane: 1495 (of 1495 in the frustum)
+[649] PLANAR planar full 1920x1080, shadows on: alone median 37.29 ms (min 30.47, CPU part 30.39) · game camera + planar median 91.99 ms (+47.78 ms over base)
+[651] PLANAR planar half 960x540, shadows on: alone median 38.70 ms (min 25.49, CPU part 33.07) · game camera + planar median 74.22 ms (+30.00 ms over base)
+[653] PLANAR planar half 960x540, shadows off: alone median 26.65 ms (min 23.74, CPU part 21.18) · game camera + planar median 71.84 ms (+27.63 ms over base)
+[655] PLANAR planar quarter 480x270, shadows off: alone median 24.32 ms (min 19.14, CPU part 18.43) · game camera + planar median 74.12 ms (+29.90 ms over base)
+[657] PLANAR planar quarter 480x270, shadows off, far 12 m: alone median 9.04 ms (min 6.25, CPU part 5.54) · game camera + planar median 55.53 ms (+11.32 ms over base)
+[659] cube camera at (271.50, 1.18, 43.80) · renderers in the 6 face frusta (sum): 643
+[659] CUBE 128px shadows on: 6 faces median 70.66 ms (min 60.17, CPU part 63.66) · 1 face median 18.53 ms
+[661] CUBE 128px shadows off: 6 faces median 34.47 ms (min 31.80, CPU part 27.36) · 1 face median 10.18 ms
+[663] CUBE 256px shadows on: 6 faces median 73.86 ms (min 58.32, CPU part 65.28) · 1 face median 22.44 ms
+[665] CUBE 256px shadows off: 6 faces median 35.15 ms (min 29.11, CPU part 27.29) · 1 face median 11.76 ms
+[685] PROBE RenderProbe 128px: game camera render + RenderProbe call + sync median 45.27 ms (+1.05 over base) · frames until IsFinishedRendering: [1,1,1,1,1,1,1,1] · texture 128px ARGBHalf
+[703] PROBE RenderProbe 256px: game camera render + RenderProbe call + sync median 44.79 ms (+0.57 over base) · frames until IsFinishedRendering: [1,1,1,1,1,1,1,1] · texture 128px ARGBHalf
+[703] BASE again: median 54.96 ms (min 42.10)
+[703] DONE

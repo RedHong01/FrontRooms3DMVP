@@ -1,0 +1,18 @@
+[1] CAPS (play mode): gfx Metal · Apple M3 Max · Metal · OS Mac OS X 26.6.2 · supportsRayTracing False · supportsRayTracingShaders False · supportsInlineRayTracing False · supportsComputeShaders True · UnifiedRayTracing backends: Hardware False, Compute True · build target StandaloneOSX
+[118] run started · seed 516574485 · quality High · realtimeReflectionProbes True · pipeline FrontRooms_URP
+[613] Level 0 window candidates 6
+[647] bench window (282, 206)→(282, 207) · camera side zone Level0/Low · pane centre (271.50, 1.18, 45.00) · camera (271.50, 1.65, 43.50)
+[693] FRAME no probe (game camera only): median 38.97 ms, mean 38.98, max 48.43 (40 frames)
+[737] FRAME probe 128px EveryFrame NoTimeSlicing (shadows on): median 86.45 ms, mean 84.64, max 121.98 (40 frames) · +47.48 ms median over no probe
+[784] FRAME probe 128px EveryFrame AllFacesAtOnce (shadows on): median 50.58 ms, mean 59.33, max 97.67 (40 frames) · +11.61 ms median over no probe
+[831] FRAME probe 128px EveryFrame IndividualFaces (shadows on): median 45.00 ms, mean 44.25, max 57.91 (40 frames) · +6.03 ms median over no probe
+[894] ONE-SHOT probe 128px NoTimeSlicing shadowDistance 100: finished after 1 frames, worst frame 76.93 ms, extra over 18 frames 69.16 ms | finished after 1 frames, worst frame 93.81 ms, extra over 18 frames 136.10 ms | finished after 1 frames, worst frame 108.24 ms, extra over 18 frames 166.90 ms
+[957] ONE-SHOT probe 256px NoTimeSlicing shadowDistance 100: finished after 1 frames, worst frame 102.17 ms, extra over 18 frames 130.45 ms | finished after 1 frames, worst frame 103.44 ms, extra over 18 frames 125.99 ms | finished after 1 frames, worst frame 94.85 ms, extra over 18 frames 105.49 ms
+[1020] ONE-SHOT probe 128px NoTimeSlicing shadowDistance 0: finished after 1 frames, worst frame 92.51 ms, extra over 18 frames 155.01 ms | finished after 1 frames, worst frame 99.90 ms, extra over 18 frames 155.92 ms | finished after 1 frames, worst frame 96.60 ms, extra over 18 frames 152.05 ms
+[1083] ONE-SHOT probe 256px NoTimeSlicing shadowDistance 0: finished after 1 frames, worst frame 108.08 ms, extra over 18 frames 216.55 ms | finished after 1 frames, worst frame 101.54 ms, extra over 18 frames 181.54 ms | finished after 1 frames, worst frame 107.51 ms, extra over 18 frames 174.51 ms
+[1146] ONE-SHOT probe 128px AllFacesAtOnce shadowDistance 0: finished after 3 frames, worst frame 110.40 ms, extra over 18 frames 205.10 ms | finished after 3 frames, worst frame 118.86 ms, extra over 18 frames 196.32 ms | finished after 3 frames, worst frame 111.71 ms, extra over 18 frames 223.53 ms
+[1209] ONE-SHOT probe 256px AllFacesAtOnce shadowDistance 0: finished after 3 frames, worst frame 107.47 ms, extra over 18 frames 308.92 ms | finished after 3 frames, worst frame 117.77 ms, extra over 18 frames 297.47 ms | finished after 3 frames, worst frame 143.15 ms, extra over 18 frames 350.63 ms
+[1272] ONE-SHOT probe 128px IndividualFaces shadowDistance 0: finished after 8 frames, worst frame 66.36 ms, extra over 18 frames 256.26 ms | finished after 8 frames, worst frame 70.64 ms, extra over 18 frames 250.67 ms | finished after 8 frames, worst frame 73.65 ms, extra over 18 frames 256.63 ms
+[1335] ONE-SHOT probe 256px IndividualFaces shadowDistance 0: finished after 8 frames, worst frame 66.54 ms, extra over 18 frames 259.04 ms | finished after 8 frames, worst frame 76.61 ms, extra over 18 frames 286.38 ms | finished after 8 frames, worst frame 72.46 ms, extra over 18 frames 238.46 ms
+[1379] FRAME no probe again: median 45.71 ms, mean 45.78, max 55.29 (40 frames)
+[1379] DONE (probe pass)

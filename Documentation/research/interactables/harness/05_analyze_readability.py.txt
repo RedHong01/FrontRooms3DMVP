@@ -1,0 +1,60 @@
+import json, math, os, sys
+from PIL import Image, ImageDraw, ImageFont
+SRC = sys.argv[1]; OUT = sys.argv[2]
+os.makedirs(OUT, exist_ok=True)
+rows = json.load(open(os.path.join(SRC, 'rects.json')))
+def lin(c):
+    c = c / 255.0
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+LUT = [lin(i) for i in range(256)]
+def meanY(im, r):
+    x0, y0, x1, y1 = [int(round(v)) for v in r]
+    if x1 - x0 < 2 or y1 - y0 < 2:
+        cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+        x0, x1, y0, y1 = cx - 1, cx + 1, cy - 1, cy + 1
+    c = im.crop((x0, y0, x1, y1))
+    px = c.get_flattened_data() if hasattr(c, 'get_flattened_data') else c.getdata()
+    n = 0; s = 0.0; sr = sg = sb = 0.0
+    for p in px:
+        r_, g_, b_ = LUT[p[0]], LUT[p[1]], LUT[p[2]]
+        s += 0.2126 * r_ + 0.7152 * g_ + 0.0722 * b_; sr += r_; sg += g_; sb += b_; n += 1
+    return s / n, (sr / n, sg / n, sb / n)
+def stops(a, b): return math.log2(max(a, 1e-5) / max(b, 1e-5))
+res = []
+for row in rows:
+    im = Image.open(os.path.join(SRC, row['file'])).convert('RGB')
+    m = {k: meanY(im, v) for k, v in row['rects'].items()}
+    Yf, Yc, Yo, Yw, Yu = m['free_leaf'][0], m['cand_leaf'][0], m['open_void'][0], m['wall_between'][0], m['cand_upper'][0]
+    w = row['rects']['cand_whole']
+    res.append(dict(cond=row['condition'], cand=row['candidate'], d=row['distance'], Yfree=Yf, Ycand=Yc, Yupper=Yu, Yopen=Yo, Ywall=Yw,
+                    cand_vs_free=stops(Yc, Yf), cand_vs_wall=stops(Yc, Yw), free_vs_wall=stops(Yf, Yw), cand_vs_open=stops(Yc, Yo), upper_vs_free=stops(Yu, Yf),
+                    leaf_px=(round(w[2] - w[0]), round(w[3] - w[1]))))
+json.dump(res, open(os.path.join(OUT, 'metrics.json'), 'w'), indent=1)
+print('cond   cand                    d   Yfree  Ycand  Yupper Ywall  Yopen | cand-free cand-wall free-wall cand-open upper-free  leafpx')
+for r in res:
+    print('%-6s %-22s %2d  %.3f  %.3f  %.3f  %.3f  %.3f | %+5.2f     %+5.2f     %+5.2f     %+5.2f     %+5.2f    %s' % (
+        r['cond'], r['cand'], r['d'], r['Yfree'], r['Ycand'], r['Yupper'], r['Ywall'], r['Yopen'], r['cand_vs_free'], r['cand_vs_wall'], r['free_vs_wall'], r['cand_vs_open'], r['upper_vs_free'], r['leaf_px']))
+# Contact sheets: native-resolution crops centred between the three openings.
+font = None
+for f in ['/System/Library/Fonts/Helvetica.ttc', '/System/Library/Fonts/Supplemental/Arial.ttf']:
+    if os.path.exists(f):
+        font = ImageFont.truetype(f, 22); small = ImageFont.truetype(f, 18); break
+CW, CH = 640, 300
+cands = sorted(set(r['candidate'] for r in rows), key=lambda c: c)
+for cond in ['L0lit', 'L0dim', 'Office']:
+    sheet = Image.new('RGB', (220 + 3 * (CW + 10), 60 + len(cands) * (CH + 10)), (16, 16, 16))
+    dr = ImageDraw.Draw(sheet)
+    dr.text((10, 15), cond + '  ·  native 1080p pixels  ·  left: free (veneer)  centre: candidate  right: open doorway', fill=(230, 230, 230), font=font)
+    for j, d in enumerate([6, 12, 20]):
+        dr.text((220 + j * (CW + 10) + 10, 40), '%d m' % d, fill=(230, 230, 230), font=small)
+    for i, c in enumerate(cands):
+        dr.text((10, 60 + i * (CH + 10) + CH // 2), c, fill=(230, 230, 230), font=small)
+        for j, d in enumerate([6, 12, 20]):
+            row = next(r for r in rows if r['condition'] == cond and r['candidate'] == c and r['distance'] == d)
+            im = Image.open(os.path.join(SRC, row['file'])).convert('RGB')
+            w = row['rects']['cand_whole']
+            cx = (w[0] + w[2]) / 2; cy = (w[1] + w[3]) / 2
+            box = (int(cx - CW / 2), int(cy - CH / 2), int(cx + CW / 2), int(cy + CH / 2))
+            sheet.paste(im.crop(box), (220 + j * (CW + 10), 60 + i * (CH + 10)))
+    sheet.save(os.path.join(OUT, 'sheet_' + cond + '.png'))
+print('sheets written')

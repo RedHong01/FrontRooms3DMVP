@@ -1,0 +1,18 @@
+[1] CAPS (play mode): gfx Metal · Apple M3 Max · Metal · OS Mac OS X 26.6.2 · supportsRayTracing False · supportsRayTracingShaders False · supportsInlineRayTracing False · supportsComputeShaders True · UnifiedRayTracing backends: Hardware False, Compute True · build target StandaloneOSX
+[120] run started · seed 516574485 · quality High · realtimeReflectionProbes True · pipeline FrontRooms_URP
+[619] Level 0 window candidates 6
+[653] bench window (282, 206)→(282, 207) · camera side zone Level0/Low · pane centre (271.50, 1.18, 45.00) · camera (271.50, 1.65, 43.50)
+[656] relay placed at (271.50, 0.03, 41.10) · state Search · released True
+[666] relay rig Hunter at (271.50, 0.03, 41.80) active True · renderers 16 · game camera far 46.00 m · fog True ExponentialSquared density 0.01 start/end 0.00/300.00
+[666] BASE game camera: median 36.66 ms (min 29.45), CPU part 26.56
+[666] EMPTY extra camera (nothing to draw), quarter res: alone median 2.55 ms (CPU part 1.36) · with game camera +-3.46 ms
+[666] RELAY-ONLY planar 480x270 (16 renderers in view): alone median 2.51 ms (CPU part 1.26) · with game camera +-5.48 ms
+[666] RELAY-ONLY planar 960x540 (16 renderers in view): alone median 2.74 ms (CPU part 1.35) · with game camera +-1.55 ms
+[666] FULL planar quarter, far 12 m, shadows off (102 renderers in view): alone median 4.29 ms (CPU part 2.74) · with game camera +1.49 ms
+[666] FULL planar quarter, far 6 m: alone median 3.90 ms (CPU part 2.39) · renderers in view 57
+[668] FULL planar quarter, far 9 m: alone median 4.03 ms (CPU part 2.48) · renderers in view 67
+[670] FULL planar quarter, far 20 m: alone median 6.98 ms (CPU part 4.99) · renderers in view 178
+[672] FULL planar quarter, far 40 m: alone median 17.15 ms (CPU part 13.17) · renderers in view 617
+[674] FULL planar quarter, far 80 m: alone median 34.07 ms (CPU part 27.22) · renderers in view 1511
+[676] BASE again: median 35.34 ms (min 31.45)
+[676] DONE (overlay pass)

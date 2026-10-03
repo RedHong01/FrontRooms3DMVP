@@ -1,0 +1,819 @@
+// G11 REFLECTION BENCH — private clone (proj_glass) only. NEVER promote to the real project.
+// Plays Assets/Scenes/FrontRooms3D.unity with the same start as the interaction-audit harness
+// (Random.InitState(4242) before the title start), stands 1.5 m from the first Level 0 window,
+// and times what each reflection option costs on this Mac:
+//   - the game camera (1920x1080, 4x MSAA) as the baseline;
+//   - a mirrored planar camera for that pane at full, half and quarter resolution, shadows on/off;
+//   - a 6-face cube render (what a realtime probe refresh renders) at 128 and 256 px;
+//   - a real ReflectionProbe.RenderProbe() refresh, if it completes under manual rendering.
+// Every timing = Stopwatch around the render(s) + a 1-pixel ReadPixels that waits for the GPU.
+// It also logs the ray-tracing capability flags of this machine/editor.
+// Run: Unity -batchmode -projectPath <proj_glass> -executeMethod FrontRoomsG11ReflectionBench.RunBatch -logFile <f>
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using FrontRooms.Map;
+using Unity.Profiling;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+
+[InitializeOnLoad]
+public static class FrontRoomsG11ReflectionBench
+{
+    const string ScenePath = "Assets/Scenes/FrontRooms3D.unity";
+    const string ActiveKey = "FrontRooms.G11.Active";
+    const string DeadlineKey = "FrontRooms.G11.Deadline";
+    const string DoneKey = "FrontRooms.G11.Done";
+    const int W = 1920, H = 1080;
+    const BindingFlags BF = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+
+    static int waitUntilFrame = -1;
+    static bool finished;
+    static string outDir;
+    static readonly StringBuilder log = new StringBuilder();
+    static readonly Stack<IEnumerator> stack = new Stack<IEnumerator>();
+
+    static FrontRooms3DGame game;
+    static FrontRoomsMapWorld map;
+    static Camera cam;
+    static RenderTexture rt;
+    static Texture2D tiny;
+
+    static FrontRoomsG11ReflectionBench()
+    {
+        if (SessionState.GetBool(ActiveKey, false)) EditorApplication.update += Tick;
+    }
+
+    const string ProbeKey = "FrontRooms.G11.ProbeMode";
+    static bool ProbeMode => SessionState.GetBool(ProbeKey, false);
+    const string OverlayKey = "FrontRooms.G11.OverlayMode";
+    static bool OverlayMode => SessionState.GetBool(OverlayKey, false);
+
+    // Third pass: fixed per-camera cost, Relay-only planar overlay, far-clip sweep.
+    public static void RunBatchOverlay()
+    {
+        SessionState.SetBool(OverlayKey, true);
+        RunBatch();
+    }
+
+    // Second pass: per-frame cost of realtime probe refreshes (all three time-slicing modes), measured as frame intervals.
+    public static void RunBatchProbe()
+    {
+        SessionState.SetBool(ProbeKey, true);
+        RunBatch();
+    }
+
+    public static void RunBatch()
+    {
+        Caps("editor, before play mode");
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        SessionState.SetBool(ActiveKey, true);
+        SessionState.SetFloat(DeadlineKey, (float)EditorApplication.timeSinceStartup + 900f);
+        EditorApplication.update -= Tick;
+        EditorApplication.update += Tick;
+        EditorApplication.EnterPlaymode();
+    }
+
+    static string OutDir
+    {
+        get
+        {
+            if (outDir == null)
+            {
+                outDir = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", "g11_reflection_bench");
+                Directory.CreateDirectory(outDir);
+            }
+            return outDir;
+        }
+    }
+
+    static void Log(string s)
+    {
+        var line = "[" + Time.frameCount + "] " + s;
+        log.AppendLine(line);
+        Debug.Log("[G11] " + line);
+        try { File.WriteAllText(Path.Combine(OutDir, OverlayMode ? "bench_log_overlay.txt" : ProbeMode ? "bench_log_probe.txt" : "bench_log.txt"), log.ToString()); } catch { }
+    }
+
+    static void Finish()
+    {
+        finished = true;
+        SessionState.SetBool(DoneKey, true);
+        try { File.WriteAllText(Path.Combine(OutDir, OverlayMode ? "bench_log_overlay.txt" : ProbeMode ? "bench_log_probe.txt" : "bench_log.txt"), log.ToString()); } catch { }
+    }
+
+    static void Tick()
+    {
+        var timedOut = EditorApplication.timeSinceStartup > SessionState.GetFloat(DeadlineKey, float.MaxValue);
+        if (finished || timedOut || SessionState.GetBool(DoneKey, false))
+        {
+            if (timedOut && !finished && !SessionState.GetBool(DoneKey, false)) { Log("TIMEOUT"); Finish(); }
+            if (EditorApplication.isPlaying) { EditorApplication.ExitPlaymode(); return; }
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            EditorApplication.update -= Tick;
+            SessionState.EraseBool(ActiveKey);
+            SessionState.EraseBool(DoneKey);
+            if (Application.isBatchMode) EditorApplication.Exit(0);
+            return;
+        }
+        if (!EditorApplication.isPlaying) return;
+        if (stack.Count == 0) stack.Push(Main());
+        if (Time.frameCount < waitUntilFrame) return;
+        try
+        {
+            for (var guard = 0; guard < 1000; guard++)
+            {
+                var top = stack.Peek();
+                if (!top.MoveNext())
+                {
+                    stack.Pop();
+                    if (stack.Count == 0) { Finish(); return; }
+                    continue;
+                }
+                var cur = top.Current;
+                if (cur is IEnumerator sub) { stack.Push(sub); continue; }
+                waitUntilFrame = Time.frameCount + (cur is int n ? Mathf.Max(1, n) : 1);
+                return;
+            }
+        }
+        catch (Exception e)
+        {
+            Log("EXCEPTION " + e);
+            Finish();
+        }
+    }
+
+    // ---------------- helpers ----------------
+    static FieldInfo FI(Type t, string n)
+    {
+        for (; t != null; t = t.BaseType)
+        {
+            var f = t.GetField(n, BF);
+            if (f != null) return f;
+        }
+        return null;
+    }
+    static object Get(object o, string n) => FI(o.GetType(), n)?.GetValue(o);
+    static T Get<T>(object o, string n) => (T)Get(o, n);
+    static void Set(object o, string n, object v) => FI(o.GetType(), n).SetValue(o, v);
+    static object Call(object o, string n, params object[] a) => o.GetType().GetMethod(n, BF).Invoke(o, a);
+    static string Phase => Get(game, "phase").ToString();
+    static Transform PlayerRoot => Get<Transform>(game, "playerRoot");
+    static string V(Vector3 v) => "(" + v.x.ToString("0.00", CultureInfo.InvariantCulture) + ", " + v.y.ToString("0.00", CultureInfo.InvariantCulture) + ", " + v.z.ToString("0.00", CultureInfo.InvariantCulture) + ")";
+    static string F(double f) => f.ToString("0.00", CultureInfo.InvariantCulture);
+
+    static void Caps(string when)
+    {
+        string urt = "n/a";
+        try
+        {
+            var t = Type.GetType("UnityEngine.Rendering.UnifiedRayTracing.RayTracingContext, Unity.UnifiedRayTracing.Runtime");
+            var bt = Type.GetType("UnityEngine.Rendering.UnifiedRayTracing.RayTracingBackend, Unity.UnifiedRayTracing.Runtime");
+            if (t != null && bt != null)
+            {
+                var m = t.GetMethod("IsBackendSupported", BindingFlags.Static | BindingFlags.Public);
+                urt = "Hardware " + m.Invoke(null, new[] { Enum.Parse(bt, "Hardware") }) + ", Compute " + m.Invoke(null, new[] { Enum.Parse(bt, "Compute") });
+            }
+            else urt = "type not found";
+        }
+        catch (Exception e) { urt = "error " + e.GetType().Name; }
+        Log("CAPS (" + when + "): gfx " + SystemInfo.graphicsDeviceType + " · " + SystemInfo.graphicsDeviceName + " · " + SystemInfo.graphicsDeviceVersion
+            + " · OS " + SystemInfo.operatingSystem
+            + " · supportsRayTracing " + SystemInfo.supportsRayTracing
+            + " · supportsRayTracingShaders " + SystemInfo.supportsRayTracingShaders
+            + " · supportsInlineRayTracing " + SystemInfo.supportsInlineRayTracing
+            + " · supportsComputeShaders " + SystemInfo.supportsComputeShaders
+            + " · UnifiedRayTracing backends: " + urt
+            + " · build target " + EditorUserBuildSettings.activeBuildTarget);
+    }
+
+    static void Sync(RenderTexture target)
+    {
+        var active = RenderTexture.active;
+        RenderTexture.active = target;
+        tiny.ReadPixels(new Rect(0, 0, 1, 1), 0, 0);
+        tiny.Apply();
+        RenderTexture.active = active;
+    }
+
+    static void RenderTo(Camera c, RenderTexture target)
+    {
+        var prev = c.targetTexture;
+        c.targetTexture = target;
+        c.Render();
+        c.targetTexture = prev;
+    }
+
+    // Times body() + a GPU sync on syncTarget. Returns (median total ms, min total ms, median CPU-only ms).
+    static (double med, double min, double cpu) Measure(Action body, RenderTexture syncTarget, int samples = 20)
+    {
+        var total = new List<double>();
+        var cpu = new List<double>();
+        Sync(syncTarget);
+        for (var i = 0; i < samples + 4; i++)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            body();
+            var c = sw.Elapsed.TotalMilliseconds;
+            Sync(syncTarget);
+            sw.Stop();
+            if (i >= 4) { total.Add(sw.Elapsed.TotalMilliseconds); cpu.Add(c); }
+        }
+        total.Sort();
+        cpu.Sort();
+        return (total[total.Count / 2], total[0], cpu[cpu.Count / 2]);
+    }
+
+    static void Save(RenderTexture src, string name)
+    {
+        var active = RenderTexture.active;
+        RenderTexture.active = src;
+        var tex = new Texture2D(src.width, src.height, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, src.width, src.height), 0, 0);
+        tex.Apply();
+        RenderTexture.active = active;
+        File.WriteAllBytes(Path.Combine(OutDir, name), tex.EncodeToJPG(88));
+        UnityEngine.Object.Destroy(tex);
+    }
+
+    // Renderers whose bounds touch the frustum (and, for the planar camera, lie in front of the mirror plane).
+    static int CountVisible(Camera c, Plane? keepSide = null)
+    {
+        var planes = GeometryUtility.CalculateFrustumPlanes(c);
+        var n = 0;
+        foreach (var r in UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+        {
+            if (!r.enabled || !r.gameObject.activeInHierarchy || r is ParticleSystemRenderer) continue;
+            if ((c.cullingMask & (1 << r.gameObject.layer)) == 0) continue;
+            var b = r.bounds;
+            if (!GeometryUtility.TestPlanesAABB(planes, b)) continue;
+            if (keepSide.HasValue)
+            {
+                var p = keepSide.Value;
+                // Keep it if any part of the box is on the kept side.
+                var ext = b.extents;
+                var radius = Mathf.Abs(ext.x * p.normal.x) + Mathf.Abs(ext.y * p.normal.y) + Mathf.Abs(ext.z * p.normal.z);
+                if (p.GetDistanceToPoint(b.center) < -radius) continue;
+            }
+            n++;
+        }
+        return n;
+    }
+
+    static int CountVisiblePlanar(Camera rc, float far, Plane keep)
+    {
+        var proj = Matrix4x4.Perspective(rc.fieldOfView, rc.aspect, .05f, far);
+        var planes = GeometryUtility.CalculateFrustumPlanes(proj * rc.worldToCameraMatrix);
+        var n = 0;
+        foreach (var r in UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+        {
+            if (!r.enabled || !r.gameObject.activeInHierarchy || r is ParticleSystemRenderer) continue;
+            if ((rc.cullingMask & (1 << r.gameObject.layer)) == 0) continue;
+            var b = r.bounds;
+            if (!GeometryUtility.TestPlanesAABB(planes, b)) continue;
+            var ext = b.extents;
+            var radius = Mathf.Abs(ext.x * keep.normal.x) + Mathf.Abs(ext.y * keep.normal.y) + Mathf.Abs(ext.z * keep.normal.z);
+            if (keep.GetDistanceToPoint(b.center) < -radius) continue;
+            n++;
+        }
+        return n;
+    }
+
+    static int CountLightsNear(Vector3 p, float range)
+    {
+        var n = 0;
+        foreach (var l in UnityEngine.Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+            if (l.enabled && l.gameObject.activeInHierarchy && l.intensity > 0f && Vector3.Distance(l.transform.position, p) < range + l.range) n++;
+        return n;
+    }
+
+    static void Place(Vector3 feet, Vector3 lookAt)
+    {
+        var root = PlayerRoot;
+        var body = Get<CharacterController>(game, "playerBody");
+        body.enabled = false;
+        root.position = feet;
+        body.enabled = true;
+        Physics.SyncTransforms();
+        var eye = root.position + Vector3.up * ModuleUnits.PlayerEye;
+        var d = lookAt - eye;
+        var yaw = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+        var pitch = -Mathf.Asin(Mathf.Clamp(d.y / Mathf.Max(1e-4f, d.magnitude), -1f, 1f)) * Mathf.Rad2Deg;
+        Set(game, "yaw", yaw);
+        Set(game, "pitch", pitch);
+        root.rotation = Quaternion.Euler(0f, yaw, 0f);
+        cam.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+    }
+
+    static void Resume()
+    {
+        if (Phase != "Paused") return;
+        var phaseType = typeof(FrontRooms3DGame).GetNestedType("Phase", BindingFlags.NonPublic);
+        Call(game, "SetPhase", Enum.Parse(phaseType, "Playing"));
+    }
+
+    static IEnumerator Settle(int extra = 20)
+    {
+        yield return 3;
+        var start = Time.frameCount;
+        while (!map.Settled && Time.frameCount - start < 1500) yield return 1;
+        yield return extra;
+    }
+
+    static bool FreeStanding(Vector3 feet)
+    {
+        var r = ModuleUnits.PlayerRadius;
+        var root = PlayerRoot;
+        foreach (var c in Physics.OverlapCapsule(feet + Vector3.up * (r + .15f), feet + Vector3.up * (ModuleUnits.PlayerHeight - r), r, ~0, QueryTriggerInteraction.Ignore))
+            if (root == null || !c.transform.IsChildOf(root)) return false;
+        return true;
+    }
+
+    static Collider WindowCollider(GridCoord a, GridCoord b)
+    {
+        var dict = Get(map, "windowByCollider") as IDictionary;
+        var p = map.CrossingPoint(a, b);
+        foreach (DictionaryEntry e in dict)
+        {
+            var pos = (Vector3)Get(e.Value, "position");
+            if ((new Vector2(pos.x - p.x, pos.z - p.z)).sqrMagnitude < .01f) return (Collider)e.Key;
+        }
+        return null;
+    }
+
+    static IEnumerable<GridCoord> CellsAround(GridCoord center, int radiusCells)
+    {
+        for (var r = 0; r <= radiusCells; r++)
+        for (var dy = -r; dy <= r; dy++)
+        for (var dx = -r; dx <= r; dx++)
+        {
+            if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
+            yield return new GridCoord(center.x + dx, center.y + dy);
+        }
+    }
+
+    // ---------------- main ----------------
+    static IEnumerator Main()
+    {
+        ShaderUtil.allowAsyncCompilation = false;
+        Caps("play mode");
+        tiny = new Texture2D(1, 1, TextureFormat.RGB24, false);
+        while ((game = UnityEngine.Object.FindFirstObjectByType<FrontRooms3DGame>()) == null) yield return 1;
+        cam = Get<Camera>(game, "cam");
+        while (Time.time < 2.0f) yield return 1;
+        UnityEngine.Random.InitState(4242);
+        for (var tries = 0; tries < 60 && !Get<bool>(game, "mapPlay"); tries++)
+        {
+            Call(game, "RequestTitleStart");
+            if (!Get<bool>(game, "mapPlay")) yield return 15;
+        }
+        if (!Get<bool>(game, "mapPlay")) { Log("FAILED: could not start a run"); yield break; }
+        map = Get<FrontRoomsMapWorld>(game, "map");
+        Log("run started · seed " + Get<int>(game, "runSeed") + " · quality " + QualitySettings.names[QualitySettings.GetQualityLevel()]
+            + " · realtimeReflectionProbes " + QualitySettings.realtimeReflectionProbes
+            + " · pipeline " + (GraphicsSettings.currentRenderPipeline != null ? GraphicsSettings.currentRenderPipeline.name : "none"));
+        var tuning = Get<FrontRoomsHunterTuning>(game, "hunterTuning");
+        tuning.releaseDelaySeconds = 1e6f;
+        var t0 = Time.time;
+        while (!Get<bool>(game, "startDoorOpened") && Time.time - t0 < 8f) { Resume(); yield return 1; }
+        yield return 30;
+
+        var startDoorCell = (GridCoord)Get(game, "startDoorCell");
+        var origin = startDoorCell + new GridCoord(0, 3);
+        var windowsL0 = new List<(GridCoord a, GridCoord b)>();
+        foreach (var c in CellsAround(origin, 60))
+        {
+            if (map.InStartArea(c)) continue;
+            foreach (var s in new[] { new GridCoord(1, 0), new GridCoord(0, 1) })
+            {
+                var n = c + s;
+                if (map.InStartArea(n)) continue;
+                if (map.Cache.Edge(c, n) != EdgeKind.Window) continue;
+                var za = map.Cache.ZoneOf(c);
+                var zb = map.Cache.ZoneOf(n);
+                if (za.theme != ZoneTheme.Office && zb.theme != ZoneTheme.Office && windowsL0.Count < 6) windowsL0.Add((c, n));
+            }
+            if (windowsL0.Count >= 6) break;
+        }
+        Log("Level 0 window candidates " + windowsL0.Count);
+
+        foreach (var (a0, b0) in windowsL0)
+        {
+            var a = a0; var b = b0;
+            var cross = map.CrossingPoint(a, b);
+            var d = map.CellCenter(b) - map.CellCenter(a); d.y = 0f; var dir = d.normalized;
+            var center = cross + Vector3.up * ((ModuleUnits.WindowSill + ModuleUnits.WindowTop) * .5f);
+            Place(cross - dir * 1.5f, center);
+            yield return Settle(20);
+            Resume();
+            var col = WindowCollider(a, b);
+            if (col == null) { Log("window " + a + "-" + b + " not built; next"); continue; }
+            if (!FreeStanding(cross - dir * 1.5f))
+            {
+                var t = a; a = b; b = t; dir = -dir;
+                if (!FreeStanding(cross - dir * 1.5f)) { Log("both sides blocked; next"); continue; }
+            }
+            Place(cross - dir * 1.5f, center);
+            yield return 5;
+            Resume();
+            Log("bench window " + a + "→" + b + " · camera side zone " + map.ZoneOf(a).theme + "/" + map.ZoneOf(a).height + " · pane centre " + V(center) + " · camera " + V(cam.transform.position));
+            if (OverlayMode) yield return OverlayBench(center, dir); else if (ProbeMode) yield return ProbeFrames(center, dir); else yield return Bench(center, dir);
+            yield break;
+        }
+        Log("NO usable Level 0 window");
+    }
+
+    static ReflectionProbe MakeProbe(Vector3 pos, int res, ReflectionProbeRefreshMode refresh, ReflectionProbeTimeSlicingMode slicing, float shadowDistance)
+    {
+        var pgo = new GameObject("G11 / realtime probe " + res + " " + refresh + " " + slicing);
+        pgo.transform.position = pos;
+        var probe = pgo.AddComponent<ReflectionProbe>();
+        probe.mode = ReflectionProbeMode.Realtime;
+        probe.refreshMode = refresh;
+        probe.timeSlicingMode = slicing;
+        probe.resolution = res;
+        probe.size = new Vector3(6f, 3f, 6f);
+        probe.boxProjection = true;
+        probe.hdr = true;
+        probe.clearFlags = ReflectionProbeClearFlags.SolidColor;
+        probe.backgroundColor = Color.black;
+        probe.nearClipPlane = .05f;
+        probe.farClipPlane = 20f;
+        probe.shadowDistance = shadowDistance;
+        return probe;
+    }
+
+    // Each frame: render the game camera to rt (batch mode draws nothing by itself), wait for the GPU, then take a timestamp.
+    // The interval between timestamps is the whole frame: player loop + probe work Unity did that frame + game camera + GPU.
+    static IEnumerator Intervals(List<double> into, int frames, Action perFrame = null)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        double last = -1;
+        for (var i = 0; i < frames + 1; i++)
+        {
+            perFrame?.Invoke();
+            RenderTo(cam, rt);
+            Sync(rt);
+            var now = sw.Elapsed.TotalMilliseconds;
+            if (last >= 0) into.Add(now - last);
+            last = now;
+            yield return 1;
+        }
+    }
+
+    static string Stats(List<double> v)
+    {
+        var s = v.OrderBy(x => x).ToList();
+        return "median " + F(s[s.Count / 2]) + " ms, mean " + F(s.Average()) + ", max " + F(s[s.Count - 1]) + " (" + s.Count + " frames)";
+    }
+
+    static IEnumerator ProbeFrames(Vector3 paneCenter, Vector3 dir)
+    {
+        Time.captureDeltaTime = 1f / 60f;
+        rt = new RenderTexture(W, H, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { antiAliasing = 4, name = "G11 main" };
+        rt.Create();
+        QualitySettings.realtimeReflectionProbes = true;
+        var probePos = paneCenter - dir * 1.2f;
+        yield return 5;
+
+        var none = new List<double>();
+        yield return Intervals(none, 40);
+        Log("FRAME no probe (game camera only): " + Stats(none));
+
+        foreach (var slicing in new[] { ReflectionProbeTimeSlicingMode.NoTimeSlicing, ReflectionProbeTimeSlicingMode.AllFacesAtOnce, ReflectionProbeTimeSlicingMode.IndividualFaces })
+        {
+            var p = MakeProbe(probePos, 128, ReflectionProbeRefreshMode.EveryFrame, slicing, 100f);
+            yield return 3;
+            var v = new List<double>();
+            yield return Intervals(v, 40);
+            Log("FRAME probe 128px EveryFrame " + slicing + " (shadows on): " + Stats(v) + " · +" + F(v.OrderBy(x => x).ElementAt(v.Count / 2) - none.OrderBy(x => x).ElementAt(none.Count / 2)) + " ms median over no probe");
+            UnityEngine.Object.Destroy(p.gameObject);
+            yield return 3;
+        }
+
+        // One-shot refreshes (what "re-render the probe when the hold starts" would do): per-frame intervals after the call.
+        foreach (var (slicing, shadow) in new[] { (ReflectionProbeTimeSlicingMode.NoTimeSlicing, 100f), (ReflectionProbeTimeSlicingMode.NoTimeSlicing, 0f), (ReflectionProbeTimeSlicingMode.AllFacesAtOnce, 0f), (ReflectionProbeTimeSlicingMode.IndividualFaces, 0f) })
+        {
+            foreach (var res in new[] { 128, 256 })
+            {
+                var p = MakeProbe(probePos, res, ReflectionProbeRefreshMode.ViaScripting, slicing, shadow);
+                yield return 3;
+                var runs = new List<string>();
+                var extraPerRun = new List<double>();
+                for (var rep = 0; rep < 3; rep++)
+                {
+                    var v = new List<double>();
+                    var id = p.RenderProbe();
+                    var framesToFinish = -1;
+                    var k = 0;
+                    yield return Intervals(v, 18, () => { k++; if (framesToFinish < 0 && p.IsFinishedRendering(id)) framesToFinish = k - 1; });
+                    var baseMed = none.OrderBy(x => x).ElementAt(none.Count / 2);
+                    var extra = v.Sum(x => Math.Max(0, x - baseMed));
+                    extraPerRun.Add(extra);
+                    runs.Add("finished after " + framesToFinish + " frames, worst frame " + F(v.Max()) + " ms, extra over 18 frames " + F(extra) + " ms");
+                }
+                Log("ONE-SHOT probe " + res + "px " + slicing + " shadowDistance " + shadow + ": " + string.Join(" | ", runs));
+                UnityEngine.Object.Destroy(p.gameObject);
+                yield return 3;
+            }
+        }
+
+        var none2 = new List<double>();
+        yield return Intervals(none2, 40);
+        Log("FRAME no probe again: " + Stats(none2));
+        rt.Release();
+        Log("DONE (probe pass)");
+    }
+
+    // Mirrored planar camera for the pane (same construction as in Bench).
+    static Camera MakePlanar(Vector3 paneCenter, Vector3 dir, float far)
+    {
+        var n = -dir;
+        var plane = new Plane(n, paneCenter);
+        var go = new GameObject("G11 / planar camera");
+        var rc = go.AddComponent<Camera>();
+        rc.CopyFrom(cam);
+        rc.enabled = false;
+        var rcd = rc.GetUniversalAdditionalCameraData();
+        rcd.renderPostProcessing = false;
+        rcd.antialiasing = AntialiasingMode.None;
+        rcd.requiresColorTexture = false;
+        rcd.requiresDepthTexture = false;
+        rcd.renderShadows = false;
+        var camPos = cam.transform.position;
+        var mirroredPos = camPos - 2f * plane.GetDistanceToPoint(camPos) * n;
+        var f = cam.transform.forward; var u = cam.transform.up;
+        go.transform.SetPositionAndRotation(mirroredPos, Quaternion.LookRotation(f - 2f * Vector3.Dot(f, n) * n, u - 2f * Vector3.Dot(u, n) * n));
+        rc.farClipPlane = far;
+        var w2c = rc.worldToCameraMatrix;
+        var pc = w2c.MultiplyPoint(paneCenter);
+        var nc = w2c.MultiplyVector(n).normalized;
+        rc.projectionMatrix = cam.projectionMatrix;
+        rc.projectionMatrix = rc.CalculateObliqueMatrix(new Vector4(nc.x, nc.y, nc.z, -Vector3.Dot(pc, nc)));
+        return rc;
+    }
+
+    // Third pass: the fixed cost of any extra URP camera, and a Relay-only planar overlay (cube for the room, live planar for the Relay).
+    static IEnumerator OverlayBench(Vector3 paneCenter, Vector3 dir)
+    {
+        Time.captureDeltaTime = 1f / 60f;
+        rt = new RenderTexture(W, H, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { antiAliasing = 4, name = "G11 main" };
+        rt.Create();
+        yield return 3;
+
+        // Put the Relay 2.4 m behind the player, facing the window, so the mirror camera sees it.
+        var relay = Get<FrontRoomsMapHunter>(game, "relay");
+        var hunter = Get<Transform>(game, "hunter");
+        var feet = PlayerRoot.position - dir * 2.4f;
+        if (relay != null) { relay.DebugPlace(feet); Log("relay placed at " + V(feet) + " · state " + relay.State + " · released " + relay.Released); }
+        yield return 10;
+        var relayRenderers = hunter != null ? hunter.GetComponentsInChildren<Renderer>(true) : new Renderer[0];
+        Log("relay rig " + (hunter != null ? hunter.name + " at " + V(hunter.position) + " active " + hunter.gameObject.activeInHierarchy : "NOT FOUND") + " · renderers " + relayRenderers.Length
+            + " · game camera far " + F(cam.farClipPlane) + " m · fog " + RenderSettings.fog + " " + RenderSettings.fogMode + " density " + F(RenderSettings.fogDensity) + " start/end " + F(RenderSettings.fogStartDistance) + "/" + F(RenderSettings.fogEndDistance));
+
+        var baseT = Measure(() => RenderTo(cam, rt), rt);
+        Log(string.Format(CultureInfo.InvariantCulture, "BASE game camera: median {0} ms (min {1}), CPU part {2}", F(baseT.med), F(baseT.min), F(baseT.cpu)));
+
+        var q = new RenderTexture(W / 4, H / 4, 24, RenderTextureFormat.DefaultHDR) { name = "G11 planar quarter" };
+        q.Create();
+        var h = new RenderTexture(W / 2, H / 2, 24, RenderTextureFormat.DefaultHDR) { name = "G11 planar half" };
+        h.Create();
+
+        // a) An extra camera that draws nothing (culling mask = empty layer 29): URP's fixed per-camera cost.
+        var rc = MakePlanar(paneCenter, dir, 12f);
+        rc.cullingMask = 1 << 29;
+        var empty = Measure(() => RenderTo(rc, q), q);
+        var emptyBoth = Measure(() => { RenderTo(cam, rt); RenderTo(rc, q); }, rt);
+        Log(string.Format(CultureInfo.InvariantCulture, "EMPTY extra camera (nothing to draw), quarter res: alone median {0} ms (CPU part {1}) · with game camera +{2} ms", F(empty.med), F(empty.cpu), F(emptyBoth.med - baseT.med)));
+
+        // b) Relay-only planar: move the rig's renderers to layer 30 and draw only that layer.
+        var oldLayers = relayRenderers.Select(r => r.gameObject.layer).ToArray();
+        foreach (var r in relayRenderers) r.gameObject.layer = 30;
+        rc.cullingMask = 1 << 30;
+        var paneKeep = new Plane(-dir, paneCenter);
+        var relayVisible = CountVisiblePlanar(rc, 12f, paneKeep);
+        foreach (var target in new[] { q, h })
+        {
+            var only = Measure(() => RenderTo(rc, target), target);
+            var both = Measure(() => { RenderTo(cam, rt); RenderTo(rc, target); }, rt);
+            Log(string.Format(CultureInfo.InvariantCulture, "RELAY-ONLY planar {0}x{1} ({2} renderers in view): alone median {3} ms (CPU part {4}) · with game camera +{5} ms",
+                target.width, target.height, relayVisible, F(only.med), F(only.cpu), F(both.med - baseT.med)));
+        }
+        var srgb = new RenderTexture(W / 2, H / 2, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+        srgb.Create();
+        RenderTo(rc, srgb);
+        Save(srgb, "02_relay_only_planar_half_mirrored.jpg");
+        for (var i = 0; i < relayRenderers.Length; i++) relayRenderers[i].gameObject.layer = oldLayers[i];
+
+        // c) Full planar (everything) at quarter res, far 12 m, shadows off — same run, for comparison.
+        rc.cullingMask = cam.cullingMask;
+        var full = Measure(() => RenderTo(rc, q), q);
+        var fullBoth = Measure(() => { RenderTo(cam, rt); RenderTo(rc, q); }, rt);
+        Log(string.Format(CultureInfo.InvariantCulture, "FULL planar quarter, far 12 m, shadows off ({0} renderers in view): alone median {1} ms (CPU part {2}) · with game camera +{3} ms",
+            CountVisiblePlanar(rc, 12f, paneKeep), F(full.med), F(full.cpu), F(fullBoth.med - baseT.med)));
+        RenderTo(rc, srgb);
+        Save(srgb, "03_full_planar_with_relay_half_mirrored.jpg");
+        RenderTo(cam, rt);
+        Save(rt, "04_main_view_relay_behind.jpg");
+        srgb.Release();
+
+        // d) Far clip sweep for the full planar (quarter res): how much culling distance buys.
+        foreach (var far in new[] { 6f, 9f, 20f, 40f, 80f })
+        {
+            UnityEngine.Object.Destroy(rc.gameObject);
+            rc = MakePlanar(paneCenter, dir, far);
+            var t = Measure(() => RenderTo(rc, q), q);
+            Log(string.Format(CultureInfo.InvariantCulture, "FULL planar quarter, far {0} m: alone median {1} ms (CPU part {2}) · renderers in view {3}", far, F(t.med), F(t.cpu), CountVisiblePlanar(rc, far, paneKeep)));
+            yield return 2;
+        }
+        UnityEngine.Object.Destroy(rc.gameObject);
+        q.Release(); h.Release();
+
+        var base2 = Measure(() => RenderTo(cam, rt), rt);
+        Log(string.Format(CultureInfo.InvariantCulture, "BASE again: median {0} ms (min {1})", F(base2.med), F(base2.min)));
+        rt.Release();
+        Log("DONE (overlay pass)");
+    }
+
+    static IEnumerator Bench(Vector3 paneCenter, Vector3 dir)
+    {
+        Time.captureDeltaTime = 1f / 60f;
+        rt = new RenderTexture(W, H, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { antiAliasing = 4, name = "G11 main" };
+        rt.Create();
+        yield return 2;
+
+        var lightsNear = CountLightsNear(cam.transform.position, 0f);
+        Log("lights enabled whose range reaches the camera position: " + lightsNear + " · all enabled lights: " + UnityEngine.Object.FindObjectsByType<Light>(FindObjectsSortMode.None).Count(l => l.enabled && l.gameObject.activeInHierarchy));
+
+        // 1. Baseline: the game camera.
+        RenderTo(cam, rt);
+        Save(rt, "00_main_view.jpg");
+        var baseT = Measure(() => RenderTo(cam, rt), rt);
+        var mainVisible = CountVisible(cam);
+        Log(string.Format(CultureInfo.InvariantCulture, "BASE game camera 1920x1080 MSAA4: median {0} ms (min {1}), CPU part {2} ms · renderers in frustum {3}", F(baseT.med), F(baseT.min), F(baseT.cpu), mainVisible));
+
+        // 2. Planar reflection camera for this pane. The pane plane faces the player (normal = -dir).
+        var n = -dir;
+        var plane = new Plane(n, paneCenter);
+        var go = new GameObject("G11 / planar camera");
+        var rc = go.AddComponent<Camera>();
+        rc.CopyFrom(cam);
+        rc.enabled = false;
+        var rcd = rc.GetUniversalAdditionalCameraData();
+        rcd.renderPostProcessing = false;
+        rcd.antialiasing = AntialiasingMode.None;
+        rcd.requiresColorTexture = false;
+        rcd.requiresDepthTexture = false;
+        // Mirror position and axes about the plane (proper rotation; the image is mirrored in U, which the glass shader would flip).
+        var camPos = cam.transform.position;
+        var mirroredPos = camPos - 2f * plane.GetDistanceToPoint(camPos) * n;
+        var f = cam.transform.forward; var u = cam.transform.up;
+        var mf = f - 2f * Vector3.Dot(f, n) * n;
+        var mu = u - 2f * Vector3.Dot(u, n) * n;
+        go.transform.SetPositionAndRotation(mirroredPos, Quaternion.LookRotation(mf, mu));
+        // Oblique near plane = the pane, so nothing on the far side of the glass is drawn into the reflection.
+        var w2c = rc.worldToCameraMatrix;
+        var pc = w2c.MultiplyPoint(paneCenter);
+        var nc = w2c.MultiplyVector(n).normalized;
+        rc.projectionMatrix = cam.projectionMatrix;
+        rc.projectionMatrix = rc.CalculateObliqueMatrix(new Vector4(nc.x, nc.y, nc.z, -Vector3.Dot(pc, nc)));
+        var planarVisible = CountVisible(rc, plane);
+        Log("planar camera at " + V(mirroredPos) + " · renderers in its frustum on the player's side of the pane: " + planarVisible + " (of " + CountVisible(rc) + " in the frustum)");
+
+        var configs = new (string name, float scale, bool shadows, float far)[]
+        {
+            ("planar full 1920x1080, shadows on", 1f, true, cam.farClipPlane),
+            ("planar half 960x540, shadows on", .5f, true, cam.farClipPlane),
+            ("planar half 960x540, shadows off", .5f, false, cam.farClipPlane),
+            ("planar quarter 480x270, shadows off", .25f, false, cam.farClipPlane),
+            ("planar quarter 480x270, shadows off, far 12 m", .25f, false, 12f),
+        };
+        foreach (var cfg in configs)
+        {
+            var prt = new RenderTexture(Mathf.RoundToInt(W * cfg.scale), Mathf.RoundToInt(H * cfg.scale), 24, RenderTextureFormat.DefaultHDR) { name = "G11 planar" };
+            prt.Create();
+            rcd.renderShadows = cfg.shadows;
+            rc.farClipPlane = cfg.far;
+            rc.projectionMatrix = cam.projectionMatrix;
+            rc.projectionMatrix = rc.CalculateObliqueMatrix(new Vector4(nc.x, nc.y, nc.z, -Vector3.Dot(pc, nc)));
+            var only = Measure(() => RenderTo(rc, prt), prt);
+            var both = Measure(() => { RenderTo(cam, rt); RenderTo(rc, prt); }, rt);
+            Log(string.Format(CultureInfo.InvariantCulture, "PLANAR {0}: alone median {1} ms (min {2}, CPU part {3}) · game camera + planar median {4} ms (+{5} ms over base)",
+                cfg.name, F(only.med), F(only.min), F(only.cpu), F(both.med), F(both.med - baseT.med)));
+            if (cfg.scale == .5f && cfg.shadows)
+            {
+                var srgb = new RenderTexture(prt.width, prt.height, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                srgb.Create();
+                RenderTo(rc, srgb);
+                Save(srgb, "01_planar_half_view_mirrored.jpg");
+                srgb.Release();
+            }
+            prt.Release();
+            yield return 2;
+        }
+        UnityEngine.Object.Destroy(go);
+
+        // 3. Six-face cube render at the window (what one realtime probe refresh draws, before its mip filtering).
+        var probePos = paneCenter + n * 1.2f;
+        var cgo = new GameObject("G11 / cube camera");
+        var cc = cgo.AddComponent<Camera>();
+        cc.CopyFrom(cam);
+        cc.enabled = false;
+        cc.fieldOfView = 90f;
+        cc.aspect = 1f;
+        cc.nearClipPlane = .05f;
+        cc.farClipPlane = 20f;
+        var ccd = cc.GetUniversalAdditionalCameraData();
+        ccd.renderPostProcessing = false;
+        ccd.antialiasing = AntialiasingMode.None;
+        var faces = new[] { (Vector3.right, Vector3.down), (Vector3.left, Vector3.down), (Vector3.up, Vector3.forward), (Vector3.down, Vector3.back), (Vector3.forward, Vector3.down), (Vector3.back, Vector3.down) };
+        var cubeVisible = 0;
+        foreach (var (fw, up) in faces)
+        {
+            cgo.transform.SetPositionAndRotation(probePos, Quaternion.LookRotation(fw, -up));
+            cc.ResetProjectionMatrix();
+            cubeVisible += CountVisible(cc);
+        }
+        Log("cube camera at " + V(probePos) + " · renderers in the 6 face frusta (sum): " + cubeVisible);
+        foreach (var res in new[] { 128, 256 })
+        {
+            foreach (var shadows in new[] { true, false })
+            {
+                var face = new RenderTexture(res, res, 24, RenderTextureFormat.DefaultHDR) { name = "G11 cube face" };
+                face.Create();
+                ccd.renderShadows = shadows;
+                var t6 = Measure(() =>
+                {
+                    foreach (var (fw, up) in faces)
+                    {
+                        cgo.transform.SetPositionAndRotation(probePos, Quaternion.LookRotation(fw, -up));
+                        RenderTo(cc, face);
+                    }
+                }, face, 12);
+                var t1 = Measure(() => RenderTo(cc, face), face, 12);
+                Log(string.Format(CultureInfo.InvariantCulture, "CUBE {0}px shadows {1}: 6 faces median {2} ms (min {3}, CPU part {4}) · 1 face median {5} ms",
+                    res, shadows ? "on" : "off", F(t6.med), F(t6.min), F(t6.cpu), F(t1.med)));
+                face.Release();
+                yield return 2;
+            }
+        }
+        UnityEngine.Object.Destroy(cgo);
+
+        // 4. A real realtime ReflectionProbe refresh (includes Unity's mip filtering), if it completes under manual rendering.
+        var prevRealtime = QualitySettings.realtimeReflectionProbes;
+        QualitySettings.realtimeReflectionProbes = true;
+        var pgo = new GameObject("G11 / realtime probe");
+        pgo.transform.position = probePos;
+        var probe = pgo.AddComponent<ReflectionProbe>();
+        probe.mode = ReflectionProbeMode.Realtime;
+        probe.refreshMode = ReflectionProbeRefreshMode.ViaScripting;
+        probe.timeSlicingMode = ReflectionProbeTimeSlicingMode.NoTimeSlicing;
+        probe.size = new Vector3(6f, 3f, 6f);
+        probe.boxProjection = true;
+        probe.hdr = true;
+        probe.clearFlags = ReflectionProbeClearFlags.SolidColor;
+        probe.backgroundColor = Color.black;
+        probe.nearClipPlane = .05f;
+        probe.farClipPlane = 20f;
+        foreach (var res in new[] { 128, 256 })
+        {
+            probe.resolution = res;
+            yield return 2;
+            var done = new List<int>();
+            var times = new List<double>();
+            for (var i = 0; i < 8; i++)
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var id = probe.RenderProbe();
+                RenderTo(cam, rt);
+                Sync(rt);
+                sw.Stop();
+                var finishedNow = probe.IsFinishedRendering(id);
+                var waited = 0;
+                while (!probe.IsFinishedRendering(id) && waited < 10) { waited++; yield return 1; }
+                done.Add(finishedNow ? 0 : waited);
+                if (i >= 2) times.Add(sw.Elapsed.TotalMilliseconds);
+                yield return 1;
+            }
+            times.Sort();
+            Log(string.Format(CultureInfo.InvariantCulture, "PROBE RenderProbe {0}px: game camera render + RenderProbe call + sync median {1} ms (+{2} over base) · frames until IsFinishedRendering: [{3}] · texture {4}",
+                res, F(times[times.Count / 2]), F(times[times.Count / 2] - baseT.med), string.Join(",", done), probe.realtimeTexture != null ? probe.realtimeTexture.width + "px " + probe.realtimeTexture.format : "null"));
+        }
+        UnityEngine.Object.Destroy(pgo);
+        QualitySettings.realtimeReflectionProbes = prevRealtime;
+
+        // 5. Baseline again (drift check).
+        var base2 = Measure(() => RenderTo(cam, rt), rt);
+        Log(string.Format(CultureInfo.InvariantCulture, "BASE again: median {0} ms (min {1})", F(base2.med), F(base2.min)));
+        rt.Release();
+        Log("DONE");
+    }
+}

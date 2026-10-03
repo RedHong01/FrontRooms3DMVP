@@ -122,13 +122,13 @@ The project's own rule (IR04, Figma 2320:2141): "Keep the light neutral. Put the
   - add a light wear normal map on the key (the 1024² key texture the audit asks for, §6.4).
 - The cell's lamp is above and in front of a wall host. A small specular highlight on brass from a 5-intensity lamp should cross the 1.05 bloom threshold for a few frames as the player moves. That is a natural glint, and nothing else in the room does it. **ESTIMATE: verify in a capture** (05's harness) that the highlight blooms and is not too strong.
 - No sparkle sprite, no periodic flash, no rim light, no outline.
-  - Survival horror's common item glints are UI by another name. They also fight HR03 rule 04, "Heard, then seen".
+  - A periodic sparkle on every pickup is a game marker, not a property of brass: it does the job of a UI icon inside the world, the same complaint the yellow paint debate makes about painted ledges (https://en.wikipedia.org/wiki/Yellow_paint_debate). (My judgement; the item-glint trope page could not be fetched, HTTP 403.)
   - TLOU Part II shows how to offer the strong version as an opt-in: its High Contrast Display "mutes environment colors and adds distinct contrast coloring to allies, enemies, items, and interactive objects" (Naughty Dog, 2020-06-09: https://naughtydog.com/blog/THE_LAST_OF_US_PART_II_ACCESSIBILITY_FEATURES_DETAILED).
 - Option for Red: an "Item glint" setting, off by default, in the settings panel planned as audit Phase 1.10. It adds a small sparkle on keys within 8 m and in view, at most once every 3 s.
 - Until audit F4 step 0 (zone cubemaps) lands, brass will read too dark between highlights. Do **not** fix that with emission. If needed, lower metallic to ~0.85 on the key material only, so some diffuse brass shows (ESTIMATE; check in the capture).
 
 **P6. Still things in a still room.**
-- No spin, no bob. A hung key may sway once, for about 1 s, if a door within 3 m slams. That is cheap transform code driven by the existing `DoorMoved` event. It is optional, and it is "heard, then seen" for keys.
+- No spin, no bob. A hung key may sway once, for about 1 s, if a door within 3 m slams. That is cheap transform code driven by the existing `DoorMoved` event. It is optional. It borrows the order of HR03 rule 04 ("Heard, then seen", written for the hunter): the player hears the keys before finding them.
 - Sound-chat option: a faint key jingle on that sway (a NEW event, sound chat's call).
 
 **P7. One grammar, applied the same way every time.**
@@ -347,11 +347,13 @@ Anchors the **leaf** asset must carry (both faces, unless 05 chooses a one-sided
 | `keyhole_px` / `keyhole_nx` | On the cylinder's face at the keyway centre. Default: the LockPoint spot (±0.055, 1.00, 0.92). If 05 puts a separate deadbolt above the lever, this moves up (say 1.15–1.20 m) and the map should move `LockPoint` to it, so `DoorUnlocked` and the sound come from the keyhole | §3.2 framing pose P, key alignment |
 | `keyhole_px_dir` / `_nx_dir` | 0.10 m **into** the leaf (∓X) | key insertion axis |
 | `keyhole_px_up` / `_nx_up` | +Y (pins on top; US pin-tumbler keys go in teeth up. The convention is UNVERIFIED for every lock; 02 confirms) | key roll |
+| `rose_px` / `rose_nx` | Centre of the cylinder's rose (escutcheon) face, on the leaf face plane plus the rose thickness. The key's bow must stop clear of it at full insertion | key end pose; framing; detail map placement |
 | `lever_px_pivot` / `_nx_pivot` + `_dir` | The rose centre on the spindle; `_dir` = outward normal (±X) | §3.3 lever down 35°, §3.4 down 20° and stop |
 | `lever_px_tip` / `_nx_tip` | The grip end; the lever points toward the hinge side | sanity check for the clip rule |
 | `tagplate_px` / `_nx` | Centre of the zone number plate (§2.5) | identity; framing |
 | `thumbturn_nx` (or `_px`) | Only with a single-cylinder deadbolt: the inside turn piece | turns 90° with the key (both faces show state) |
 | `latchbolt`, `deadbolt` + `_dir` | On the latch edge face (z ≈ 0.99 or the visual leaf's edge), at bolt height; `_dir` = +Z (throw) | open-door read of a thrown bolt; §3.7 |
+| `latch_edge_bottom`, `latch_edge_top` | The two ends of the leaf's latch edge line (y 0 and the leaf top), on the leaf's centre plane | §3.7 "a sliver of far-side light at the latch-side gap": with the gap fix, light shows only while a blow jolts the leaf off its stop, along this line; §3.4 jolt reference |
 | `pivot_top`, `pivot_floor` | On the hinge axis (x 0, z 0) at y 2.10 and 0 | 01 F9: the map's pivot is centre-hung double-acting. Any visible pivot or hinge must sit on this axis, or the leaf visibly orbits the wrong point. §3.7 hang-crooked rotates about `pivot_floor` (top pivot torn) |
 | `hinge_top`, `hinge_mid`, `hinge_bottom` | Only if Red takes 00's Option A (single swing with butt hinges). Same axis rule | Option A |
 | `damage_latch` | Centre of the splinter zone on the latch edge, y ≈ 1.0–1.2 | §3.7 damage 1 and 2, splinter emitter |
@@ -398,6 +400,7 @@ All window assets share the proposed **`Window {a}-{b}` root** (01 §2.5): origi
 |---|---|---|
 | `pane_bl`, `pane_br`, `pane_tl`, `pane_tr` | (∓0.70, 0.35, 0), (∓0.70, 2.00, 0) | crack UV frame; fracture alignment |
 | `rebate_l`, `rebate_r`, `rebate_t`, `rebate_b` | Midpoints of the glass edge lines inside the rebate (the glass bite beyond the opening, set by 02; audit §4.1 suggests stops 18 mm wide × 12 mm deep) | teeth sockets; where the glass edge hides |
+| `tooth_band_l`, `_r`, `_t`, `_b` | The inner limit of the tooth band on each side: 0.10 m inside the opening at the jambs and head, 0.04 m above the sill (only if the map chat approves the exception below; otherwise on the stop line) | fracture modules clip teeth to this; the map can assert it |
 | `impact_00` … `impact_22` | The 3 × 3 authored impact centres: X ∈ {−0.40, 0, +0.40}; Y ∈ {0.90, 1.30, 1.65} (world height; each ≥ 0.2 m from the frame, audit §3.5). A player facing the pane aims at about 1.62 m, so the top row gets most hits | snap the hit point; pick the fracture variant |
 | `sill_plant_pz`, `sill_plant_nz` | Sill top centre, 0.05 m toward each side | §3.6 the plant at 0.15 s |
 | `floor_pz`, `floor_nz` | (0, 0, ±0.45): floor-glass patch centres | §3.5 settle and rest; §3.6 landing footsteps |

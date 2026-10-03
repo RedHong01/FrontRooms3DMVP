@@ -22,7 +22,10 @@ namespace FrontRooms.Audio
         public const string DoorLocked = "event:/Mechanism/Door/Locked";
         public const string DoorBlow = "event:/Mechanism/Door/Blow";
         public const string DoorBreak = "event:/Mechanism/Door/Break";
-        public const string DoorAutoOperator = "event:/Mechanism/Door/AutoOperator";
+        public const string DoorAutoOperator = "event:/Mechanism/Door/AutoOperator";   // unused since Mode.Stream; A/B only
+        public const string DoorStreamOpen = "event:/Mechanism/Door/StreamOpen";     // per leaf, Leaf
+        public const string DoorStreamClose = "event:/Mechanism/Door/StreamClose";   // per leaf, Leaf
+        public const string DoorStreamLock = "event:/Mechanism/Door/StreamLock";     // once per pair, terminal door only
 
         // Window
         public const string WindowStress = "event:/Mechanism/Window/Stress";
@@ -77,6 +80,7 @@ namespace FrontRooms.Audio
             public const string RelayGait = "RelayGait";   // Walk, Run, Drag
             public const string RelayState = "RelayState"; // Hunt, Search, Chase, Lost
             public const string FixtureEvent = "FixtureEvent"; // Strike, Tick, Pop
+            public const string Leaf = "Leaf";             // Lead, Follow: the two leaves of a stream double door
         }
 
         // Labeled parameter values are sent as their index.
@@ -86,5 +90,6 @@ namespace FrontRooms.Audio
         public enum RelayState { Hunt = 0, Search = 1, Chase = 2, Lost = 3 }
         public enum FixtureKind { Strike = 0, Tick = 1, Pop = 2 }
         public enum Zone { Low = 0, Standard = 1, Tall = 2, Office = 3 }
+        public enum Leaf { Lead = 0, Follow = 1 }
     }
 }

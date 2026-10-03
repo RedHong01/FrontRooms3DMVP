@@ -315,6 +315,34 @@ def scenario_zones(out):
     s.close()
 
 
+STREAM_LEAVES = ((-0.56, -.29, 3.0), (0.56, -.29, 3.0))   # leaf centres 1.31 m up, door plane 3 m ahead, ears 1.6 m
+
+
+def scenario_stream_doors(out):
+    """Title stream double door (FrontRoomsDoorSound Mode.Stream). stream_doors: a pair 3 m ahead opens every
+    1.6 s, 4 pairs, so the pools show. stream_pair_split: the same, Lead hard left / Follow hard right, to
+    measure the leaves' decorrelation and the Follow's 28 ms. stream_lead_solo: 16 Lead leaves alone, whose
+    lengths give FMOD's real randPitch range. stream_terminal_close: the terminal door shutting 4.5 m behind
+    the listener, seats on the stop, then the lock."""
+    def pair(at):
+        return lambda: [s.play("event:/Mechanism/Door/StreamOpen", p, Leaf=k) for k, p in enumerate(at)]
+    s = Studio(os.path.join(out, "stream_doors.wav"))
+    s.run(7.0, [(.3 + 1.6 * i, pair(STREAM_LEAVES)) for i in range(4)])
+    s.close()
+    s = Studio(os.path.join(out, "stream_pair_split.wav"))
+    s.run(7.0, [(.3 + 1.6 * i, pair(((-3.0, 0.0, .3), (3.0, 0.0, .3)))) for i in range(4)])
+    s.close()
+    s = Studio(os.path.join(out, "stream_lead_solo.wav"))
+    s.run(21.5, [(.3 + 1.3 * i, lambda: s.play("event:/Mechanism/Door/StreamOpen", STREAM_LEAVES[0], Leaf=0))
+                 for i in range(16)])
+    s.close()
+    s = Studio(os.path.join(out, "stream_terminal_close.wav"))
+    behind = [(x, y, -4.5) for x, y, _ in STREAM_LEAVES]
+    s.run(3.0, [(.3, lambda: [s.play("event:/Mechanism/Door/StreamClose", p, Leaf=k) for k, p in enumerate(behind)]),
+                (1.25, lambda: s.play("event:/Mechanism/Door/StreamLock", (0.0, -.55, -4.5)))])
+    s.close()
+
+
 def scenario_window(out):
     s = Studio(os.path.join(out, "window_break.wav"))
     pane = (0.0, .2, 1.2)
@@ -370,6 +398,7 @@ def render(out):
     scenario_relay(out)
     scenario_door(out)
     scenario_door_story(out)
+    scenario_stream_doors(out)
     scenario_relay_door(out)
     scenario_locked(out)
     scenario_room(out)

@@ -1,0 +1,677 @@
+// DOOR GAP CAPTURE (private clone only — never copied into the real project).
+// Plays Assets/Scenes/FrontRooms3D.unity, starts a run through the title
+// handoff (as the interaction audit harness did), finds a shut map door and
+// renders the game's own first-person camera at it from both sides, with the
+// game's lighting and with the near room dimmed and the far room lit.
+// Run: Unity -batchmode -projectPath <clone> -executeMethod FrontRoomsDoorGapCapture.RunBatch -logFile <f>
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Reflection;
+using System.Text;
+using FrontRooms.Map;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+
+[InitializeOnLoad]
+public static class FrontRoomsDoorGapCapture
+{
+    const string ScenePath = "Assets/Scenes/FrontRooms3D.unity";
+    const string ActiveKey = "FrontRooms.DoorGap.Active";
+    const string DeadlineKey = "FrontRooms.DoorGap.Deadline";
+    const string DoneKey = "FrontRooms.DoorGap.Done";
+    const int W = 1920, H = 1080;
+    const BindingFlags BF = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+
+    static int waitUntilFrame = -1;
+    static bool finished;
+    static string outDir;
+    static readonly StringBuilder log = new StringBuilder();
+    static readonly StringBuilder frames = new StringBuilder();
+    static readonly Stack<IEnumerator> stack = new Stack<IEnumerator>();
+
+    static FrontRooms3DGame game;
+    static FrontRoomsMapWorld map;
+    static Camera cam;
+    static RenderTexture rt;
+
+    static FrontRoomsDoorGapCapture()
+    {
+        if (SessionState.GetBool(ActiveKey, false)) EditorApplication.update += Tick;
+    }
+
+    public static void RunBatchShadow()
+    {
+        SessionState.SetBool("FrontRooms.DoorGap.ShadowTest", true);
+        RunBatch();
+    }
+
+    public static void RunBatch()
+    {
+        EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        SessionState.SetBool(ActiveKey, true);
+        SessionState.SetFloat(DeadlineKey, (float)EditorApplication.timeSinceStartup + 900f);
+        EditorApplication.update -= Tick;
+        EditorApplication.update += Tick;
+        EditorApplication.EnterPlaymode();
+    }
+
+    static string OutDir
+    {
+        get
+        {
+            if (outDir == null)
+            {
+                outDir = Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification", "door_gap3");
+                Directory.CreateDirectory(outDir);
+            }
+            return outDir;
+        }
+    }
+
+    static void Log(string s)
+    {
+        var line = "[" + Time.frameCount + " t=" + Time.time.ToString("0.000", CultureInfo.InvariantCulture) + "] " + s;
+        log.AppendLine(line);
+        Debug.Log("[DoorGap] " + line);
+        try { File.WriteAllText(Path.Combine(OutDir, "log.txt"), log.ToString()); } catch { }
+    }
+
+    static void Finish()
+    {
+        finished = true;
+        Time.captureDeltaTime = 0f;
+        SessionState.SetBool(DoneKey, true);
+        try
+        {
+            File.WriteAllText(Path.Combine(OutDir, "log.txt"), log.ToString());
+            File.WriteAllText(Path.Combine(OutDir, "frames.txt"), frames.ToString());
+        }
+        catch (Exception e) { Debug.LogError(e); }
+    }
+
+    static void Tick()
+    {
+        var timedOut = EditorApplication.timeSinceStartup > SessionState.GetFloat(DeadlineKey, float.MaxValue);
+        if (finished || timedOut || SessionState.GetBool(DoneKey, false))
+        {
+            if (timedOut && !finished && !SessionState.GetBool(DoneKey, false)) { Log("TIMEOUT"); Finish(); }
+            if (EditorApplication.isPlaying) { EditorApplication.ExitPlaymode(); return; }
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+            EditorApplication.update -= Tick;
+            SessionState.EraseBool(ActiveKey);
+            SessionState.EraseBool(DoneKey);
+            if (Application.isBatchMode) EditorApplication.Exit(0);
+            return;
+        }
+        if (!EditorApplication.isPlaying) return;
+        if (stack.Count == 0) { stack.Push(Main()); Log("routine created"); }
+        if (Time.frameCount < waitUntilFrame) return;
+        try
+        {
+            for (var guard = 0; guard < 1000; guard++)
+            {
+                var top = stack.Peek();
+                if (!top.MoveNext())
+                {
+                    stack.Pop();
+                    if (stack.Count == 0) { Finish(); return; }
+                    continue;
+                }
+                var cur = top.Current;
+                if (cur is IEnumerator sub) { stack.Push(sub); continue; }
+                waitUntilFrame = Time.frameCount + (cur is int n ? Mathf.Max(1, n) : 1);
+                return;
+            }
+        }
+        catch (Exception e) { Log("EXCEPTION " + e); Finish(); }
+    }
+
+    // ---------------- reflection ----------------
+    static FieldInfo FI(Type t, string n)
+    {
+        for (; t != null; t = t.BaseType)
+        {
+            var f = t.GetField(n, BF);
+            if (f != null) return f;
+        }
+        return null;
+    }
+    static object Get(object o, string n) => FI(o.GetType(), n)?.GetValue(o);
+    static T Get<T>(object o, string n) => (T)Get(o, n);
+    static void Set(object o, string n, object v) => FI(o.GetType(), n).SetValue(o, v);
+    static object Call(object o, string n, params object[] a) => o.GetType().GetMethod(n, BF).Invoke(o, a);
+    static string Phase => Get(game, "phase").ToString();
+    static Transform PlayerRoot => Get<Transform>(game, "playerRoot");
+    static string V(Vector3 v) => "(" + v.x.ToString("0.000", CultureInfo.InvariantCulture) + ", " + v.y.ToString("0.000", CultureInfo.InvariantCulture) + ", " + v.z.ToString("0.000", CultureInfo.InvariantCulture) + ")";
+    static string F3(float f) => f.ToString("0.###", CultureInfo.InvariantCulture);
+
+    // ---------------- capture ----------------
+    static int shotIndex;
+    static void Capture(string name, string note)
+    {
+        if (rt == null)
+        {
+            rt = new RenderTexture(W, H, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { antiAliasing = 4, name = "Door gap capture" };
+            rt.Create();
+        }
+        var prev = cam.targetTexture;
+        cam.targetTexture = rt;
+        cam.Render();
+        cam.Render();
+        cam.targetTexture = prev;
+        var active = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D(W, H, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, W, H), 0, 0);
+        tex.Apply();
+        RenderTexture.active = active;
+        var file = (shotIndex < 10 ? "0" : "") + shotIndex + "_" + name + ".png";
+        shotIndex++;
+        File.WriteAllBytes(Path.Combine(OutDir, file), tex.EncodeToPNG());
+        UnityEngine.Object.Destroy(tex);
+        frames.AppendLine(file + " | cam " + V(cam.transform.position) + " fwd " + V(cam.transform.forward) + " fov " + F3(cam.fieldOfView) + " | " + note);
+        try { File.WriteAllText(Path.Combine(OutDir, "frames.txt"), frames.ToString()); } catch { }
+        Log("captured " + file + " — " + note);
+    }
+
+    static void Place(Vector3 feet, Vector3 lookAt)
+    {
+        var root = PlayerRoot;
+        var body = Get<CharacterController>(game, "playerBody");
+        body.enabled = false;
+        root.position = feet;
+        body.enabled = true;
+        Physics.SyncTransforms();
+        Look(lookAt);
+    }
+
+    static void Look(Vector3 lookAt)
+    {
+        var root = PlayerRoot;
+        var eye = root.position + Vector3.up * ModuleUnits.PlayerEye;
+        var d = lookAt - eye;
+        var yaw = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+        var pitch = -Mathf.Asin(Mathf.Clamp(d.y / Mathf.Max(1e-4f, d.magnitude), -1f, 1f)) * Mathf.Rad2Deg;
+        Set(game, "yaw", yaw);
+        Set(game, "pitch", pitch);
+        root.rotation = Quaternion.Euler(0f, yaw, 0f);
+        cam.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+    }
+
+    static IEnumerator Settle(int extra = 20)
+    {
+        yield return 3;
+        var start = Time.frameCount;
+        while (!map.Settled && Time.frameCount - start < 1500) yield return 1;
+        yield return extra;
+    }
+
+    static void Resume()
+    {
+        if (Phase != "Paused") return;
+        var phaseType = typeof(FrontRooms3DGame).GetNestedType("Phase", BindingFlags.NonPublic);
+        Call(game, "SetPhase", Enum.Parse(phaseType, "Playing"));
+    }
+
+    static readonly GridCoord[] Steps = { new GridCoord(1, 0), new GridCoord(-1, 0), new GridCoord(0, 1), new GridCoord(0, -1) };
+
+    static IEnumerable<GridCoord> CellsAround(GridCoord center, int radiusCells)
+    {
+        for (var r = 0; r <= radiusCells; r++)
+        for (var dy = -r; dy <= r; dy++)
+        for (var dx = -r; dx <= r; dx++)
+        {
+            if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dy)) != r) continue;
+            yield return new GridCoord(center.x + dx, center.y + dy);
+        }
+    }
+
+    static Vector3 Dir(GridCoord a, GridCoord b)
+    {
+        var d = map.CellCenter(b) - map.CellCenter(a);
+        d.y = 0f;
+        return d.normalized;
+    }
+
+    static bool FreeStanding(Vector3 feet)
+    {
+        var r = ModuleUnits.PlayerRadius;
+        var root = PlayerRoot;
+        foreach (var c in Physics.OverlapCapsule(feet + Vector3.up * (r + .15f), feet + Vector3.up * (ModuleUnits.PlayerHeight - r), r, ~0, QueryTriggerInteraction.Ignore))
+            if (root == null || !c.transform.IsChildOf(root)) return false;
+        return true;
+    }
+
+    static (GridCoord a, GridCoord b)? FindDoor(GridCoord near, int radius)
+    {
+        foreach (var c in CellsAround(near, radius))
+        {
+            if (!map.IsBuilt(c) || map.InStartArea(c)) continue;
+            foreach (var s in Steps)
+            {
+                var n = c + s;
+                if (!map.IsBuilt(n) || map.InStartArea(n)) continue;
+                if (map.Cache.Edge(c, n) != EdgeKind.Door) continue;
+                var door = map.DoorBetween(c, n);
+                if (door == null || door.open || door.broken) continue;
+                var cross = map.CrossingPoint(c, n);
+                var dir = Dir(c, n);
+                // Clear floor 1.5 m and 3 m out on both sides.
+                if (!FreeStanding(cross - dir * 1.5f) || !FreeStanding(cross + dir * 1.5f)) continue;
+                return (c, n);
+            }
+        }
+        return null;
+    }
+
+    // ---------------- lighting variants ----------------
+    static readonly List<(object fixture, float baseIntensity)> dimmed = new List<(object, float)>();
+    static Light farLamp;
+
+    static List<object> AllFixtures()
+    {
+        var list = new List<object>();
+        var built = Get(map, "built") as IDictionary;
+        foreach (DictionaryEntry e in built)
+            foreach (var f in (IEnumerable)Get(e.Value, "fixtures")) list.Add(f);
+        return list;
+    }
+
+    // Near room dark (its lamps at 8%), far room lit by the game's own lamps plus one extra shadowed troffer-like spot 1.5 m past the door.
+    static void DarkNearLitFar(Vector3 doorPos, Vector3 toFar)
+    {
+        Restore();
+        float maxBase = 0f;
+        foreach (var f in AllFixtures())
+        {
+            var light = Get<Light>(f, "light");
+            var bi = (float)Get(f, "baseIntensity");
+            maxBase = Mathf.Max(maxBase, bi);
+            if (light == null) continue;
+            if (Vector3.Dot(light.transform.position - doorPos, toFar) < 0f)
+            {
+                dimmed.Add((f, bi));
+                Set(f, "baseIntensity", bi * .08f);
+            }
+        }
+        var go = new GameObject("DOORGAP / far lamp (harness)");
+        farLamp = go.AddComponent<Light>();
+        farLamp.type = LightType.Spot;
+        farLamp.spotAngle = 162f;
+        farLamp.innerSpotAngle = 96f;
+        farLamp.color = new Color(1f, .96f, .88f);
+        farLamp.range = 10f;
+        farLamp.intensity = Mathf.Max(1f, maxBase) * 1.5f;
+        farLamp.shadows = LightShadows.Soft;
+        go.transform.position = doorPos + toFar * 1.5f + Vector3.up * 2.3f;
+        go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        Log("lighting: near side dimmed to 8% (" + dimmed.Count + " lamps), far lamp " + F3(farLamp.intensity) + " shadowed at " + V(go.transform.position));
+    }
+
+    static void Restore()
+    {
+        foreach (var (f, bi) in dimmed) Set(f, "baseIntensity", bi);
+        dimmed.Clear();
+        if (farLamp != null) UnityEngine.Object.DestroyImmediate(farLamp.gameObject);
+        farLamp = null;
+    }
+
+    // ---------------- probes ----------------
+    static string Probe(Vector3 from, Vector3 dir, float dist)
+    {
+        if (Physics.Raycast(from, dir, out var hit, dist, ~0, QueryTriggerInteraction.Ignore))
+            return "HIT " + hit.collider.name + " at " + F3(hit.distance) + " m";
+        return "CLEAR (" + F3(dist) + " m, nothing hit)";
+    }
+
+    // ---------------- main ----------------
+    static IEnumerator Main()
+    {
+        ShaderUtil.allowAsyncCompilation = false;
+        foreach (var old in Directory.GetFiles(OutDir, "*.png")) File.Delete(old);
+        while ((game = UnityEngine.Object.FindFirstObjectByType<FrontRooms3DGame>()) == null) yield return 1;
+        cam = Get<Camera>(game, "cam");
+        Log("game found, phase " + Phase + " · quality " + QualitySettings.names[QualitySettings.GetQualityLevel()] + " · gfx " + SystemInfo.graphicsDeviceType);
+        while (Time.time < 2.0f) yield return 1;
+        UnityEngine.Random.InitState(4242);
+        for (var tries = 0; tries < 60 && !Get<bool>(game, "mapPlay"); tries++)
+        {
+            Call(game, "RequestTitleStart");
+            if (!Get<bool>(game, "mapPlay")) yield return 15;
+        }
+        if (!Get<bool>(game, "mapPlay")) { Log("FAILED: could not start a run"); yield break; }
+        map = Get<FrontRoomsMapWorld>(game, "map");
+        Log("run started · seed " + Get<int>(game, "runSeed"));
+        var tuning = Get<FrontRoomsHunterTuning>(game, "hunterTuning");
+        tuning.releaseDelaySeconds = 1e6f;
+        var t0 = Time.time;
+        while (!Get<bool>(game, "startDoorOpened") && Time.time - t0 < 8f) { Resume(); yield return 1; }
+        yield return 30;
+        Time.captureDeltaTime = 1f / 60f;
+        Set(map, "doorsNeedKeys", false);
+
+        var startDoorCell = (GridCoord)Get(game, "startDoorCell");
+        var origin = startDoorCell + new GridCoord(0, 3);
+        // Find a door edge in the data, go there, then pick a built, clear one.
+        (GridCoord a, GridCoord b)? found = null;
+        GridCoord? target = null;
+        foreach (var c in CellsAround(origin, 40))
+        {
+            if (map.InStartArea(c)) continue;
+            foreach (var s in new[] { new GridCoord(1, 0), new GridCoord(0, 1) })
+            {
+                var n = c + s;
+                if (map.InStartArea(n)) continue;
+                if (map.Cache.Edge(c, n) == EdgeKind.Door) { target = c; break; }
+            }
+            if (target.HasValue) break;
+        }
+        for (var attempt = 0; attempt < 4 && !found.HasValue; attempt++)
+        {
+            var at = attempt == 0 && target.HasValue ? target.Value : map.CellOf(PlayerRoot.position);
+            Place(map.CellCenter(at), map.CellCenter(at) + Vector3.forward * 3f + Vector3.up * 1.5f);
+            yield return Settle(20);
+            Resume();
+            found = FindDoor(map.CellOf(PlayerRoot.position), 12 + attempt * 8);
+        }
+        if (!found.HasValue) { Log("FAILED: no clear shut door"); yield break; }
+
+        var (ca, cb) = found.Value;
+        var door = map.DoorBetween(ca, cb);
+        var cross = map.CrossingPoint(ca, cb);
+        var toB = Dir(ca, cb);
+        var hingePos = door.hinge.position;
+        var along = door.hinge.forward;
+        along.y = 0f; along.Normalize();
+        var latchPos = hingePos + along * ModuleUnits.DoorWidth;
+        var leafR = door.leaf.GetComponent<Renderer>();
+        var leafBox = door.leaf as BoxCollider;
+        Log("door " + ca + " → " + cb + " · zones " + map.ZoneOf(ca).theme + "/" + map.ZoneOf(ca).height + " | " + map.ZoneOf(cb).theme + "/" + map.ZoneOf(cb).height);
+        Log("crossing " + V(cross) + " · hinge " + V(hingePos) + " along " + V(along) + " · latch-jamb line " + V(latchPos) + " · toB " + V(toB));
+        Log("leaf renderer bounds " + V(leafR.bounds.min) + " → " + V(leafR.bounds.max) + " · collider " + (leafBox != null ? "box size " + V(Vector3.Scale(leafBox.size, door.leaf.transform.lossyScale)) : door.leaf.GetType().Name));
+        Log("leaf local pos " + V(door.leaf.transform.localPosition) + " scale " + V(door.leaf.transform.localScale));
+
+        // Straight-through rays, perpendicular to the wall, from 0.6 m on side A to 0.6 m on side B.
+        foreach (var (label, p) in new[]
+        {
+            ("hinge slit (5 mm from hinge jamb line), 1.0 m up", hingePos + along * .005f + Vector3.up * 1f),
+            ("latch slit (5 mm in from latch jamb line), 1.0 m up", latchPos - along * .005f + Vector3.up * 1f),
+            ("head slit (2.09 m), mid-width", cross + Vector3.up * 2.09f),
+            ("leaf centre, 1.0 m up (control)", cross + Vector3.up * 1f),
+            ("under the leaf (5 mm above floor), mid-width", cross + Vector3.up * .005f),
+        })
+        {
+            Log("ray A→B through " + label + ": " + Probe(p - toB * .6f, toB, 1.2f));
+            Log("ray B→A through " + label + ": " + Probe(p + toB * .6f, -toB, 1.2f));
+        }
+
+        D = door; Cross = cross; ToB = toB; HingePos = hingePos; Along = along; LatchPos = latchPos;
+        Log("hinge local +X points to world " + V(door.hinge.TransformDirection(Vector3.right)) + " (side B is toB " + V(toB) + ")");
+
+        if (SessionState.GetBool("FrontRooms.DoorGap.ShadowTest", false))
+        {
+            SessionState.EraseBool("FrontRooms.DoorGap.ShadowTest");
+            yield return ShadowTest();
+            Log("DONE");
+            yield break;
+        }
+        yield return ViewSet("0before");
+        yield return OpenSet("0before");
+
+        BuildProto(door, 'B');
+        yield return ViewSet("B");
+        yield return SwingSet("B", "A");
+        yield return SwingSet("B", "B");
+        ClearProto(door);
+
+        BuildProto(door, 'A');
+        yield return ViewSet("A");
+        yield return SwingSet("A", "A");
+        yield return SwingSet("A_wrongside", "B");
+        ClearProto(door);
+        Log("DONE");
+    }
+
+    static FrontRoomsMapWorld.Door D;
+    static Vector3 Cross, ToB, HingePos, Along, LatchPos;
+    static readonly List<GameObject> proto = new List<GameObject>();
+
+    static IEnumerator ViewSet(string tag)
+    {
+        foreach (var side in new[] { "A", "B" })
+        {
+            var n = side == "A" ? ToB : -ToB;
+            Restore();
+            if (D.open) { map.Use(D.leaf); yield return 50; }
+            Place(Cross - n * 1.5f, Cross + Vector3.up * 1.2f);
+            yield return Settle(6);
+            Resume();
+            yield return 3;
+            Capture(tag + "_side" + side + "_front_1.5m_game", tag + " · side " + side + " · 1.5 m straight on · game lighting");
+            DarkNearLitFar(Cross, n);
+            Place(Cross - n * 1.5f, Cross + Vector3.up * 1.2f);
+            yield return 6;
+            Capture(tag + "_side" + side + "_front_1.5m_darknear", tag + " · side " + side + " · 1.5 m straight on · near dark, far lit");
+            var far = FreeStanding(Cross - n * 3f) ? 3f : 2.6f;
+            Place(Cross - n * far, Cross + Vector3.up * 1.95f);
+            yield return 4;
+            Capture(tag + "_side" + side + "_head_" + F3(far) + "m_darknear", tag + " · side " + side + " · " + F3(far) + " m out, at the head · near dark, far lit");
+            Place(Cross - n * 1.0f, Cross + Vector3.up * 2.05f);
+            yield return 4;
+            Capture(tag + "_side" + side + "_head_1.0m_lookup_darknear", tag + " · side " + side + " · 1.0 m out, looking up at the head · near dark, far lit");
+            Place(LatchPos - n * 1.2f + Along * .05f, LatchPos + Vector3.up * 1.25f);
+            yield return 4;
+            Capture(tag + "_side" + side + "_latch_inline_darknear", tag + " · side " + side + " · eye on the latch jamb line, 1.2 m out · near dark, far lit");
+            Place(HingePos - n * 1.2f - Along * .05f, HingePos + Vector3.up * 1.25f);
+            yield return 4;
+            Capture(tag + "_side" + side + "_hinge_inline_darknear", tag + " · side " + side + " · eye on the hinge jamb line, 1.2 m out · near dark, far lit");
+            Place(Cross - n * .8f + Along * .15f, LatchPos + Vector3.up * 1.4f);
+            yield return 4;
+            Capture(tag + "_side" + side + "_latch_reveal_close_darknear", tag + " · side " + side + " · 0.8 m out, at the latch jamb · near dark, far lit");
+            Restore();
+            yield return 2;
+        }
+    }
+
+    static IEnumerator OpenSet(string tag)
+    {
+        foreach (var side in new[] { "A", "B" })
+        {
+            var n = side == "A" ? ToB : -ToB;
+            Restore();
+            if (D.open) { map.Use(D.leaf); yield return 50; }
+            Place(Cross - n * 1.5f, Cross + Vector3.up * 1.2f);
+            yield return Settle(6);
+            Resume();
+            map.Use(D.leaf);
+            yield return 45;
+            Place(Cross - n * 1.4f - Along * .5f, HingePos + Vector3.up * 1.2f + n * .2f);
+            yield return 3;
+            Capture(tag + "_open_from" + side + "_hinge_pushside", tag + " · open 95° (pushed from " + side + ") · push side, at the hinge jamb");
+            Place(Cross + n * 1.6f - Along * .6f, HingePos + Vector3.up * 1.2f - n * .3f);
+            yield return 3;
+            Capture(tag + "_open_from" + side + "_hinge_swingside", tag + " · open 95° (pushed from " + side + ") · swing side, at the hinge jamb");
+            map.Use(D.leaf);
+            yield return 50;
+        }
+    }
+
+    // Push the door from one side and look at the jambs early in the swing (where a stop or an overlap would clip) and at 95°.
+    static IEnumerator SwingSet(string tag, string side)
+    {
+        var n = side == "A" ? ToB : -ToB;
+        Restore();
+        if (D.open) { map.Use(D.leaf); yield return 50; }
+        Place(Cross - n * 1.5f, Cross + Vector3.up * 1.2f);
+        yield return Settle(6);
+        Resume();
+        map.Use(D.leaf);
+        var frame = 0;
+        foreach (var k in new[] { 4, 8, 15 })
+        {
+            yield return k - frame;
+            frame = k;
+            var deg = F3(Mathf.Abs(Quaternion.Angle(D.hinge.localRotation, D.closed)));
+            Place(LatchPos - Along * .3f - n * 1.0f, LatchPos + Vector3.up * 1.3f);
+            Capture(tag + "_push" + side + "_" + deg + "deg_latch_pushside", tag + " · pushed from " + side + " · leaf at " + deg + "° · push side, at the latch jamb");
+            Place(LatchPos - Along * .3f + n * 1.25f, LatchPos + Vector3.up * 1.3f);
+            Capture(tag + "_push" + side + "_" + deg + "deg_latch_swingside", tag + " · pushed from " + side + " · leaf at " + deg + "° · swing side, at the latch jamb");
+            Place(HingePos + Along * .5f + n * 1.3f, HingePos + Along * .15f + Vector3.up * 1.5f);
+            Capture(tag + "_push" + side + "_" + deg + "deg_hinge_swingside", tag + " · pushed from " + side + " · leaf at " + deg + "° · swing side, at the hinge jamb");
+            Place(HingePos + Along * .5f - n * 1.3f, HingePos + Along * .15f + Vector3.up * 1.5f);
+            Capture(tag + "_push" + side + "_" + deg + "deg_hinge_pushside", tag + " · pushed from " + side + " · leaf at " + deg + "° · push side, at the hinge jamb");
+        }
+        yield return 40;
+        Place(Cross - n * 1.4f - Along * .5f, HingePos + Vector3.up * 1.2f + n * .2f);
+        yield return 2;
+        Capture(tag + "_push" + side + "_95deg_hinge_pushside", tag + " · pushed from " + side + " · open 95° · push side, at the hinge jamb");
+        Place(Cross + n * 1.6f - Along * .6f, HingePos + Vector3.up * 1.2f - n * .3f);
+        yield return 2;
+        Capture(tag + "_push" + side + "_95deg_hinge_swingside", tag + " · pushed from " + side + " · open 95° · swing side, at the hinge jamb");
+        Place(Cross + n * 1.5f + Along * .3f, Cross + Vector3.up * 1.9f);
+        yield return 2;
+        Capture(tag + "_push" + side + "_95deg_head_swingside", tag + " · pushed from " + side + " · open 95° · swing side, at the head and latch jamb");
+        map.Use(D.leaf);
+        yield return 50;
+    }
+
+    // Is the lit patch on the dark side's floor light leaking through the thin leaf's shadow (bias), or through a gap?
+    static IEnumerator ShadowTest()
+    {
+        BuildProto(D, 'B');
+        foreach (var side in new[] { "A", "B" })
+        {
+            var n = side == "A" ? ToB : -ToB;
+            Restore();
+            Place(Cross - n * 1.5f, Cross + Vector3.up * 0.6f);
+            yield return Settle(6);
+            Resume();
+            DarkNearLitFar(Cross, n);
+            yield return 6;
+            Capture("S_side" + side + "_floor_darknear_B", "proto B · side " + side + " · looking at the floor in front of the door · near dark, far lamp shadowed");
+            var proxy = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            UnityEngine.Object.DestroyImmediate(proxy.GetComponent<Collider>());
+            proxy.name = "PROTO shadow proxy";
+            proxy.transform.SetParent(D.hinge, false);
+            proxy.transform.localPosition = new Vector3(0f, 1.05f, .5f);
+            proxy.transform.localScale = new Vector3(.14f, 2.08f, .96f);
+            var pr = proxy.GetComponent<Renderer>();
+            pr.sharedMaterial = Get<Material>(map, "doorLeaf");
+            pr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+            yield return 3;
+            Capture("S_side" + side + "_floor_darknear_B_shadowproxy", "proto B + a 0.14-thick shadows-only proxy inside the leaf · side " + side + " · same view");
+            UnityEngine.Object.DestroyImmediate(proxy);
+            farLamp.shadows = LightShadows.None;
+            yield return 3;
+            Capture("S_side" + side + "_floor_darknear_B_farlamp_noshadow", "proto B · far lamp with shadows OFF (as two lamps in three are) · same view");
+            Log("far lamp shadow bias " + F3(farLamp.shadowBias) + " normal bias " + F3(farLamp.shadowNormalBias) + " · URP light uses pipeline bias: " + (farLamp.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalLightData>()?.usePipelineSettings.ToString() ?? "n/a"));
+            Restore();
+            yield return 2;
+        }
+        ClearProto(D);
+    }
+
+    static GameObject RBox(Transform parent, string name, Vector3 min, Vector3 max, Material m)
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        UnityEngine.Object.DestroyImmediate(go.GetComponent<Collider>());
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = (min + max) * .5f;
+        go.transform.localScale = max - min;
+        go.GetComponent<Renderer>().sharedMaterial = m;
+        return go;
+    }
+
+    // Render-only prototypes of the two recommended structures (04_door_re8_gap.md §5/§6), hinge-local metres:
+    // X across the wall (+X = side B), Z along the leaf from the hinge axis, Y up. Colliders are untouched.
+    static void BuildProto(FrontRoomsMapWorld.Door door, char variant)
+    {
+        var trimMat = Get<Material>(map, "trim");
+        var leafMat = Get<Material>(map, "doorLeaf");
+        var seal = new Material(leafMat) { name = "PROTO seal" };
+        if (seal.HasProperty("_BaseColor")) seal.SetColor("_BaseColor", new Color(.025f, .025f, .028f));
+        if (seal.HasProperty("_BaseMap")) seal.SetTexture("_BaseMap", null);
+        if (seal.HasProperty("_Smoothness")) seal.SetFloat("_Smoothness", .1f);
+        door.leaf.GetComponent<Renderer>().enabled = false;
+        var frame = new GameObject("PROTO door frame " + variant).transform;
+        frame.SetParent(door.hinge.parent, false);
+        frame.localPosition = door.hinge.localPosition;
+        frame.localRotation = door.closed;
+        proto.Add(frame.gameObject);
+        var leaf = new GameObject("PROTO leaf " + variant).transform;
+        leaf.SetParent(door.hinge, false);
+        proto.Add(leaf.gameObject);
+
+        const float W = 1f, L = .002f, Lb = -.0005f, Top = 2.098f, Wall = .0795f, CF = .105f, CW = .075f, CTop = 2.175f;
+        const float T = .0225f, Clr = .003f, Bottom = .011f, Saddle = .012f;
+        // Casings, both faces (enclose the map's 0.07 x 0.20 trims, top 2.17).
+        foreach (var s in new[] { -1f, 1f })
+        {
+            float x0 = s < 0 ? -CF : Wall, x1 = s < 0 ? -Wall : CF;
+            RBox(frame, "casing hinge", new Vector3(x0, 0f, -CW), new Vector3(x1, CTop, L), trimMat);
+            RBox(frame, "casing latch", new Vector3(x0, 0f, W - L), new Vector3(x1, CTop, W + CW), trimMat);
+            RBox(frame, "casing head", new Vector3(x0, Top, -CW), new Vector3(x1, CTop, W + CW), trimMat);
+        }
+        // Linings (2 mm skins over the map's reveal faces).
+        if (variant == 'B')
+        {
+            RBox(frame, "lining hinge +", new Vector3(T + Clr, 0f, Lb), new Vector3(Wall, Top, L), trimMat);
+            RBox(frame, "lining hinge -", new Vector3(-Wall, 0f, Lb), new Vector3(-(T + Clr), Top, L), trimMat);
+        }
+        else RBox(frame, "lining hinge", new Vector3(-Wall, 0f, Lb), new Vector3(Wall, Top, L), trimMat);
+        RBox(frame, "lining latch", new Vector3(-Wall, 0f, W - L), new Vector3(Wall, Top, W - Lb), trimMat);
+        RBox(frame, "lining head", new Vector3(-Wall, Top, Lb), new Vector3(Wall, Top + .0025f, W - Lb), trimMat);
+        RBox(frame, "saddle", new Vector3(-.1f, 0f, L), new Vector3(.1f, Saddle, W - L), trimMat);
+
+        if (variant == 'B')
+        {
+            // Double-acting: hinge stile radiused about the axis, latch stile on an arc about the axis (flat is within 0.25 mm), 3 mm gaps, black seals on the centre plane.
+            RBox(leaf, "leaf slab", new Vector3(-T, Bottom, 0f), new Vector3(T, Top - Clr, W - L - Clr), leafMat);
+            var nose = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            UnityEngine.Object.DestroyImmediate(nose.GetComponent<Collider>());
+            nose.name = "leaf hinge stile radius";
+            nose.transform.SetParent(leaf, false);
+            var h = Top - Clr - Bottom;
+            nose.transform.localPosition = new Vector3(0f, Bottom + h * .5f, 0f);
+            nose.transform.localScale = new Vector3(T * 2f, h * .5f, T * 2f);
+            nose.GetComponent<Renderer>().sharedMaterial = leafMat;
+            RBox(frame, "seal latch", new Vector3(-.004f, Bottom, W - L - Clr - .001f), new Vector3(.004f, Top, W - L), seal);
+            RBox(frame, "seal head", new Vector3(-.004f, Top - Clr - .002f, 0f), new Vector3(.004f, Top, W - L), seal);
+            RBox(frame, "seal hinge", new Vector3(-(T + Clr), Bottom, 0f), new Vector3(T + Clr, Top, .0015f), seal);
+            foreach (var s in new[] { -1f, 1f })
+            {
+                float f0 = s < 0 ? -T - .002f : T, f1 = s < 0 ? -T : T + .002f;
+                RBox(leaf, "kick plate", new Vector3(f0, .02f, .03f), new Vector3(f1, .27f, W - .03f), trimMat);
+                RBox(leaf, "push plate", new Vector3(f0, .9f, .8f), new Vector3(f1, 1.3f, .9f), trimMat);
+            }
+        }
+        else
+        {
+            // Single swing toward +X (side B). Stops on the -X (push) face: 16 mm projection, 3 mm silencer gap.
+            RBox(leaf, "leaf slab", new Vector3(-T, Bottom, L + Clr), new Vector3(T, Top - Clr, W - L - Clr), leafMat);
+            const float Sx0 = -.0605f, Sx1 = -(T + .003f), Proj = .016f;
+            RBox(frame, "stop hinge", new Vector3(Sx0, 0f, L), new Vector3(Sx1, Top, L + Proj), trimMat);
+            RBox(frame, "stop latch", new Vector3(Sx0, 0f, W - L - Proj), new Vector3(Sx1, Top, W - L), trimMat);
+            RBox(frame, "stop head", new Vector3(Sx0, Top - Proj, L), new Vector3(Sx1, Top, W - L), trimMat);
+            foreach (var s in new[] { -1f, 1f })
+            {
+                float f0 = s < 0 ? -T - .065f : T, f1 = s < 0 ? -T : T + .065f;
+                RBox(leaf, "lever", new Vector3(f0 + (s < 0 ? 0f : .045f), .99f, .79f), new Vector3(f1 - (s < 0 ? .045f : 0f), 1.01f, .93f), trimMat);
+                RBox(leaf, "lever stem", new Vector3(f0, .985f, .905f), new Vector3(f1, 1.015f, .935f), trimMat);
+            }
+        }
+        Log("proto " + variant + " built: frame " + frame.childCount + " parts, leaf " + leaf.childCount + " parts; leaf renderer off, collider kept " + V(Vector3.Scale(((BoxCollider)door.leaf).size, door.leaf.transform.lossyScale)));
+    }
+
+    static void ClearProto(FrontRoomsMapWorld.Door door)
+    {
+        foreach (var go in proto) if (go != null) UnityEngine.Object.DestroyImmediate(go);
+        proto.Clear();
+        door.leaf.GetComponent<Renderer>().enabled = true;
+    }
+}

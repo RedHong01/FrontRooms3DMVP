@@ -26,9 +26,8 @@ namespace FrontRooms.Audio
         // sample-locked and add up in phase (6 lamps measured +12 dB over one, louder than the
         // player's steps). Starting them a non-multiple of the 4 s loop apart de-phases them.
         const float FixtureStagger = .53f;
-        // Level trims until the next bank build bakes them into the events (measured 2026-10-02:
-        // 4 lamps + bed at about -35 LUFS against footsteps at -29.7).
-        const float FixtureTrimDb = -12f, HumBedTrimDb = -3f;
+        // FrontRoomsRoomStream names its double door's pivots so (read-only to the audio layer).
+        const string StreamLeftHinge = "double door left hinge", StreamRightHinge = "double door right hinge";
         [SerializeField] float fixtureRadius = 10f;
 
         bool started, legacyRestored;
@@ -78,6 +77,7 @@ namespace FrontRooms.Audio
             var go = new GameObject("FrontRooms Sound Director");
             DontDestroyOnLoad(go);
             go.AddComponent<FrontRoomsSoundDirector>();
+            if (FrontRoomsAudioCapture.Requested) go.AddComponent<FrontRoomsAudioCapture>();
         }
 
         void Awake()
@@ -154,7 +154,8 @@ namespace FrontRooms.Audio
                 Debug.Log("[FrontRoomsAudio] FMOD ready: banks loaded, room tone on, legacy Unity audio muted.");
             }
             EnsureRunVoices();
-            if (now >= nextFixtureUpdate) { nextFixtureUpdate = now + .2f; UpdateFixtures(); }
+            // Caught cuts everything to silence: the lamps must not come back under the tinnitus.
+            if (!caught && now >= nextFixtureUpdate) { nextFixtureUpdate = now + .2f; UpdateFixtures(); }
             UpdateGlobals(Time.unscaledDeltaTime);
             UpdateSubjective();
         }
@@ -165,7 +166,7 @@ namespace FrontRooms.Audio
             if (!humBed.isValid())
             {
                 humBed = FrontRoomsFmod.Create2D(SoundIds.HumBed);
-                if (humBed.isValid()) { humBed.setVolume(Mathf.Pow(10f, HumBedTrimDb / 20f)); humBed.start(); }
+                if (humBed.isValid()) humBed.start();
             }
             if (!airBed.isValid()) { airBed = FrontRoomsFmod.Create2D(SoundIds.AirBed); if (airBed.isValid()) airBed.start(); }
         }
@@ -181,14 +182,26 @@ namespace FrontRooms.Audio
         {
             if (listener == null)
             {
+                // The ears are the camera. FMOD's setup wizard can replace the scene's Unity
+                // AudioListener with a StudioListener, so accept either, and add the FMOD one only if missing.
                 var unityListener = FindAnyObjectByType<AudioListener>();
-                if (unityListener != null)
+                var fmodListener = FindAnyObjectByType<StudioListener>();
+                var ears = unityListener != null ? unityListener.transform : fmodListener != null ? fmodListener.transform : null;
+                if (ears != null)
                 {
-                    listener = unityListener.transform;
+                    listener = ears;
                     if (!FrontRoomsFmod.Failed && listener.GetComponent<StudioListener>() == null)
                         listener.gameObject.AddComponent<StudioListener>();
                 }
             }
+            // Exactly one FMOD listener: two would make FMOD blend 3D positions between two pairs of ears.
+            if (listener != null)
+                foreach (var extra in FindObjectsByType<StudioListener>(FindObjectsSortMode.None))
+                    if (extra.enabled && extra.transform != listener)
+                    {
+                        extra.enabled = false;
+                        FrontRoomsFmod.Note("disabled extra FMOD listener on " + extra.gameObject.name);
+                    }
 
             if (player == null)
             {
@@ -226,8 +239,17 @@ namespace FrontRooms.Audio
                     var name = t.name;
                     if (name.StartsWith("Door hinge"))
                         Attach(t, FrontRoomsDoorSound.Mode.Manual, 95f);
-                    else if (name == "double door left hinge" || name == "double door right hinge")
-                        Attach(t, FrontRoomsDoorSound.Mode.Automatic, 88f);
+                    else if (name == StreamLeftHinge || name == StreamRightHinge)
+                    {
+                        // The stream's double door swings on a script, both leaves at once: one recorded swing
+                        // per leaf. The left leaf leads, the right follows (other takes, 28 ms later), so a pair
+                        // is two leaves, never one sound doubled.
+                        var door = Attach(t, FrontRoomsDoorSound.Mode.Stream, 88f);
+                        if (door == null) continue;
+                        var left = name == StreamLeftHinge;
+                        door.pairedHinge = t.parent != null ? t.parent.Find(left ? StreamRightHinge : StreamLeftHinge) : null;
+                        door.leaf = left || door.pairedHinge == null ? SoundIds.Leaf.Lead : SoundIds.Leaf.Follow;
+                    }
                     else if (name == "Light" || name.StartsWith("fluorescent light"))
                     {
                         var light = t.GetComponent<Light>();
@@ -237,12 +259,13 @@ namespace FrontRooms.Audio
             }
         }
 
-        static void Attach(Transform hinge, FrontRoomsDoorSound.Mode mode, float limit)
+        static FrontRoomsDoorSound Attach(Transform hinge, FrontRoomsDoorSound.Mode mode, float limit)
         {
-            if (hinge.GetComponent<FrontRoomsDoorSound>() != null) return;
+            if (hinge.GetComponent<FrontRoomsDoorSound>() != null) return null;
             var door = hinge.gameObject.AddComponent<FrontRoomsDoorSound>();
             door.mode = mode;
             door.openLimit = limit;
+            return door;
         }
 
         SoundIds.Surface SurfaceAt(Vector3 feet)
@@ -314,7 +337,6 @@ namespace FrontRooms.Audio
                     fixtureVoice[v] = FrontRoomsFmod.Create(SoundIds.Fixture, lamp.transform.position);
                     if (!fixtureVoice[v].isValid()) continue;
                     if (!fixtureIdReady) { fixtureLevelId = FrontRoomsFmod.ParameterId(SoundIds.Fixture, SoundIds.Param.Level); fixtureIdReady = true; }
-                    fixtureVoice[v].setVolume(Mathf.Pow(10f, FixtureTrimDb / 20f));
                     fixtureStartAt[v] = Time.unscaledTime + v * FixtureStagger;
                     fixtureStarted[v] = false;
                 }

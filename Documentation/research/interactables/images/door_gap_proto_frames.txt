@@ -1,0 +1,106 @@
+00_0before_sideA_front_1.5m_game.png | cam (253.500, 1.620, 31.500) fwd (0.963, -0.270, 0.000) fov 76 | 0before · side A · 1.5 m straight on · game lighting
+01_0before_sideA_front_1.5m_darknear.png | cam (253.500, 1.620, 31.500) fwd (0.963, -0.270, 0.000) fov 76 | 0before · side A · 1.5 m straight on · near dark, far lit
+02_0before_sideA_head_3m_darknear.png | cam (252.000, 1.650, 31.500) fwd (0.994, 0.109, 0.000) fov 76 | 0before · side A · 3 m out, at the head · near dark, far lit
+03_0before_sideA_head_1.0m_lookup_darknear.png | cam (254.000, 1.620, 31.500) fwd (0.919, 0.395, 0.000) fov 76 | 0before · side A · 1.0 m out, looking up at the head · near dark, far lit
+04_0before_sideA_latch_inline_darknear.png | cam (253.800, 1.620, 32.050) fwd (0.955, -0.294, -0.040) fov 76 | 0before · side A · eye on the latch jamb line, 1.2 m out · near dark, far lit
+05_0before_sideA_hinge_inline_darknear.png | cam (253.800, 1.620, 30.950) fwd (0.955, -0.294, 0.040) fov 76 | 0before · side A · eye on the hinge jamb line, 1.2 m out · near dark, far lit
+06_0before_sideA_latch_reveal_close_darknear.png | cam (254.200, 1.620, 31.650) fwd (0.888, -0.244, 0.389) fov 76 | 0before · side A · 0.8 m out, at the latch jamb · near dark, far lit
+07_0before_sideB_front_1.5m_game.png | cam (256.500, 1.620, 31.500) fwd (-0.963, -0.270, 0.000) fov 76 | 0before · side B · 1.5 m straight on · game lighting
+08_0before_sideB_front_1.5m_darknear.png | cam (256.500, 1.620, 31.500) fwd (-0.963, -0.270, 0.000) fov 76 | 0before · side B · 1.5 m straight on · near dark, far lit
+09_0before_sideB_head_2.6m_darknear.png | cam (257.600, 1.620, 31.500) fwd (-0.992, 0.126, 0.000) fov 76 | 0before · side B · 2.6 m out, at the head · near dark, far lit
+10_0before_sideB_head_1.0m_lookup_darknear.png | cam (256.000, 1.620, 31.500) fwd (-0.919, 0.395, 0.000) fov 76 | 0before · side B · 1.0 m out, looking up at the head · near dark, far lit
+11_0before_sideB_latch_inline_darknear.png | cam (256.200, 1.620, 32.050) fwd (-0.955, -0.294, -0.040) fov 76 | 0before · side B · eye on the latch jamb line, 1.2 m out · near dark, far lit
+12_0before_sideB_hinge_inline_darknear.png | cam (256.200, 1.620, 30.950) fwd (-0.955, -0.294, 0.040) fov 76 | 0before · side B · eye on the hinge jamb line, 1.2 m out · near dark, far lit
+13_0before_sideB_latch_reveal_close_darknear.png | cam (255.800, 1.620, 31.650) fwd (-0.888, -0.244, 0.389) fov 76 | 0before · side B · 0.8 m out, at the latch jamb · near dark, far lit
+14_0before_open_fromA_hinge_pushside.png | cam (253.600, 1.620, 31.000) fwd (0.967, -0.254, 0.000) fov 76 | 0before · open 95° (pushed from A) · push side, at the hinge jamb
+15_0before_open_fromA_hinge_swingside.png | cam (256.600, 1.620, 30.900) fwd (-0.975, -0.216, 0.051) fov 76 | 0before · open 95° (pushed from A) · swing side, at the hinge jamb
+16_0before_open_fromB_hinge_pushside.png | cam (256.400, 1.620, 31.000) fwd (-0.967, -0.254, 0.000) fov 76 | 0before · open 95° (pushed from B) · push side, at the hinge jamb
+17_0before_open_fromB_hinge_swingside.png | cam (253.400, 1.620, 30.900) fwd (0.975, -0.216, 0.051) fov 76 | 0before · open 95° (pushed from B) · swing side, at the hinge jamb
+18_B_sideA_front_1.5m_game.png | cam (253.500, 1.620, 31.500) fwd (0.963, -0.270, 0.000) fov 76 | B · side A · 1.5 m straight on · game lighting
+19_B_sideA_front_1.5m_darknear.png | cam (253.500, 1.620, 31.500) fwd (0.963, -0.270, 0.000) fov 76 | B · side A · 1.5 m straight on · near dark, far lit
+20_B_sideA_head_3m_darknear.png | cam (252.000, 1.650, 31.500) fwd (0.994, 0.109, 0.000) fov 76 | B · side A · 3 m out, at the head · near dark, far lit
+21_B_sideA_head_1.0m_lookup_darknear.png | cam (254.000, 1.620, 31.500) fwd (0.919, 0.395, 0.000) fov 76 | B · side A · 1.0 m out, looking up at the head · near dark, far lit
+22_B_sideA_latch_inline_darknear.png | cam (253.800, 1.620, 32.050) fwd (0.955, -0.294, -0.040) fov 76 | B · side A · eye on the latch jamb line, 1.2 m out · near dark, far lit
+23_B_sideA_hinge_inline_darknear.png | cam (253.800, 1.620, 30.950) fwd (0.955, -0.294, 0.040) fov 76 | B · side A · eye on the hinge jamb line, 1.2 m out · near dark, far lit
+24_B_sideA_latch_reveal_close_darknear.png | cam (254.200, 1.620, 31.650) fwd (0.888, -0.244, 0.389) fov 76 | B · side A · 0.8 m out, at the latch jamb · near dark, far lit
+25_B_sideB_front_1.5m_game.png | cam (256.500, 1.620, 31.500) fwd (-0.963, -0.270, 0.000) fov 76 | B · side B · 1.5 m straight on · game lighting
+26_B_sideB_front_1.5m_darknear.png | cam (256.500, 1.620, 31.500) fwd (-0.963, -0.270, 0.000) fov 76 | B · side B · 1.5 m straight on · near dark, far lit
+27_B_sideB_head_2.6m_darknear.png | cam (257.600, 1.620, 31.500) fwd (-0.992, 0.126, 0.000) fov 76 | B · side B · 2.6 m out, at the head · near dark, far lit
+28_B_sideB_head_1.0m_lookup_darknear.png | cam (256.000, 1.620, 31.500) fwd (-0.919, 0.395, 0.000) fov 76 | B · side B · 1.0 m out, looking up at the head · near dark, far lit
+29_B_sideB_latch_inline_darknear.png | cam (256.200, 1.620, 32.050) fwd (-0.955, -0.294, -0.040) fov 76 | B · side B · eye on the latch jamb line, 1.2 m out · near dark, far lit
+30_B_sideB_hinge_inline_darknear.png | cam (256.200, 1.620, 30.950) fwd (-0.955, -0.294, 0.040) fov 76 | B · side B · eye on the hinge jamb line, 1.2 m out · near dark, far lit
+31_B_sideB_latch_reveal_close_darknear.png | cam (255.800, 1.620, 31.650) fwd (-0.888, -0.244, 0.389) fov 76 | B · side B · 0.8 m out, at the latch jamb · near dark, far lit
+32_B_pushA_3.849deg_latch_pushside.png | cam (254.000, 1.620, 31.700) fwd (0.916, -0.293, 0.275) fov 76 | B · pushed from A · leaf at 3.849° · push side, at the latch jamb
+33_B_pushA_3.849deg_latch_swingside.png | cam (256.250, 1.620, 31.700) fwd (-0.944, -0.242, 0.226) fov 76 | B · pushed from A · leaf at 3.849° · swing side, at the latch jamb
+34_B_pushA_3.849deg_hinge_swingside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | B · pushed from A · leaf at 3.849° · swing side, at the hinge jamb
+35_B_pushA_3.849deg_hinge_pushside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | B · pushed from A · leaf at 3.849° · push side, at the hinge jamb
+36_B_pushA_14.042deg_latch_pushside.png | cam (254.000, 1.620, 31.700) fwd (0.916, -0.293, 0.275) fov 76 | B · pushed from A · leaf at 14.042° · push side, at the latch jamb
+37_B_pushA_14.042deg_latch_swingside.png | cam (256.250, 1.620, 31.700) fwd (-0.944, -0.242, 0.226) fov 76 | B · pushed from A · leaf at 14.042° · swing side, at the latch jamb
+38_B_pushA_14.042deg_hinge_swingside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | B · pushed from A · leaf at 14.042° · swing side, at the hinge jamb
+39_B_pushA_14.042deg_hinge_pushside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | B · pushed from A · leaf at 14.042° · push side, at the hinge jamb
+40_B_pushA_41.041deg_latch_pushside.png | cam (254.000, 1.620, 31.700) fwd (0.916, -0.293, 0.275) fov 76 | B · pushed from A · leaf at 41.041° · push side, at the latch jamb
+41_B_pushA_41.041deg_latch_swingside.png | cam (256.250, 1.620, 31.700) fwd (-0.944, -0.242, 0.226) fov 76 | B · pushed from A · leaf at 41.041° · swing side, at the latch jamb
+42_B_pushA_41.041deg_hinge_swingside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | B · pushed from A · leaf at 41.041° · swing side, at the hinge jamb
+43_B_pushA_41.041deg_hinge_pushside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | B · pushed from A · leaf at 41.041° · push side, at the hinge jamb
+44_B_pushA_95deg_hinge_pushside.png | cam (253.600, 1.620, 31.000) fwd (0.967, -0.254, 0.000) fov 76 | B · pushed from A · open 95° · push side, at the hinge jamb
+45_B_pushA_95deg_hinge_swingside.png | cam (256.600, 1.620, 30.900) fwd (-0.975, -0.216, 0.051) fov 76 | B · pushed from A · open 95° · swing side, at the hinge jamb
+46_B_pushA_95deg_head_swingside.png | cam (256.500, 1.620, 31.800) fwd (-0.965, 0.180, -0.193) fov 76 | B · pushed from A · open 95° · swing side, at the head and latch jamb
+47_B_pushB_3.849deg_latch_pushside.png | cam (256.000, 1.620, 31.700) fwd (-0.916, -0.293, 0.275) fov 76 | B · pushed from B · leaf at 3.849° · push side, at the latch jamb
+48_B_pushB_3.849deg_latch_swingside.png | cam (253.750, 1.620, 31.700) fwd (0.944, -0.242, 0.226) fov 76 | B · pushed from B · leaf at 3.849° · swing side, at the latch jamb
+49_B_pushB_3.849deg_hinge_swingside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | B · pushed from B · leaf at 3.849° · swing side, at the hinge jamb
+50_B_pushB_3.849deg_hinge_pushside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | B · pushed from B · leaf at 3.849° · push side, at the hinge jamb
+51_B_pushB_14.042deg_latch_pushside.png | cam (256.000, 1.620, 31.700) fwd (-0.916, -0.293, 0.275) fov 76 | B · pushed from B · leaf at 14.042° · push side, at the latch jamb
+52_B_pushB_14.042deg_latch_swingside.png | cam (253.750, 1.620, 31.700) fwd (0.944, -0.242, 0.226) fov 76 | B · pushed from B · leaf at 14.042° · swing side, at the latch jamb
+53_B_pushB_14.042deg_hinge_swingside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | B · pushed from B · leaf at 14.042° · swing side, at the hinge jamb
+54_B_pushB_14.042deg_hinge_pushside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | B · pushed from B · leaf at 14.042° · push side, at the hinge jamb
+55_B_pushB_41.041deg_latch_pushside.png | cam (256.000, 1.620, 31.700) fwd (-0.916, -0.293, 0.275) fov 76 | B · pushed from B · leaf at 41.041° · push side, at the latch jamb
+56_B_pushB_41.041deg_latch_swingside.png | cam (253.750, 1.620, 31.700) fwd (0.944, -0.242, 0.226) fov 76 | B · pushed from B · leaf at 41.041° · swing side, at the latch jamb
+57_B_pushB_41.041deg_hinge_swingside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | B · pushed from B · leaf at 41.041° · swing side, at the hinge jamb
+58_B_pushB_41.041deg_hinge_pushside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | B · pushed from B · leaf at 41.041° · push side, at the hinge jamb
+59_B_pushB_95deg_hinge_pushside.png | cam (256.400, 1.620, 31.000) fwd (-0.967, -0.254, 0.000) fov 76 | B · pushed from B · open 95° · push side, at the hinge jamb
+60_B_pushB_95deg_hinge_swingside.png | cam (253.400, 1.620, 30.900) fwd (0.975, -0.216, 0.051) fov 76 | B · pushed from B · open 95° · swing side, at the hinge jamb
+61_B_pushB_95deg_head_swingside.png | cam (253.500, 1.620, 31.800) fwd (0.965, 0.180, -0.193) fov 76 | B · pushed from B · open 95° · swing side, at the head and latch jamb
+62_A_sideA_front_1.5m_game.png | cam (253.500, 1.620, 31.500) fwd (0.963, -0.270, 0.000) fov 76 | A · side A · 1.5 m straight on · game lighting
+63_A_sideA_front_1.5m_darknear.png | cam (253.500, 1.620, 31.500) fwd (0.963, -0.270, 0.000) fov 76 | A · side A · 1.5 m straight on · near dark, far lit
+64_A_sideA_head_3m_darknear.png | cam (252.000, 1.650, 31.500) fwd (0.994, 0.109, 0.000) fov 76 | A · side A · 3 m out, at the head · near dark, far lit
+65_A_sideA_head_1.0m_lookup_darknear.png | cam (254.000, 1.620, 31.500) fwd (0.919, 0.395, 0.000) fov 76 | A · side A · 1.0 m out, looking up at the head · near dark, far lit
+66_A_sideA_latch_inline_darknear.png | cam (253.800, 1.620, 32.050) fwd (0.955, -0.294, -0.040) fov 76 | A · side A · eye on the latch jamb line, 1.2 m out · near dark, far lit
+67_A_sideA_hinge_inline_darknear.png | cam (253.800, 1.620, 30.950) fwd (0.955, -0.294, 0.040) fov 76 | A · side A · eye on the hinge jamb line, 1.2 m out · near dark, far lit
+68_A_sideA_latch_reveal_close_darknear.png | cam (254.200, 1.620, 31.650) fwd (0.888, -0.244, 0.389) fov 76 | A · side A · 0.8 m out, at the latch jamb · near dark, far lit
+69_A_sideB_front_1.5m_game.png | cam (256.500, 1.620, 31.500) fwd (-0.963, -0.270, 0.000) fov 76 | A · side B · 1.5 m straight on · game lighting
+70_A_sideB_front_1.5m_darknear.png | cam (256.500, 1.620, 31.500) fwd (-0.963, -0.270, 0.000) fov 76 | A · side B · 1.5 m straight on · near dark, far lit
+71_A_sideB_head_2.6m_darknear.png | cam (257.600, 1.620, 31.500) fwd (-0.992, 0.126, 0.000) fov 76 | A · side B · 2.6 m out, at the head · near dark, far lit
+72_A_sideB_head_1.0m_lookup_darknear.png | cam (256.000, 1.620, 31.500) fwd (-0.919, 0.395, 0.000) fov 76 | A · side B · 1.0 m out, looking up at the head · near dark, far lit
+73_A_sideB_latch_inline_darknear.png | cam (256.200, 1.620, 32.050) fwd (-0.955, -0.294, -0.040) fov 76 | A · side B · eye on the latch jamb line, 1.2 m out · near dark, far lit
+74_A_sideB_hinge_inline_darknear.png | cam (256.200, 1.620, 30.950) fwd (-0.955, -0.294, 0.040) fov 76 | A · side B · eye on the hinge jamb line, 1.2 m out · near dark, far lit
+75_A_sideB_latch_reveal_close_darknear.png | cam (255.800, 1.620, 31.650) fwd (-0.888, -0.244, 0.389) fov 76 | A · side B · 0.8 m out, at the latch jamb · near dark, far lit
+76_A_pushA_3.849deg_latch_pushside.png | cam (254.000, 1.620, 31.700) fwd (0.916, -0.293, 0.275) fov 76 | A · pushed from A · leaf at 3.849° · push side, at the latch jamb
+77_A_pushA_3.849deg_latch_swingside.png | cam (256.250, 1.620, 31.700) fwd (-0.944, -0.242, 0.226) fov 76 | A · pushed from A · leaf at 3.849° · swing side, at the latch jamb
+78_A_pushA_3.849deg_hinge_swingside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | A · pushed from A · leaf at 3.849° · swing side, at the hinge jamb
+79_A_pushA_3.849deg_hinge_pushside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | A · pushed from A · leaf at 3.849° · push side, at the hinge jamb
+80_A_pushA_14.042deg_latch_pushside.png | cam (254.000, 1.620, 31.700) fwd (0.916, -0.293, 0.275) fov 76 | A · pushed from A · leaf at 14.042° · push side, at the latch jamb
+81_A_pushA_14.042deg_latch_swingside.png | cam (256.250, 1.620, 31.700) fwd (-0.944, -0.242, 0.226) fov 76 | A · pushed from A · leaf at 14.042° · swing side, at the latch jamb
+82_A_pushA_14.042deg_hinge_swingside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | A · pushed from A · leaf at 14.042° · swing side, at the hinge jamb
+83_A_pushA_14.042deg_hinge_pushside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | A · pushed from A · leaf at 14.042° · push side, at the hinge jamb
+84_A_pushA_41.041deg_latch_pushside.png | cam (254.000, 1.620, 31.700) fwd (0.916, -0.293, 0.275) fov 76 | A · pushed from A · leaf at 41.041° · push side, at the latch jamb
+85_A_pushA_41.041deg_latch_swingside.png | cam (256.250, 1.620, 31.700) fwd (-0.944, -0.242, 0.226) fov 76 | A · pushed from A · leaf at 41.041° · swing side, at the latch jamb
+86_A_pushA_41.041deg_hinge_swingside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | A · pushed from A · leaf at 41.041° · swing side, at the hinge jamb
+87_A_pushA_41.041deg_hinge_pushside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | A · pushed from A · leaf at 41.041° · push side, at the hinge jamb
+88_A_pushA_95deg_hinge_pushside.png | cam (253.600, 1.620, 31.000) fwd (0.967, -0.254, 0.000) fov 76 | A · pushed from A · open 95° · push side, at the hinge jamb
+89_A_pushA_95deg_hinge_swingside.png | cam (256.600, 1.620, 30.900) fwd (-0.975, -0.216, 0.051) fov 76 | A · pushed from A · open 95° · swing side, at the hinge jamb
+90_A_pushA_95deg_head_swingside.png | cam (256.500, 1.620, 31.800) fwd (-0.965, 0.180, -0.193) fov 76 | A · pushed from A · open 95° · swing side, at the head and latch jamb
+91_A_wrongside_pushB_3.849deg_latch_pushside.png | cam (256.000, 1.620, 31.700) fwd (-0.916, -0.293, 0.275) fov 76 | A_wrongside · pushed from B · leaf at 3.849° · push side, at the latch jamb
+92_A_wrongside_pushB_3.849deg_latch_swingside.png | cam (253.750, 1.620, 31.700) fwd (0.944, -0.242, 0.226) fov 76 | A_wrongside · pushed from B · leaf at 3.849° · swing side, at the latch jamb
+93_A_wrongside_pushB_3.849deg_hinge_swingside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | A_wrongside · pushed from B · leaf at 3.849° · swing side, at the hinge jamb
+94_A_wrongside_pushB_3.849deg_hinge_pushside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | A_wrongside · pushed from B · leaf at 3.849° · push side, at the hinge jamb
+95_A_wrongside_pushB_14.042deg_latch_pushside.png | cam (256.000, 1.620, 31.700) fwd (-0.916, -0.293, 0.275) fov 76 | A_wrongside · pushed from B · leaf at 14.042° · push side, at the latch jamb
+96_A_wrongside_pushB_14.042deg_latch_swingside.png | cam (253.750, 1.620, 31.700) fwd (0.944, -0.242, 0.226) fov 76 | A_wrongside · pushed from B · leaf at 14.042° · swing side, at the latch jamb
+97_A_wrongside_pushB_14.042deg_hinge_swingside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | A_wrongside · pushed from B · leaf at 14.042° · swing side, at the hinge jamb
+98_A_wrongside_pushB_14.042deg_hinge_pushside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | A_wrongside · pushed from B · leaf at 14.042° · push side, at the hinge jamb
+99_A_wrongside_pushB_41.041deg_latch_pushside.png | cam (256.000, 1.620, 31.700) fwd (-0.916, -0.293, 0.275) fov 76 | A_wrongside · pushed from B · leaf at 41.041° · push side, at the latch jamb
+100_A_wrongside_pushB_41.041deg_latch_swingside.png | cam (253.750, 1.620, 31.700) fwd (0.944, -0.242, 0.226) fov 76 | A_wrongside · pushed from B · leaf at 41.041° · swing side, at the latch jamb
+101_A_wrongside_pushB_41.041deg_hinge_swingside.png | cam (253.700, 1.620, 31.500) fwd (0.962, -0.089, -0.259) fov 76 | A_wrongside · pushed from B · leaf at 41.041° · swing side, at the hinge jamb
+102_A_wrongside_pushB_41.041deg_hinge_pushside.png | cam (256.300, 1.620, 31.500) fwd (-0.962, -0.089, -0.259) fov 76 | A_wrongside · pushed from B · leaf at 41.041° · push side, at the hinge jamb
+103_A_wrongside_pushB_95deg_hinge_pushside.png | cam (256.400, 1.620, 31.000) fwd (-0.967, -0.254, 0.000) fov 76 | A_wrongside · pushed from B · open 95° · push side, at the hinge jamb
+104_A_wrongside_pushB_95deg_hinge_swingside.png | cam (253.400, 1.620, 30.900) fwd (0.975, -0.216, 0.051) fov 76 | A_wrongside · pushed from B · open 95° · swing side, at the hinge jamb
+105_A_wrongside_pushB_95deg_head_swingside.png | cam (253.500, 1.620, 31.800) fwd (0.965, 0.180, -0.193) fov 76 | A_wrongside · pushed from B · open 95° · swing side, at the head and latch jamb

@@ -3,10 +3,11 @@
 
 Keeps the ikat character of the CC0 reference but makes it exact. Every smeared
 element (the big field chevrons and the small motif-band chevrons/diamonds) is cut
-into vertical "warp strips". Inside a strip each band edge is a straight segment
-parallel to the chevron arm; between strips the edge steps up or down by a fixed,
-regular amount. The result is a crisp comb of teeth along every band edge, in the
-same places the reference has its dye streaks. The straight stripes are unchanged.
+into vertical "warp strips", the way ikat warp threads are shifted before weaving.
+The stack slides alternately up and down strip by strip, so every boundary between
+two inks becomes a crisp square-wave interlock parallel to the chevron arm. The
+outer edges carry regular flat-ended bars (spikes on top, drips below) in the places
+where the reference has its dye streaks. The straight stripes are unchanged.
 
 This file is the single source of truth for the geometry. One list of
 vertical-sided trapezoids feeds both the SVG (merged into polygons, inks grouped)
@@ -77,10 +78,11 @@ STRIPES = [
 
 # ------------------------------------------------------------------ teeth vocabulary
 # Every chevron is cut into vertical warp strips (index j, 0 = the apex strip).
-#  * Warp slide: the whole stack shifts up on even strips and down on odd strips, so
-#    every edge between two inks becomes a square-wave interlock, parallel to the arm.
-#  * Spikes: on even strips the outer top edge rises further, as a flat-topped bar.
-#  * Drips: on odd strips the outer bottom edge hangs further, as a flat-ended bar.
+#  * Warp slide: the whole stack shifts alternately up and down strip by strip, so every
+#    edge between two inks becomes a square-wave interlock running parallel to the arm.
+#    The apex strip always slides the way the chevron points, so the tip leads.
+#  * Spikes: on strips that slide up, the outer top edge rises further as a flat-topped bar.
+#  * Drips: on strips that slide down, the outer bottom edge hangs further as a flat bar.
 # An edge is (y at the apex line, slope, offset(j), flat(j)); flat strips are level at
 # the strip centre's height instead of following the arm.
 def EVEN(j):
@@ -95,15 +97,21 @@ def NEVER(j):
     return False
 
 
-def offsets(slide, spikes=None, drips=None):
-    """spikes/drips: extra length keyed by |j| % 4, plus 'apex' for j = 0."""
+def APEX(j):
+    return j == 0
+
+
+def offsets(slide, apex_up, spikes=None, drips=None):
+    """Offset of one edge per strip. spikes/drips: extra length keyed by |j| % 4, or
+    'apex' for j = 0. apex_up: the apex strip (and every even strip) slides up."""
     spikes, drips = spikes or {}, drips or {}
 
     def f(j):
         a = abs(j)
-        if a % 2 == 0:
-            return -slide - spikes.get("apex" if a == 0 and "apex" in spikes else a % 4, 0.0)
-        return slide + drips.get(a % 4, 0.0)
+        key = "apex" if a == 0 else a % 4
+        if (a % 2 == 0) == apex_up:
+            return -slide - spikes.get(key, 0.0)
+        return slide + drips.get(key, 0.0)
     return f
 
 
@@ -119,14 +127,14 @@ FIELD_SLIDE = 7.0
 
 FIELD_BOUNDS = {
     # upper chevron: grey / pink / slate
-    "U0": (69.0, FIELD_SLOPE, offsets(FIELD_SLIDE, spikes={"apex": 30, 0: 20, 2: 10}), EVEN),
-    "U1": (126.0, FIELD_SLOPE, offsets(FIELD_SLIDE), NEVER),
-    "U2": (166.0, FIELD_SLOPE, offsets(FIELD_SLIDE), NEVER),
-    "U3": (204.0, FIELD_SLOPE, offsets(FIELD_SLIDE, drips={1: 18, 3: 9}), ODD),
+    "U0": (75.0, FIELD_SLOPE, offsets(FIELD_SLIDE, True, spikes={"apex": 30, 0: 20, 2: 10}), EVEN),
+    "U1": (136.0, FIELD_SLOPE, offsets(FIELD_SLIDE, True), NEVER),
+    "U2": (177.0, FIELD_SLOPE, offsets(FIELD_SLIDE, True), NEVER),
+    "U3": (215.0, FIELD_SLOPE, offsets(FIELD_SLIDE, True, drips={1: 18, 3: 9}), ODD),
     # lower chevron: grey with cream drips beneath
-    "L0": (314.0, FIELD_SLOPE, offsets(FIELD_SLIDE, spikes={"apex": 26, 0: 16, 2: 8}), EVEN),
-    "L1": (378.0, FIELD_SLOPE, offsets(FIELD_SLIDE), NEVER),
-    "L2": (402.0, FIELD_SLOPE, offsets(FIELD_SLIDE, drips={1: 22, 3: 12}), ODD),
+    "L0": (322.0, FIELD_SLOPE, offsets(FIELD_SLIDE, True, spikes={"apex": 26, 0: 16, 2: 8}), EVEN),
+    "L1": (388.0, FIELD_SLOPE, offsets(FIELD_SLIDE, True), NEVER),
+    "L2": (412.0, FIELD_SLOPE, offsets(FIELD_SLIDE, True, drips={1: 22, 3: 12}), ODD),
 }
 FIELD_BANDS = [
     ("grey", "U0", "U1"), ("pink", "U1", "U2"), ("slate", "U2", "U3"),
@@ -147,18 +155,21 @@ BAND_Y0 = 225.0                              # first diamond's side points (meas
 V_SLOPE = -1.75                              # the small chevrons point down
 D_SLOPE = 1.2                                # diamond crown
 BAND_SLIDE = 5.0
-BAND_HEM = offsets(BAND_SLIDE, drips={1: 10, 3: 6})
-DEEP_TIP = 14.0                              # deep bar under the centre strip of each small chevron
+# These chevrons point down, so the apex strip slides down: odd strips up, even strips down.
+BAND_WARP = offsets(BAND_SLIDE, False)
+BAND_HEM = offsets(BAND_SLIDE, False, drips={2: 8})
+CROWN_SPIKE = 20.0                           # the diamond's centre spike (above the slide)
+DEEP_TIP = 12.0                              # deep bar under the centre strip of each small chevron
 
 BAND_BOUNDS = {
-    "M0": (-38.0, D_SLOPE, offsets(BAND_SLIDE, spikes={"apex": 10, 2: 4}), EVEN),   # diamond crown
-    "M1": (44.0, V_SLOPE, offsets(BAND_SLIDE), NEVER),                              # diamond / grey
-    "M2": (100.0, V_SLOPE, offsets(BAND_SLIDE), NEVER),                             # grey / pink
-    "M3": (151.0, V_SLOPE, offsets(BAND_SLIDE), NEVER),                             # pink / slate
-    "M4": (198.0, V_SLOPE, BAND_HEM, ODD),                                          # slate hem
+    # diamond crown: the shoulders follow the warp slide, the centre strip is a flat spike
+    "M0": (-38.0, D_SLOPE, lambda j: BAND_WARP(j) - (CROWN_SPIKE if j == 0 else 0.0), APEX),
+    "M1": (44.0, V_SLOPE, BAND_WARP, NEVER),       # diamond / grey
+    "M2": (100.0, V_SLOPE, BAND_WARP, NEVER),      # grey / pink
+    "M3": (151.0, V_SLOPE, BAND_WARP, NEVER),      # pink / slate
+    "M4": (198.0, V_SLOPE, BAND_HEM, EVEN),                         # slate hem, drips flat
     # deep tip: a flat-ended bar under the centre strip only; equal to M4 everywhere else
-    "M5": (198.0, V_SLOPE, lambda j: BAND_HEM(j) + (DEEP_TIP if j == 0 else 0.0),
-           lambda j: j == 0 or ODD(j)),
+    "M5": (198.0, V_SLOPE, lambda j: BAND_HEM(j) + (DEEP_TIP if j == 0 else 0.0), EVEN),
 }
 BAND_BANDS = [
     ("cream", "M0", "M1"), ("grey", "M1", "M2"), ("pink", "M2", "M3"),
