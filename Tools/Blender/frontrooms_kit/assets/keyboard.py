@@ -1,6 +1,6 @@
 """Beige 101-key office keyboard, c. 1990-97 (the generic AT / PS/2 board
 that came with every office PC: two-part moulded case, sloped key well,
-numeric pad, lock LEDs, straight cable out of the back).
+numeric pad, straight cable out of the back).
 
 Real-world reference size: 0.46 m wide, 0.17 m deep, 25 mm tall at the back
 and 15 mm at the front (case; keycaps stand ~6 mm proud of the surround).
@@ -10,10 +10,22 @@ _uv_keys): each cap reads its legend cell at true proportions, and the
 numeric pad, which the texture draws as a calculator block, is remapped onto
 the real 101-key pad (Num / * -, 7 8 9 +, 4 5 6, 1 2 3 Enter, 0 .). The nav
 cluster and arrows have no legends in the texture; they sample its darker
-ground, the grey keys of the period two-tone boards. A dark liner on the
-key-well walls gives the darker key-field surround.
+ground, the grey keys of the period two-tone boards. Grey walls in the key
+well give the darker key-field surround.
 Front (space bar, user side) faces -Y; the cable leaves the back (+Y) and
 ends in its PS/2 plug on the desk.
+
+Budget (synthesis §5.3): 1,200 LOD0 tris, LOD1 0.42, no collider (desk-top
+clutter), pile Small 0, <= 4 slots (KeyboardKeys, PlasticBeige, PlasticGrey,
+PlasticBlack). Where the triangles went:
+* caps keep top, front and sides; a cap's back is dropped where the cap
+  behind it covers it (only a sliver could show, and only from behind), so
+  the back row keeps its walls (_cull_hidden). Dropping the inner side walls
+  too (CULL_SIDES) saved 330 tris but read as hollow caps at 0.5-1 m;
+* the case is one ring-built shell (rounded top edge, moulded parting step,
+  rounded plan corners, flat bottom) instead of a bevelled frame + tray;
+* lock LEDs, rubber pads, tilt legs and badge lettering (< 5 mm at 2 m) are
+  gone; the LED window and badge are flat grey plates.
 """
 
 import math
@@ -21,21 +33,23 @@ import math
 import bmesh
 import bpy
 
+import _deskgear as dg
+
 NAME = "Kit_Keyboard"
+LOD1 = 0.42
+SMOOTH_ANGLE = 48          # 3-segment plan corners and the 2-segment top roll shade smooth
 
 BEIGE = "Prop_PlasticBeige"
 DARK = "Prop_PlasticGrey"
 BLACK = "Prop_PlasticBlack"
-RUBBER = "Prop_Rubber"
 KEYS = "Prop_KeyboardKeys"
-LENS = "Prop_GlassCRT"
 
 W, D = 0.46, 0.17
 Z_FRONT, Z_BACK = 0.015, 0.025          # top of the case at the front / back edge
 TILT = math.atan2(Z_BACK - Z_FRONT, D)  # slope of the key deck
-SURROUND_T = 0.0095                     # upper shell thickness (its skirt hides the plate edges)
+SURROUND_T = 0.0095                     # upper shell thickness (parting line this far under the deck)
 WELL_DEPTH = 0.0075                     # key plate top below the surround
-FOOT = 0.0025                           # rubber pads lift the case off the desk
+CULL_SIDES = False                      # also drop cap side walls facing a close neighbour
 
 # Texture layout (gen_props.keyboard_keys): 2048 x 768 px, 23 units across.
 TEX_W, TEX_H = 2048.0, 768.0
@@ -157,23 +171,6 @@ def _join(kit, objs):
     return keep
 
 
-def _smooth(points, sub):
-    """Catmull-Rom resample of a polyline (cables without kinks)."""
-    pts = [tuple(p) for p in points]
-    out = []
-    for i in range(len(pts) - 1):
-        p0 = pts[max(i - 1, 0)]
-        p1, p2 = pts[i], pts[i + 1]
-        p3 = pts[min(i + 2, len(pts) - 1)]
-        for k in range(sub):
-            t = k / sub
-            t2, t3 = t * t, t * t * t
-            out.append(tuple(0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2
-                                    + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3) for j in range(3)))
-    out.append(pts[-1])
-    return out
-
-
 def _islands(bm):
     """Connected face groups of a bmesh (one per keycap, one for the plate)."""
     seen, out = set(), []
@@ -274,65 +271,106 @@ def _uv_keys(obj, rects):
     obj["fr_uv"] = "keep"
 
 
-def _pt_tube(kit, points, radius, slot, verts=8, name="tube", caps=True):
-    """Round tube along a polyline with parallel-transport frames (no ring
-    flips where the path turns vertical, unlike kit.tube)."""
-    from mathutils import Vector
-    pts = [Vector(p) for p in points]
-    n = len(pts)
-    tangents = []
-    for k in range(n):
-        if k == 0:
-            t = pts[1] - pts[0]
-        elif k == n - 1:
-            t = pts[-1] - pts[-2]
-        else:
-            t = (pts[k] - pts[k - 1]).normalized() + (pts[k + 1] - pts[k]).normalized()
-        tangents.append(t.normalized())
-    up = Vector((0, 0, 1))
-    nrm = up - tangents[0] * up.dot(tangents[0])
-    if nrm.length < 1e-4:
-        nrm = Vector((1, 0, 0)) - tangents[0] * tangents[0].x
-    nrm.normalize()
+def _covered(rects):
+    """Per cap: (left, right, back) True where a neighbouring cap stands within
+    0.2 key units and covers >= 80 % of that wall (texture px; y grows to the
+    front, so 'back' is the smaller y)."""
+    gap_u, gap_v = 0.2 * UNIT, 0.3 * UNIT_Y
+    out = []
+    for a in rects:
+        ax0, ax1, ay0, ay1 = a[:4]
+        h, w = ay1 - ay0, ax1 - ax0
+        left = right = back = 0.0
+        for b in rects:
+            if b is a:
+                continue
+            bx0, bx1, by0, by1 = b[:4]
+            oy = max(0.0, min(ay1, by1) - max(ay0, by0))
+            ox = max(0.0, min(ax1, bx1) - max(ax0, bx0))
+            if 0 <= ax0 - bx1 <= gap_u:
+                left += oy
+            if 0 <= bx0 - ax1 <= gap_u:
+                right += oy
+            if 0 <= ay0 - by1 <= gap_v:
+                back += ox
+        out.append((left >= 0.8 * h, right >= 0.8 * h, back >= 0.8 * w))
+    return out
+
+
+def _cull_hidden(obj, rects):
+    """Drop cap walls that face a close neighbour (after the UVs are authored,
+    so the remaining faces keep their legend mapping). Plate-local normals:
+    sides +-X, back +Y (the caps are not yet tilted onto the deck)."""
+    cover = _covered(rects)
+    centres = [((x0 + x1) / 2 * SX - PLATE_W / 2, PLATE_D / 2 - (y0 + y1) / 2 * SY) for x0, x1, y0, y1, _r, _s in rects]
     bm = bmesh.new()
-    rings = []
-    for p, t in zip(pts, tangents):
-        nrm = (nrm - t * nrm.dot(t)).normalized()
-        b = t.cross(nrm)
-        rings.append([bm.verts.new(p + (nrm * math.cos(2 * math.pi * i / verts) + b * math.sin(2 * math.pi * i / verts)) * radius)
-                      for i in range(verts)])
-    for a, c in zip(rings, rings[1:]):
-        for i in range(verts):
-            j = (i + 1) % verts
-            bm.faces.new((a[i], a[j], c[j], c[i]))
-    if caps:
-        bm.faces.new(list(reversed(rings[0])))
-        bm.faces.new(rings[-1])
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    return kit._new_object(name, bm, slot, "metres", "xz")
+    bm.from_mesh(obj.data)
+    bm.normal_update()
+    kill = []
+    for isl in _islands(bm):
+        xs = [v.co.x for f in isl for v in f.verts]
+        ys = [v.co.y for f in isl for v in f.verts]
+        if max(xs) - min(xs) > PLATE_W * 0.9:
+            continue
+        mx, my = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+        i = min(range(len(centres)), key=lambda k: (centres[k][0] - mx) ** 2 + (centres[k][1] - my) ** 2)
+        left, right, back = cover[i]
+        for f in isl:
+            n = f.normal
+            if (CULL_SIDES and ((left and n.x < -0.7) or (right and n.x > 0.7))) or (back and n.y > 0.7):
+                kill.append(f)
+    bmesh.ops.delete(bm, geom=kill, context="FACES")
+    bm.to_mesh(obj.data)
+    bm.free()
 
 
 def _ps2_plug(kit, end, prev):
     """PS/2 mini-DIN plug lying on the desk at the cable end, pointing along
-    the cable's last (horizontal) tangent: tapered strain relief, round
-    moulded body, metal shell with the dark pin face."""
+    the cable's last (horizontal) tangent: round moulded body and the metal
+    shell with its pin face (8 / 6 sides; 44 tris)."""
     dx, dy = end[0] - prev[0], end[1] - prev[1]
     l = math.hypot(dx, dy) or 1.0
     dx, dy = dx / l, dy / l
-    rz = math.degrees(math.atan2(dy, dx)) - 90.0      # cylinder Z -> rot X 90 points it along +Y, then yaw
+    rz = math.degrees(math.atan2(dy, dx)) - 90.0      # cylinder Z -> rot X -90 points it along +Y, then yaw
     zc = 0.0065
 
     def at(d):
         return (end[0] + dx * d, end[1] + dy * d, zc)
-    kit.cylinder(0.0028, 0.008, at(0.004), BLACK, verts=12, rot=(-90, 0, rz), bevel=0.0, radius_top=0.0050,
-                 name="plug strain relief")
-    kit.cylinder(0.0065, 0.016, at(0.016), BLACK, verts=12, rot=(-90, 0, rz), bevel=0.001, segments=1, name="plug body")
-    kit.cylinder(0.0048, 0.004, at(0.026), "Prop_Aluminium", verts=12, rot=(-90, 0, rz), bevel=0.0, name="plug shell")
-    kit.cylinder(0.0040, 0.0006, at(0.0281), BLACK, verts=12, rot=(-90, 0, rz), bevel=0.0, name="plug pin face")
+    kit.cylinder(0.0065, 0.020, at(0.010), BLACK, verts=8, rot=(-90, 0, rz), bevel=0.0, name="plug body")
+    shell = kit.cylinder(0.0048, 0.005, at(0.0225), DARK, verts=6, rot=(-90, 0, rz), bevel=0.0, name="plug shell")
+    dg.prune(shell, lambda n: n.z < -0.9)             # its back is inside the body
+
+
+def _case_rings(well_w, well_d, well_cu, well_cv, deck_len):
+    """Vertex rings of the one-piece case shell (asset space, 12 verts each,
+    counter-clockwise from the front-right corner): flat bottom, lower tray
+    wall, the moulded parting step, the upper wall, a 2-segment roll onto the
+    deck, and the deck itself in to the key-well rim."""
+    rc, rb = 0.0065, 0.0040                  # plan corner radius, top-edge roll radius
+
+    def plan(inset):
+        return dg.round_rect(W - 2 * inset, deck_len - 2 * inset, rc - inset, seg=2)
+
+    def on_deck(inset, w):
+        return [_deck(u, v, w) for u, v in plan(inset)]
+
+    roll = [on_deck(rb * (1 - math.sin(a)), -rb * (1 - math.cos(a))) for a in (0.0, math.pi / 4, math.pi / 2)]
+    top_edge = roll[-1]                       # full plan outline, rb under the deck
+    step_in = 0.0008
+    inner = on_deck(step_in, -rb)             # the tray wall sits 0.8 mm inside the upper shell
+
+    def part_z(p):
+        return p[2] - (SURROUND_T - rb) / math.cos(TILT)
+    part_hi = [(p[0], p[1], part_z(p)) for p in top_edge]
+    part_lo = [(p[0], p[1], part_z(q)) for p, q in zip(inner, top_edge)]
+    bottom = [(p[0], p[1], 0.0) for p in on_deck(step_in + 0.0012, -rb)]
+    well = [_deck(u, v, 0.0) for u, v in dg.round_rect(well_w, well_d, 0.0015, seg=2, cx=well_cu, cy=well_cv)]
+    return [bottom, part_lo, part_hi, top_edge, roll[1], roll[0], well]
+
+
 
 
 def build(kit):
-    tilt_deg = math.degrees(TILT)
     deck_len = D / math.cos(TILT)
 
     # ------------------------------------------------------------ key field
@@ -356,6 +394,7 @@ def build(kit):
     plate_w = -WELL_DEPTH                                   # deck-normal height of the plate top
     plate = kit.box((PLATE_W, PLATE_D, 0.0015), (0, 0, -0.00075), KEYS, bevel=0.0, name="key plate",
                     uv="keep")
+    dg.prune(plate, lambda n: abs(n.z) < 0.9)              # its edges are under the surround
     caps = [plate]
     heights = {0: 0.0118, 1: 0.0128, 2: 0.0124, 3: 0.0121, 4: 0.0121, 5: 0.0124}
     for x0, x1, y0, y1, row, _src in rects:
@@ -376,63 +415,47 @@ def build(kit):
     bm.to_mesh(keyfield.data)
     bm.free()
     _uv_keys(keyfield, rects)
+    _cull_hidden(keyfield, rects)
     keyfield.location = _deck(pu, pv, plate_w)
     keyfield.rotation_euler = (TILT, 0, 0)
 
-    # Dark liner on the walls of the key well: the darker key-field surround
-    # of the period boards (a ledge + wall between the beige lip and the keys).
-    liner_top, liner_bot = -0.0040, plate_w
-    kit.frame((well_w + 0.0004, well_d + 0.0004), (well_w - 0.0036, well_d - 0.0036), liner_top - liner_bot,
-              _deck(well_cu, well_cv, (liner_top + liner_bot) / 2), DARK, bevel=0.0,
-              rot=(90 + tilt_deg, 0, 0), name="well liner")
-
     # ------------------------------------------------------------ case
-    # Upper shell: one sloped frame around the key well (rounded outer edge).
-    kit.frame((W, deck_len), (well_w, well_d), SURROUND_T, _deck(0, 0, -SURROUND_T / 2), BEIGE,
-              inner_offset=(well_cu, -well_cv), bevel=0.0042, segments=3, rot=(90 + tilt_deg, 0, 0), name="upper shell")
-    # Lower tray: wedge side profile extruded across, its top under the shell
-    # so the two shells meet in a moulded parting line.
-    zb_front = Z_FRONT - SURROUND_T / math.cos(TILT)
-    zb_back = Z_BACK - SURROUND_T / math.cos(TILT)
-    prof = [(-D / 2, FOOT), (D / 2, FOOT), (D / 2, zb_back), (-D / 2, zb_front)]
-    kit.extrude(prof, W - 0.0016, (0, 0, 0), BEIGE, plane="yz", bevel=0.0028, segments=2, name="lower tray")
+    # One beige shell: flat bottom, lower-tray wall, the moulded parting step
+    # (a 0.8 mm ledge that reads as the line between the two mouldings), the
+    # upper wall rolling onto the sloped deck, the deck in to the well rim.
+    rings = _case_rings(well_w, well_d, well_cu, well_cv, deck_len)
+    dg.rings_mesh(kit, rings, BEIGE, name="case", cap_first=True)
+    # Grey key-well walls down to the plate: the darker key-field surround.
+    # They draft 2.4 mm inward, so their foot lands on the plate everywhere
+    # (the numeric pad runs to within 0.8 mm of the plate's right edge).
+    well_top = rings[-1]
+    well_bot = [_deck(u, v, plate_w) for u, v in dg.round_rect(well_w - 0.0048, well_d - 0.0048, 0.0010, seg=2,
+                                                                 cx=well_cu, cy=well_cv)]
+    dg.rings_mesh(kit, [well_top, well_bot], DARK, name="well walls", orient="in")
 
-    # Rubber pads, folded tilt legs.
-    for sx in (-1, 1):
-        for y in (-0.068, 0.068):
-            kit.cylinder(0.0065, FOOT + 0.0004, (sx * 0.196, y, (FOOT + 0.0004) / 2), RUBBER, verts=8, bevel=0.0, name="rubber pad")
-        kit.box((0.040, 0.014, 0.0022), (sx * 0.160, 0.072, FOOT + 0.0003), DARK, bevel=0.0007, segments=1, name="tilt leg")
-
-    # Lock LEDs in a dark window on the back border above the numpad.
+    # Lock-LED window over the numeric pad and the maker's badge over the F
+    # keys: flat grey plates on the back border (LEDs and lettering < 5 mm).
     led_u = pu + (TEX_W - 2.0 * UNIT) * SX - PLATE_W / 2
     led_v = well_cv + well_d / 2 + 0.0105
-    kit.box((0.062, 0.0105, 0.0012), _deck(led_u, led_v, 0.0003), DARK, bevel=0.0004, segments=1,
-            rot=(tilt_deg, 0, 0), name="LED window")
-    for k in range(3):
-        kit.cylinder(0.0017, 0.0012, _deck(led_u - 0.019 + k * 0.019, led_v + 0.0012, 0.0009), LENS, verts=8,
-                     rot=(tilt_deg, 0, 0), bevel=0.0, name="lock LED")
-        kit.box((0.010, 0.0016, 0.0004), _deck(led_u - 0.019 + k * 0.019, led_v - 0.0028, 0.0009), BEIGE,
-                bevel=0.0, rot=(tilt_deg, 0, 0), name="LED legend")
-    # Maker's badge on the back border over the F keys.
-    bu = -W / 2 + 0.050
-    kit.box((0.046, 0.0085, 0.0010), _deck(bu, led_v, 0.0002), DARK, bevel=0.0003, segments=1,
-            rot=(tilt_deg, 0, 0), name="badge")
-    kit.box((0.034, 0.0030, 0.0004), _deck(bu, led_v, 0.0008), BEIGE, bevel=0.0, rot=(tilt_deg, 0, 0), name="badge script")
+    for nm, u, w_ in (("LED window", led_u, 0.062), ("badge", -W / 2 + 0.050, 0.046)):
+        q = kit.quad(w_, 0.0095, _deck(u, led_v, 0.0003), DARK, facing="+z", name=nm, uv="metres")
+        q.rotation_euler = (TILT, 0, 0)
 
     # Cable: strain-relief grommet in the back edge, then the cord lies back
     # toward the PC and ends in its (unplugged) PS/2 mini-DIN plug.
-    gx, gz = -0.060, (FOOT + zb_back) / 2 + 0.001
-    kit.cylinder(0.0050, 0.010, (gx, D / 2 + 0.003, gz), BLACK, verts=12, rot=(90, 0, 0), bevel=0.0012,
-                 segments=1, radius_top=0.0062, name="cable grommet")
+    zb_back = Z_BACK - SURROUND_T / math.cos(TILT)
+    gx, gz = -0.060, zb_back / 2 + 0.001
+    grommet = kit.cylinder(0.0050, 0.010, (gx, D / 2 + 0.003, gz), BLACK, verts=8, rot=(90, 0, 0), bevel=0.0,
+                           radius_top=0.0062, name="cable grommet")
+    dg.prune(grommet, lambda n: n.z > 0.9)                 # its wide end is buried in the case
     r = 0.0021
-    ctrl = [(gx, D / 2 + 0.007, gz), (gx - 0.002, D / 2 + 0.016, gz - 0.002), (gx - 0.004, D / 2 + 0.027, 0.0026),
-            (gx - 0.009, D / 2 + 0.044, r), (gx - 0.007, D / 2 + 0.058, r + 0.0005), (gx - 0.001, D / 2 + 0.067, 0.0050),
-            (gx + 0.007, D / 2 + 0.073, 0.0065)]
-    cable = [(x, y, max(z, r)) for x, y, z in _smooth(ctrl, 3)]
-    _pt_tube(kit, cable, r, BLACK, verts=8, name="cable")
+    ctrl = [(gx, D / 2 + 0.006, gz), (gx - 0.001, D / 2 + 0.012, gz - 0.0008), (gx - 0.002, D / 2 + 0.018, gz - 0.0035),
+            (gx - 0.004, D / 2 + 0.027, 0.0028), (gx - 0.008, D / 2 + 0.040, r), (gx - 0.008, D / 2 + 0.054, r + 0.0003),
+            (gx - 0.003, D / 2 + 0.065, 0.0045), (gx + 0.007, D / 2 + 0.073, 0.0065)]
+    dg.tube(kit, [(x, y, max(z, r)) for x, y, z in ctrl], r, BLACK, verts=5, name="cable")
     _ps2_plug(kit, ctrl[-1], ctrl[-2])
 
     kit.anchor("keys_centre", _deck(well_cu, well_cv, 0.006))
-    kit.collider((0, 0, Z_BACK / 2 + 0.003), (W, D, Z_BACK + 0.006))
+    kit.no_collider()
     kit.tag("office", "desk_top", "pile_piece")
     kit.pile("Small", mass=0, palette="office90s")

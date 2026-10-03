@@ -72,13 +72,13 @@ def build(kit):
     # Domed steel cover over the weight: a rolled rim (two steps that shade
     # as one bead) and a gentle dome. 16 sides: it is seen edge-on as a disc.
     base = [(0.133, 0.0), (0.1405, 0.010), (0.1300, 0.0255), (0.0300, 0.0405)]
-    kit.lathe(base, (0, 0, 0), STEEL, verts=16, name="base cover", close_top=False)
+    kit.lathe(base, (0, 0, 0), STEEL, verts=18, name="base cover", close_top=False)
 
     # --------------------------------------------- pole (boss to bowl neck)
     # One 8-sided lathe: socket boss, three pole sections with two threaded
     # coupling collars, and the flared neck that carries the bowl.
     pole = [
-        (0.0260, 0.034), (0.0230, 0.058), (POLE_R, 0.078),                     # boss
+        (0.0330, 0.036), (POLE_R, 0.074),                                      # boss (starts under the dome)
         (POLE_R, 0.660), (0.0128, 0.672), (POLE_R, 0.684),                     # coupling
         (POLE_R, 1.160), (0.0128, 1.172), (POLE_R, 1.184),                     # coupling
         (POLE_R, 1.700), (0.0160, 1.736), (0.0420, b + 0.001),                 # bowl neck
@@ -89,38 +89,38 @@ def build(kit):
     # Moulded pod round the pole at hand height, knob facing -Y.
     dz = 1.05
     kit.box((0.040, 0.044, 0.092), (0, -0.009, dz), STEEL, bevel=0.008, segments=1, name="dimmer pod")
-    knob = kit.cylinder(0.0140, 0.014, (0, -0.037, dz + 0.012), STEEL, verts=12, rot=(90, 0, 0),
+    knob = kit.cylinder(0.0140, 0.014, (0, -0.037, dz + 0.012), STEEL, verts=8, rot=(90, 0, 0),
                         bevel=0.0, name="dimmer knob")
     drop_faces(knob, lambda n: n.z < -0.9)          # back cap is inside the pod
 
     # ---------------------------------------------------------------- bowl
-    # Black spun-steel outside up to a rolled lip; 20 sides for the rim.
-    outer = [(0.040, b - 0.001), (0.105, b + 0.020), (0.156, b + 0.054), (0.177, b + 0.076),
-             (0.181, b + 0.0825), (0.175, b + 0.0860)]
-    shell = kit.lathe(outer, (0, 0, 0), STEEL, verts=20, name="bowl outside",
+    # Black spun-steel outside up to a rolled lip; 24 sides keep the rim
+    # (the lamp's defining silhouette) under a pixel of facet at 2 m.
+    outer = [(0.042, b - 0.001), (0.128, b + 0.032), (0.181, b + 0.0815), (0.176, b + 0.0865)]
+    shell = kit.lathe(outer, (0, 0, 0), STEEL, verts=24, name="bowl outside",
                       close_top=False, close_bottom=False)
     face_towards(shell, lambda c: Vector((c.x, c.y, -0.6 * math.hypot(c.x, c.y) - 0.02)))
-    # White enamel inside, meeting the inner edge of the lip.
-    inside = [(0.175, b + 0.0860), (0.160, b + 0.0700), (0.0, b + 0.0150)]
-    liner = kit.lathe(inside, (0, 0, 0), WHITE, verts=20, name="bowl inside",
+    # White enamel inside: a steep wall under the lip, then a shallow dish
+    # (the slope change is what makes it read as a bowl from above).
+    inside = [(0.176, b + 0.0865), (0.150, b + 0.0600), (0.0, b + 0.0150)]
+    liner = kit.lathe(inside, (0, 0, 0), WHITE, verts=24, name="bowl inside",
                       close_top=False, close_bottom=False)
     face_towards(liner, lambda c: Vector((-c.x, -c.y, 1.0)))
 
     # Lamp holder: stamped bracket and the linear halogen tube (seen from
     # above when the lamp leans out of a pile).
-    hz = b + 0.022
-    kit.box((0.124, 0.022, 0.006), (0, 0, hz), STEEL, bevel=0.0, name="holder bracket")
-    kit.box((0.012, 0.018, 0.022), (-0.058, 0, hz + 0.013), WHITE, bevel=0.0, name="ceramic clip")
-    kit.box((0.012, 0.018, 0.022), (0.058, 0, hz + 0.013), WHITE, bevel=0.0, name="ceramic clip")
-    kit.cylinder(0.0055, 0.106, (0, 0, hz + 0.017), WHITE, verts=6, rot=(0, 90, 0),
+    # (The bar rises from the dish centre; its ends sink into the liner.)
+    hz = b + 0.028
+    kit.box((0.110, 0.020, 0.026), (0, 0, hz), STEEL, bevel=0.0, name="holder bracket")
+    kit.cylinder(0.0055, 0.106, (0, 0, hz + 0.019), WHITE, verts=6, rot=(0, 90, 0),
                  bevel=0.0, name="halogen tube")
 
     # ---------------------------------------------------------------- cord
     # Leaves the back of the base, curls round inside the bowl footprint
     # (so the lamp packs into a pile) and ends in a two-pin plug.
-    kit.tube([(0, 0.128, 0.020), (0.004, 0.150, 0.004), (0.050, 0.172, 0.0032),
-              (0.110, 0.158, 0.0032), (0.150, 0.125, 0.0032), (0.165, 0.082, 0.0032)],
-             0.0032, STEEL, verts=4, name="power cord")
+    kit.tube([(0, 0.128, 0.020), (0.012, 0.158, 0.0032), (0.080, 0.170, 0.0032),
+              (0.145, 0.132, 0.0032), (0.165, 0.082, 0.0032)],
+             0.0032, STEEL, verts=3, name="power cord")
     kit.box((0.026, 0.034, 0.016), (0.166, 0.060, 0.008), STEEL, bevel=0.0, name="plug body")
 
     kit.anchor("light", (0, 0, TOP - 0.04))

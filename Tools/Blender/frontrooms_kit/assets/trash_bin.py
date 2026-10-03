@@ -1,16 +1,21 @@
 """Rectangular office wastebasket, moulded grey polypropylene, c. 1985-2000
 (the 13-quart Rubbermaid-type desk-side basket: tapered walls, generous
 corner radii, a rolled lip, a raised grip band under the lip, a recessed
-base with a rounded heel). Two crumpled letter sheets on its floor.
+base with a rounded heel). One crumpled letter sheet on its floor.
 
-Real-world reference size: 0.28 m wide x 0.20 m deep x 0.30 m tall at the
-rim; base 0.22 x 0.14 m. Wall 3 mm. Origin = floor under the centre.
-Front looks -Y (the basket is symmetric; the paper is arranged for a -Y
-viewer).
+Real-world reference size (10_synthesis §5.3): 0.36 m wide x 0.26 m deep x
+0.38 m tall at the lip; base 0.29 x 0.19 m. Wall 3 mm. Origin = floor under
+the centre. Front looks -Y (the basket is symmetric; the paper is arranged
+for a -Y viewer).
 
-The shell is a rounded-rectangle "lathe" built here with bmesh because the
-kit's lathe only revolves circles; it is registered through kit._new_object
-like every other part, so it goes through the same UV/export path.
+Budget 400 tris, one slot pair (PlasticGrey + Paper), no collider (§5.3),
+pile Small 0. The shell is a rounded-rectangle "lathe" built here with bmesh
+(the kit's lathe only revolves circles) with 4-step corners and nine profile
+rings; the rolled lip keeps four of them because it is the silhouette seen
+from standing height. Analytic custom normals keep the long flat sides
+flat-shaded and the corners round with so few steps. The paper ball is cut at high
+resolution, then collapse-decimated to ~44 flat facets, which is what
+crumpled paper looks like at 2 m anyway.
 """
 
 import math
@@ -21,45 +26,115 @@ import bpy
 from mathutils import Matrix, Vector, noise
 
 NAME = "Kit_TrashBin"
-SMOOTH_ANGLE = 40.0
+SMOOTH_ANGLE = 50.0      # the 4-band rolled lip shades round, the heel stays crisp
 
 PLASTIC = "Prop_PlasticGrey"
 PAPER = "Prop_Paper"
 
-H = 0.30
-RIM_Z = 0.284          # top of the tapered wall, start of the rolled lip
-BASE_HX, BASE_HY = 0.1095, 0.0695   # outer half sizes at z = 0
-BASE_R = 0.030          # corner radius at the base (grows with the taper)
-TAPER = 0.0215          # outward growth per side from base to rim
+H = 0.38
+RIM_Z = 0.364          # top of the tapered wall, start of the rolled lip
+BASE_HX, BASE_HY = 0.144, 0.094     # outer half sizes at z = 0
+BASE_R = 0.038          # corner radius at the base (grows with the taper)
+TAPER = 0.027           # outward growth per side from base to rim
 WALL = 0.003
-FLOOR_Z = 0.008
+FLOOR_Z = 0.009
+CORNER_SEG = 4          # corner steps per 90 degrees (20 verts a ring): the rim reads round
+PAPER_TRIS = 44
 
 
 def _rr_ring(bm, off, z, seg):
+    """One ring of the rounded rectangle grown by ``off``; returns the verts
+    and each vert's planar outward direction (exact at the arc ends, so the
+    flat sides shade flat)."""
     hx, hy, r = BASE_HX + off, BASE_HY + off, BASE_R + off
-    ring = []
+    ring, dirs = [], []
     for cx, cy, a0 in ((hx - r, hy - r, 0), (-(hx - r), hy - r, 90), (-(hx - r), -(hy - r), 180), (hx - r, -(hy - r), 270)):
         for k in range(seg + 1):
             a = math.radians(a0 + 90.0 * k / seg)
             ring.append(bm.verts.new((cx + r * math.cos(a), cy + r * math.sin(a), z)))
-    return ring
+            dirs.append(Vector((math.cos(a), math.sin(a), 0.0)))
+    return ring, dirs
 
 
-def rr_lathe(kit, profile, slot, seg=5, name="rr lathe"):
+def rr_lathe(kit, profile, slot, seg=5, smooth_angle=50.0, name="rr lathe"):
     """Sweep an (offset, z) profile round the base rounded rectangle: offset
     grows the half sizes and the corner radius together, so a linear offset
-    is a uniform draft. Bottom and top rings are capped."""
+    is a uniform draft. Bottom and top rings are capped.
+
+    With few corner steps, plain smooth shading smears the corner normals
+    across the long flat sides (streaks). So the part gets analytic custom
+    normals instead: planar direction of the ring x the profile normal, split
+    where the profile turns more than ``smooth_angle`` (heel, inner floor)."""
     bm = bmesh.new()
-    rings = [_rr_ring(bm, off, z, seg) for off, z in profile]
+    built = [_rr_ring(bm, off, z, seg) for off, z in profile]
+    rings = [r for r, _ in built]
+    dirs = built[0][1]
     n = len(rings[0])
-    for a, b in zip(rings, rings[1:]):
+    # Profile normal of each band, (offset, z) components: outward on the
+    # outer wall going up, into the cavity on the inner wall going down.
+    band_n = []
+    for (o0, z0), (o1, z1) in zip(profile, profile[1:]):
+        v = Vector((z1 - z0, -(o1 - o0)))
+        band_n.append(v.normalized())
+    cos_lim = math.cos(math.radians(smooth_angle))
+    ring_of = {}
+    for k, ring in enumerate(rings):
+        for i, v in enumerate(ring):
+            ring_of[v] = (k, i)
+    band_of = {}
+    for k, (ra, rb) in enumerate(zip(rings, rings[1:])):
         for i in range(n):
             j = (i + 1) % n
-            bm.faces.new((a[i], a[j], b[j], b[i]))
-    bm.faces.new(list(reversed(rings[0])))
-    bm.faces.new(rings[-1])
+            band_of[bm.faces.new((ra[i], ra[j], rb[j], rb[i]))] = k
+    bottom = bm.faces.new(list(reversed(rings[0])))
+    top = bm.faces.new(rings[-1])
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    return kit._new_object(name, bm, slot, "metres", "xz")
+    cap_n = {bottom: Vector((0, 0, -1)), top: Vector((0, 0, 1))}
+    if bottom.normal.z > 0:
+        cap_n[bottom] = Vector((0, 0, 1))
+    if top.normal.z < 0:
+        cap_n[top] = Vector((0, 0, -1))
+
+    # Faces smooth and the sharp edges marked exactly as finish() will mark
+    # them, so the custom normals are encoded in the final smoothing fans
+    # (shade_smooth / set_sharp_from_angle would otherwise rotate them).
+    for f in bm.faces:
+        f.smooth = True
+    sharp_ring = set()
+    for k in range(1, len(rings) - 1):
+        if band_n[k - 1].dot(band_n[k]) < cos_lim:
+            sharp_ring.add(k)
+    if Vector((0.0, -1.0)).dot(band_n[0]) < cos_lim:
+        sharp_ring.add(0)
+    if Vector((0.0, 1.0)).dot(band_n[-1]) < cos_lim:
+        sharp_ring.add(len(rings) - 1)
+    for k in sharp_ring:
+        ring = rings[k]
+        for i in range(n):
+            e = bm.edges.get((ring[i], ring[(i + 1) % n]))
+            if e is not None:
+                e.smooth = False
+
+    def prof_normal(k, ring_k):
+        """Profile normal used by band k at ring ring_k (k or k + 1)."""
+        nb = band_n[k]
+        other = k - 1 if ring_k == k else k + 1
+        if 0 <= other < len(band_n) and nb.dot(band_n[other]) >= cos_lim:
+            return (nb + band_n[other]).normalized()
+        return nb
+
+    loop_normals = []
+    for f in bm.faces:
+        for loop in f.loops:
+            if f in cap_n:
+                loop_normals.append(cap_n[f])
+                continue
+            rk, i = ring_of[loop.vert]
+            pn = prof_normal(band_of[f], rk)
+            loop_normals.append((dirs[i] * pn.x + Vector((0, 0, pn.y))).normalized())
+    obj = kit._new_object(name, bm, slot, "metres", "xz")
+    obj.data.normals_split_custom_set([tuple(v) for v in loop_normals])
+    return obj
 
 
 def _decimate(bm, target_tris):
@@ -173,41 +248,30 @@ def _t(z):
 
 def build(kit):
     # Profile: base heel -> tapered wall -> grip band -> rolled lip -> inner
-    # wall -> floor. Offsets are outward from the base rectangle.
-    band0, band1 = 0.226, 0.2295
+    # wall -> floor. Offsets are outward from the base rectangle. Nine rings:
+    # every one is a silhouette or a shading break seen from 2 m.
+    band0, band1 = 0.287, 0.2915
     step = 0.0028
+    rim = _t(RIM_Z)
     prof = [
-        (-0.006, 0.000),
-        (-0.0025, 0.0012),
-        (-0.0006, 0.0040),
-        (_t(0.012), 0.012),
+        (-0.006, 0.000),                    # recessed base (heel in contact shadow)
         (_t(band0), band0),
-        (_t(band0) + step * 0.55, band0 + 0.0012),
-        (_t(band1) + step, band1),         # grip band steps out 2.8 mm
-        (_t(RIM_Z) + step, RIM_Z),
-        (_t(RIM_Z) + 0.0058, RIM_Z + 0.0008),
-        (_t(RIM_Z) + 0.0082, RIM_Z + 0.0040),
-        (_t(RIM_Z) + 0.0090, RIM_Z + 0.0085),
-        (_t(RIM_Z) + 0.0080, RIM_Z + 0.0125),
-        (_t(RIM_Z) + 0.0055, RIM_Z + 0.0152),
-        (_t(RIM_Z) + 0.0018, H),
-        (_t(RIM_Z) - 0.0016, H - 0.0006),
-        (_t(RIM_Z) - WALL, H - 0.0030),     # inner lip edge
-        (_t(RIM_Z) - WALL, RIM_Z - 0.002),
-        (_t(band1) - WALL + 0.0012, band1 - 0.002),
-        (_t(band0) - WALL, band0 - 0.004),
-        (_t(0.04) - WALL, 0.04),
-        (_t(FLOOR_Z + 0.006) - WALL - 0.002, FLOOR_Z + 0.002),
-        (_t(FLOOR_Z) - WALL - 0.007, FLOOR_Z),
+        (_t(band1) + step, band1),          # grip band steps out 2.8 mm
+        (rim + step, RIM_Z),
+        (rim + 0.0092, RIM_Z + 0.0060),     # rolled lip, outer bulge
+        (rim + 0.0068, RIM_Z + 0.0132),
+        (rim + 0.0010, H),                  # lip top
+        (rim - WALL, H - 0.0016),           # inner lip edge (a crisp edge: the inner wall shades flat)
+        (_t(FLOOR_Z) - WALL - 0.006, FLOOR_Z),   # inner wall down to the floor
     ]
-    rr_lathe(kit, prof, PLASTIC, seg=6, name="basket shell")
+    rr_lathe(kit, prof, PLASTIC, seg=CORNER_SEG, smooth_angle=SMOOTH_ANGLE, name="basket shell")
 
-    # Two crumpled sheets lying on the floor of the basket, visible down the
-    # mouth from eye height; the bin is otherwise empty.
-    paper_ball(kit, (-0.050, 0.018), FLOOR_Z, 0.038, seed=31, name="paper ball")
-    paper_ball(kit, (0.052, 0.006), FLOOR_Z, 0.036, seed=17, name="paper ball")
+    # One crumpled sheet on the floor of the basket, by the back wall where
+    # a -Y viewer looking down the mouth sees the floor first; otherwise empty.
+    paper_ball(kit, (-0.035, 0.040), FLOOR_Z, 0.039, seed=31, target_tris=PAPER_TRIS, name="paper ball")
 
-    kit.collider((0, 0, H / 2), (0.28, 0.20, H))
+    # §5.3: no collider (the pile and the room dresser treat it as clutter).
+    kit.no_collider()
     kit.anchor("mouth", (0, 0, H))
     kit.tag("office")
-    kit.pile("Small")
+    kit.pile("Small", mass=0)

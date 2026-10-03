@@ -28,8 +28,8 @@ TOP_T = 0.022
 TOP_Z0 = H - TOP_T
 BASE_H = 0.085                 # height of the bracket base
 CX = 0.236                     # half width of the case
-Y_FRONT = -0.183               # case front face
-Y_BACK = 0.192                 # case back face
+Y_FRONT = -0.170               # case front face
+Y_BACK = 0.197                 # case back face
 LIP = 0.019                    # drawer fronts stand this far proud of the case
 GAP = 0.004                    # shut line between drawer fronts
 
@@ -67,8 +67,8 @@ def build(kit):
     kit.quad(2 * CX - 0.026, case_h - 0.024, (0, Y_BACK + 0.0006, BASE_H + case_h / 2), BACK,
              facing="+y", uv="metres", name="back panel")
 
-    # Top: rounded front and side edges, 15 mm front overhang.
-    ty0, ty1 = Y_FRONT - 0.015, Y_BACK + 0.003
+    # Top: rounded front and side edges, 12 mm proud of the drawer fronts.
+    ty0, ty1 = Y_FRONT - LIP - 0.012 + 0.001, Y_BACK + 0.003
     kit.box((W, ty1 - ty0, TOP_T), (0, (ty0 + ty1) / 2, TOP_Z0 + TOP_T / 2), OAK,
             bevel=0.008, segments=2, name="top")
 

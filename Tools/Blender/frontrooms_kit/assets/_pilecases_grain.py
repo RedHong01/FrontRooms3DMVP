@@ -1,5 +1,12 @@
 """Grain-aware metre UVs for the pilecases group (helper, NOT an asset module).
 
+STATUS 2026-10-02: kitlib._uv_metres now reads fr_grain / fr_uv_offset
+itself, so install() is a no-op (kept for older kitlib copies). The wood
+albedos are seamless CC0 scans now: callers pass tile = the slot's TileSize
+(Teak / Cherry 1.0, Walnut 1.8, PinePallet 1.4, Plywood 0.5) so each part
+just lands on its own patch; the seam logic below only matters for parts
+longer than a tile. The text below describes the original DoorVeneer setup.
+
 Used by dresser_70s, rolling_cabinet, side_table_turned, pallet and crate.
 
 Why: every wood slot (Prop_WoodTeak / Cherry / Dark / Plywood / PinePallet) is

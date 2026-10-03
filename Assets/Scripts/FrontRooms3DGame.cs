@@ -643,7 +643,17 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             if (zonesVisited.Add(zone)) Event("zone", zone.ToString());
         }
         UpdateAim(dt);
+#if UNITY_EDITOR
+        var tickWatch = autopilot ? System.Diagnostics.Stopwatch.StartNew() : null;
+#endif
         relay.Tick(dt, playerRoot.position, cam.transform.position, playerRoot.forward);
+#if UNITY_EDITOR
+        if (tickWatch != null && tickWatch.Elapsed.TotalMilliseconds > autoRelayTickMs)
+        {
+            autoRelayTickMs = (float)tickWatch.Elapsed.TotalMilliseconds;
+            autoRelayTickAt = autoPlayClock;
+        }
+#endif
         UpdateRelayRig(dt);
     }
 
@@ -1345,7 +1355,7 @@ public sealed class FrontRooms3DGame : MonoBehaviour
     /// <summary>Session key for a fixed maze seed on the autopilot (0 = the profile's).</summary>
     public const string AutopilotSeedKey = "FrontRooms.Autopilot.Seed";
     int autopilotSeed, autoSkipFrames, autoGhostsSeen;
-    float autoWorstFrameMs;
+    float autoWorstFrameMs, autoRelayTickMs, autoRelayTickAt;
     readonly List<string> autoGhostLog = new List<string>();
     readonly List<float> autoFrameMs = new List<float>();
     readonly List<string> autoSpikes = new List<string>();
@@ -1388,6 +1398,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
         public float worstFrameMs;
         public float p95FrameMs;
         public float p99FrameMs;
+        public float relayTickMaxMs;
+        public float relayTickMaxAt;
         public List<string> frameSpikes = new List<string>();
         public int officeRoomsDressed;
         public int errors;
@@ -1660,6 +1672,8 @@ public sealed class FrontRooms3DGame : MonoBehaviour
             worstFrameMs = autoWorstFrameMs,
             p95FrameMs = Percentile(autoFrameMs, .95f),
             p99FrameMs = Percentile(autoFrameMs, .99f),
+            relayTickMaxMs = autoRelayTickMs,
+            relayTickMaxAt = autoRelayTickAt,
             frameSpikes = autoSpikes,
             officeRoomsDressed = map == null ? 0 : CountNamed(map.transform, "office dressing"),
             errors = autoErrors,

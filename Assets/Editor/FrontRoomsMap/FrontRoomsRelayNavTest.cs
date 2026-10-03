@@ -63,7 +63,8 @@ public static class FrontRoomsRelayNavTest
         var fogDensity = RenderSettings.fogDensity;
         var skybox = RenderSettings.skybox;
         var root = new GameObject("RELAY NAV TEST") { hideFlags = HideFlags.DontSave };
-        root.transform.position = new Vector3(-5000f, 0f, -5000f);
+        // Far from the open scene, on a whole world period so surface patterns stay on the lattice.
+        root.transform.position = new Vector3(-26f * ModuleUnits.WorldPeriod, 0f, -26f * ModuleUnits.WorldPeriod);
         var boxes = new HashSet<Collider>();
         try
         {

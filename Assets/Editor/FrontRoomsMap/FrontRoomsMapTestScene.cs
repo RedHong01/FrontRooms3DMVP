@@ -56,6 +56,9 @@ public static class FrontRoomsMapTestScene
         CaptureViews(CaptureFolder, Vector3.zero);
     }
 
+    /// <summary>About 5 km out, on a whole world period (4992 m) so world-projected surfaces line up with the cells as they do at the origin.</summary>
+    static Vector3 CaptureOffset => new Vector3(26f * ModuleUnits.WorldPeriod, 0f, 26f * ModuleUnits.WorldPeriod);
+
     static string CaptureFolder => Path.Combine(Directory.GetParent(Application.dataPath).FullName, "Verification");
 
     [MenuItem("FrontRooms/Map/Capture test views")]
@@ -74,7 +77,7 @@ public static class FrontRoomsMapTestScene
         try
         {
             SceneManager.SetActiveScene(temp);
-            CaptureViews(CaptureFolder, new Vector3(5000f, 0f, 5000f));
+            CaptureViews(CaptureFolder, CaptureOffset);
         }
         finally
         {
@@ -104,7 +107,7 @@ public static class FrontRoomsMapTestScene
         profile.generation = profile.Generation(seed);
         try
         {
-            root.transform.position = new Vector3(5000f, 0f, 5000f);
+            root.transform.position = CaptureOffset;
             var world = root.AddComponent<FrontRoomsMapWorld>();
             world.Profile = profile;
             world.BuildForCapture();
@@ -157,10 +160,21 @@ public static class FrontRoomsMapTestScene
                     }
                 }
             }
+            // The ceiling straight above the spawn cell, to check troffers sit in whole 0.6 m tiles.
+            var spawnFeet = world.SpawnWorldPosition;
+            cameraObject.transform.position = spawnFeet + Vector3.up * ModuleUnits.PlayerEye;
+            cameraObject.transform.rotation = Quaternion.Euler(-90f, 0f, 0f);
+            cam.targetTexture = rt;
+            cam.Render();
+            RenderTexture.active = rt;
+            tex.ReadPixels(new Rect(0, 0, 1600, 900), 0, 0);
+            tex.Apply();
+            RenderTexture.active = null;
+            File.WriteAllBytes(Path.Combine(CaptureFolder, "map-ceiling.png"), tex.EncodeToPNG());
             cam.targetTexture = null;
             Object.DestroyImmediate(rt);
             Object.DestroyImmediate(tex);
-            Debug.Log("[FrontRoomsMap] Column views (seed " + seed + "): " + string.Join(", ", found));
+            Debug.Log("[FrontRoomsMap] Column views (seed " + seed + "): " + string.Join(", ", found) + "; ceiling view above the spawn");
         }
         finally
         {

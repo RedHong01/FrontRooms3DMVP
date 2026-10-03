@@ -1,72 +1,75 @@
 """Prop_Label atlas helper for the storage group (filing cabinet, binders,
 paper stack). Not an asset: it has no NAME/build.
 
-Assets/Resources/Surfaces/Textures/Prop_Label_A.png is a 1024 x 512 atlas of
-twelve typed file-label cards in a 4 x 3 grid (row-major from the top left):
+Prop_Label_A.png is a 1024 x 1024 atlas of sixteen 256 px cells, 4 x 4,
+row-major from the top left (kit.atlas_cell(i, 4, 4) is the whole cell):
 
-    0 "A - C"    1 "D - F"    2 "G - K"    3 "L - P"
-    4 "Q - S"    5 "T - Z"    6 "1994"     7 "1995"
-    8 "PAYROLL"  9 "MISC"    10 "OLD"     11 "LEVEL 4"
+    0 "A - C"   1 "D - F"   2 "G - K"   3 "L - P"      typed drawer cards
+    4 "1994"    5 "1995"    6 "PAYROLL" 7 "MISC"       typed cards
+    8 "Q3 REPORTS" 9 "MINUTES"   (portrait binder spine inserts, middle 40 %)
+   10 "CLIENT FILES" folder tab strip (middle band)  11 furniture maker's label
+   12 TV rating plate  13 INSPECTED stamp  14 asset tag + barcode  15 caution
 
-A quad mapped 0..1 (kit.quad's decal UVs) shows the whole sheet of twelve
-cards, so labels here are built with UVs on one card, cropped inside its
-printed border to the quad's aspect (the text is left-aligned, so a crop in
-width keeps the left end), and registered with uv="keep".
+A whole cell also shows the grey sheet around the printed piece, so labels
+here map to the printed piece only: BOXES holds each piece's pixel box inside
+its cell (measured on the texture), and card() crops it to the quad's aspect
+around a chosen centre, so the text is never squashed.
 """
 
-import bmesh
-from mathutils import Vector
-
 SLOT = "Prop_Label"
-TILES = ("A - C", "D - F", "G - K", "L - P", "Q - S", "T - Z", "1994", "1995",
-         "PAYROLL", "MISC", "OLD", "LEVEL 4")
-ATLAS_W, ATLAS_H = 1024.0, 512.0
-COLS, ROWS = 4, 3
-CELL_W, CELL_H = ATLAS_W / COLS, ATLAS_H / ROWS
-# Card interior inside the printed border, pixels within one cell (top-down).
-CARD_X0, CARD_X1 = 22.0, 234.0
-CARD_Y0, CARD_Y1 = 34.0, 136.0
-TEXT_MIN_W = 168.0          # longest word ("PAYROLL") ends ~180 px into the cell
-TEXT_MIN_H = 44.0           # cap height 27 px, centred on the card
+CELL = 256.0
+ATLAS = 1024.0
+COLS = 4
+
+# Printed piece inside each cell, pixels (x0, y0, x1, y1), y down, border excluded.
+BOXES = {i: (10, 54, 246, 202) for i in range(8)}
+BOXES.update({
+    8: (80, 7, 175, 248),
+    9: (81, 8, 175, 248),
+    10: (6, 106, 250, 150),
+    11: (21, 43, 235, 213),
+    12: (12, 62, 244, 194),
+    13: (38, 38, 218, 218),
+    14: (18, 72, 238, 184),
+    15: (30, 30, 226, 216),
+})
+# Where the text sits (crop centre, pixels in the cell) for the typed cards:
+# the word is centred at y ~ 120 with a blue rule under it at y ~ 151.
+TEXT_CENTRE = {i: (128, 128) for i in range(8)}
 
 
-def tile_rect(tile, aspect, min_h=TEXT_MIN_H):
-    """(u0, v0, u1, v1) on card ``tile`` for a quad of width/height ``aspect``
-    (in reading direction). ``min_h`` (px) keeps the text band whole on very
-    thin labels, at the cost of some horizontal stretch."""
-    if isinstance(tile, str):
-        tile = TILES.index(tile)
-    col, row = tile % COLS, tile // COLS
-    w, h = CARD_X1 - CARD_X0, CARD_Y1 - CARD_Y0
-    cy = (CARD_Y0 + CARD_Y1) / 2
-    if aspect >= w / h:
-        h = max(w / aspect, min_h)
-        x0 = CARD_X0
-    else:
-        w = max(h * aspect, TEXT_MIN_W)
-        x0 = CARD_X0
-    y0, y1 = cy - h / 2, cy + h / 2
-    u0 = (col * CELL_W + x0) / ATLAS_W
-    u1 = (col * CELL_W + x0 + w) / ATLAS_W
-    v1 = 1.0 - (row * CELL_H + y0) / ATLAS_H
-    v0 = 1.0 - (row * CELL_H + y1) / ATLAS_H
-    return u0, v0, u1, v1
+def rect_px(cell, x0, y0, x1, y1, mirror=False):
+    """uv_rect (u0, v0, u1, v1) of a pixel box inside ``cell``."""
+    c, r = cell % COLS, cell // COLS
+    u0 = (c * CELL + x0) / ATLAS
+    u1 = (c * CELL + x1) / ATLAS
+    v1 = 1.0 - (r * CELL + y0) / ATLAS
+    v0 = 1.0 - (r * CELL + y1) / ATLAS
+    return (u1, v0, u0, v1) if mirror else (u0, v0, u1, v1)
 
 
-def label(kit, tile, width, height, right, up, name="label", min_h=TEXT_MIN_H):
-    """A label card of ``width`` x ``height`` metres showing atlas card
-    ``tile``. ``right`` is the reading direction and ``up`` the text's up, as
-    unit 3-vectors in the part's local space; right x up is the face normal
-    (it must point at the viewer). The part sits at the origin: place it with
-    obj.location / obj.rotation_euler like any kit part."""
-    r = Vector(right).normalized() * width / 2
-    u = Vector(up).normalized() * height / 2
-    u0, v0, u1, v1 = tile_rect(tile, width / height, min_h)
-    bm = bmesh.new()
-    layer = bm.loops.layers.uv.verify()     # same default layer the kit UVs use, so join merges them
-    corners = ((-r - u, (u0, v0)), (r - u, (u1, v0)), (r + u, (u1, v1)), (-r + u, (u0, v1)))
-    verts = [bm.verts.new(p) for p, _ in corners]
-    face = bm.faces.new(verts)
-    for loop, (_, uv) in zip(face.loops, corners):
-        loop[layer].uv = uv
-    return kit._new_object(name, bm, SLOT, "keep", "xz")
+def rect(cell, aspect=None, mirror=False):
+    """uv_rect of the printed piece in ``cell``; with ``aspect`` (width /
+    height of the quad, in reading direction) it is cropped to that aspect
+    around the text centre instead of being stretched."""
+    x0, y0, x1, y1 = BOXES[cell]
+    if aspect:
+        w, h = x1 - x0, y1 - y0
+        cx, cy = TEXT_CENTRE.get(cell, ((x0 + x1) / 2, (y0 + y1) / 2))
+        if aspect >= w / h:
+            h = w / aspect
+        else:
+            w = h * aspect
+        cx = min(max(cx, x0 + w / 2), x1 - w / 2)
+        cy = min(max(cy, y0 + h / 2), y1 - h / 2)
+        x0, x1, y0, y1 = cx - w / 2, cx + w / 2, cy - h / 2, cy + h / 2
+    return rect_px(cell, x0, y0, x1, y1, mirror)
+
+
+def card(kit, cell, width, height, loc, facing="-y", crop=True, name="label"):
+    """A ``width`` x ``height`` label quad facing ``facing`` (kit.quad
+    facings) showing atlas ``cell``. Quads facing +y / +x are seen from the
+    other side, so their UVs are mirrored to keep the text readable."""
+    mirror = facing in ("+y", "+x")
+    uv = rect(cell, width / height if crop else None, mirror)
+    return kit.quad(width, height, loc, SLOT, facing=facing, name=name, uv_rect=uv)

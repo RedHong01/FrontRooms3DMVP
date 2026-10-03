@@ -73,7 +73,7 @@ so zones are irregular and cross chunk borders. Each zone rolls a ceiling class:
 `Assets/Scenes/FrontRoomsMapTest.unity` (**FrontRooms → Map → Open walkable test scene**) holds one standalone `FrontRoomsMapWorld` with its own walker and debug HUD. Both modes:
 
 - keep the 5 × 5 chunks around the player built, adding one new chunk per frame (nearest first), and drop the rest;
-- build walls, doorways, doors, windows, ceilings at zone height and one troffer per cell. These go into 6 m mesh blocks, with one collision mesh per chunk. Office-zone cells use the Office surfaces;
+- build walls, doorways, doors, windows, ceilings at zone height and one troffer per cell (a 0.6 × 1.2 m lens filling whole 0.6 m ceiling tiles). These go into 6 m mesh blocks split by ceiling height, each with its own `_CeilingHeight`, with one collision mesh per chunk. Office-zone cells use the Office surfaces;
 - run every lamp on its own: steady, occasional stutter, failing ballast, dead with rare blinks, or dim. Each is a downward 162° spot of intensity 5, and one lamp in three casts shadows within 9 m;
 - use the shared ambient and haze (`FrontRoomsLook.ApplyAmbient`). The camera's far plane stops 2 m short of the first unbuilt chunk;
 - furnish Office rooms through `FrontRoomsOfficeKit.Dress` (with the room's columns as obstacles), and sometimes halls of at least 4 × 4 cells through `FrontRoomsFurniturePile.Build`, one room per frame after the chunk is built. Only rooms that are one open space are dressed. Both kits are found by reflection and skipped while they don't exist.
@@ -87,6 +87,7 @@ Controls: click to look, WASD, Shift sprints on about 5 s of stamina, E opens an
 - **FrontRooms → Map → Verify 100 seeds**: checks 100 seeds of the level profile's generation numbers over 8 × 8 chunks each and writes `Verification/map-verification-latest.json`.
 - **FrontRooms → Map → Capture test views**: builds the area around the spawn in edit mode and renders four views to `Verification/map-test-*.png`.
 - **FrontRooms → Map → Play main scene on autopilot**: plays `FrontRooms3D.unity` unattended. It presses Space, noclips, then walks breadth-first routes for 75 s, opening doors and sprinting once. Frames and `report.json` go to `Verification/main-autopilot`. Batch: `-executeMethod FrontRoomsMainScenePlaytest.RunBatch`, with no `-quit`; it exits 0 on PASS.
+- Headless `-executeMethod FrontRoomsMapTestScene.CaptureColumnsBatch -captureSeed N`: renders the first Level 0, Office and tall-hall column near the spawn and the ceiling straight above the spawn (troffer vs printed grid) to `Verification/map-columns-*.png` and `map-ceiling.png`.
 - **FrontRooms → Map → Test Relay navigation**: builds the map around the spawn, scatters test furniture and sends the Relay on 60 hunts; writes `Verification/relay-nav-test.json`.
 - Headless: `-executeMethod FrontRoomsMapVerification.RunBatch`, `FrontRoomsMapTestScene.CreateBatch`, `FrontRoomsMapTestScene.CaptureBatch`, `FrontRoomsRelayNavTest.RunBatch`.
 

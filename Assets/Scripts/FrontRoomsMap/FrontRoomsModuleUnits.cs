@@ -19,6 +19,14 @@ namespace FrontRooms.Map
         public const float Fine = .6f;
         /// <summary>World-projected tile sizes must divide this so every 3 m wall module looks the same.</summary>
         public const float TileAlign = Cell;
+        /// <summary>
+        /// Surface patterns are world-projected from world (0, 0): a map root,
+        /// a capture root or an origin shift must sit on a multiple of this
+        /// (the least common multiple of every world period: 0.6 / 1.2 ceiling,
+        /// 0.75 paper, 1 carpet, 8 and 12.8 m wear, 24 m chunk), or the patterns
+        /// slide against the cell lattice.
+        /// </summary>
+        public const float WorldPeriod = 192f;
 
         // ---------- Heights ----------
 
